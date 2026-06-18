@@ -1,0 +1,34 @@
+﻿spring:
+  # 生产环境数据源
+  datasource:
+    url: jdbc:mysql://prod-mysql:3306/inject_erp?useUnicode=true&characterEncoding=utf-8&useSSL=true&serverTimezone=Asia/Shanghai
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  # 生产环境Redis
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+      database: 0
+
+# MyBatis-Plus生产环境关闭SQL日志
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+# JWT生产环境密钥
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+# 文件存储路径
+file:
+  upload-path: /data/inject-erp/uploads/
+
+# 日志级别
+logging:
+  level:
+    root: WARN
+    com.injectmes: INFO

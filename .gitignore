@@ -1,0 +1,43 @@
+# ========================
+# 注塑厂管理系统 .gitignore
+# ========================
+
+# === Java / Maven ===
+backend/target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+*.gz
+
+# === Node.js ===
+node_modules/
+dist/
+*.local
+
+# === IDE ===
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === 临时/构建文件 ===
+*.txt
+!README.txt
+dump.rdb
+META-INF/
+
+# === 敏感配置（生产环境用环境变量） ===
+# application-prod.yml 包含生产配置，不提交
+# backend/src/main/resources/application-prod.yml
+
+# === 环境文件 ===
+.env
+.env.*
