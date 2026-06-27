@@ -9,7 +9,9 @@
           <span class="user-shift">当前班次：{{ userStore.shift }}</span>
         </div>
       </div>
-      <van-icon name="bell" size="22" color="#fff" @click="goNotifications" />
+      <van-badge :content="unreadCount" :max="99" :offset="[-2, 2]">
+        <van-icon name="bell" size="22" color="#fff" @click="goNotifications" />
+      </van-badge>
     </div>
 
     <!-- 快捷入口 -->
@@ -57,10 +59,12 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../../store/user'
 import { getCurrentShiftTasks } from '../../api/prodReport'
+import { getUnreadCount } from '../../api/notification'
 
 const router = useRouter()
 const userStore = useUserStore()
 const activeTab = ref(0)
+const unreadCount = ref(0)
 
 /** 当班任务列表 */
 const tasks = ref<any[]>([])
@@ -72,6 +76,17 @@ async function loadTasks() {
     tasks.value = res.data || res || []
   } catch {
     tasks.value = []
+  }
+}
+
+/** 加载未读消息数 */
+async function loadUnreadCount() {
+  try {
+    const res = await getUnreadCount() as any
+    const count = res.data ?? res
+    unreadCount.value = Number(count) || 0
+  } catch {
+    unreadCount.value = 0
   }
 }
 
@@ -87,6 +102,7 @@ function goNotifications() {
 
 onMounted(() => {
   loadTasks()
+  loadUnreadCount()
 })
 </script>
 

@@ -47,7 +47,13 @@ public class ProductService {
             wrapper.and(w -> w
                     .like(Product::getCode, keyword)
                     .or().like(Product::getName, keyword)
+                    .or().like(Product::getSpec, keyword)
             );
+        }
+
+        String type = request.getType();
+        if (type != null && !type.trim().isEmpty()) {
+            wrapper.eq(Product::getType, type.trim());
         }
 
         // 按创建时间降序

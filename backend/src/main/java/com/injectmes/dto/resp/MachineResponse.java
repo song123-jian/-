@@ -36,6 +36,12 @@ public class MachineResponse {
     /** 位置 */
     private String location;
 
+    /** 工厂编码 */
+    private String factoryCode;
+
+    /** 车间 */
+    private String workshop;
+
     /** 购入日期 */
     private LocalDate purchaseDate;
 

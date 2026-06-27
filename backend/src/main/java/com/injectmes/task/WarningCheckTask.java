@@ -231,18 +231,21 @@ public class WarningCheckTask {
      */
     private void checkMoldMaintenanceWarning() {
         LambdaQueryWrapper<Mold> wrapper = new LambdaQueryWrapper<>();
-        wrapper.ne(Mold::getStatus, "SCRAPPED");
+        wrapper.ne(Mold::getStatus, "SCRAP");
         List<Mold> molds = moldMapper.selectList(wrapper);
 
         for (Mold mold : molds) {
-            if (mold.getMaintenanceCycle() != null && mold.getMaintenanceCycle() > 0 && mold.getUsedShots() != null) {
-                // 计算自上次保养以来的模次（简化：直接用usedShots与maintenanceCycle比较）
+            Integer shotsSinceMaintenance = mold.getShotsSinceMaintenance() != null
+                    ? mold.getShotsSinceMaintenance()
+                    : mold.getUsedShots();
+            if (mold.getMaintenanceCycle() != null && mold.getMaintenanceCycle() > 0 && shotsSinceMaintenance != null) {
+                // 计算自上次保养以来的模次
                 int threshold = new BigDecimal(mold.getMaintenanceCycle())
                         .multiply(MOLD_MAINTENANCE_RATIO)
                         .intValue();
-                if (mold.getUsedShots() >= threshold) {
+                if (shotsSinceMaintenance >= threshold) {
                     String content = String.format("模具 %s（%s）已使用 %d 模次，达到保养周期 %d 的 %.0f%%，请安排保养！",
-                            mold.getCode(), mold.getName(), mold.getUsedShots(),
+                            mold.getCode(), mold.getName(), shotsSinceMaintenance,
                             mold.getMaintenanceCycle(), MOLD_MAINTENANCE_RATIO.multiply(new BigDecimal("100")));
                     notificationService.broadcastNotification("模具保养预警", content, "WARNING");
                     log.info("模具保养预警：{}", content);
@@ -256,7 +259,7 @@ public class WarningCheckTask {
      */
     private void checkMoldLifetimeWarning() {
         LambdaQueryWrapper<Mold> wrapper = new LambdaQueryWrapper<>();
-        wrapper.ne(Mold::getStatus, "SCRAPPED");
+        wrapper.ne(Mold::getStatus, "SCRAP");
         List<Mold> molds = moldMapper.selectList(wrapper);
 
         for (Mold mold : molds) {

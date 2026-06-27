@@ -29,6 +29,14 @@ public class WarehouseCreateRequest {
     @Size(max = 300, message = "地址长度不能超过300")
     private String address;
 
+    /** 工厂编码 */
+    @Size(max = 50, message = "工厂编码长度不能超过50")
+    private String factoryCode;
+
+    /** 车间 */
+    @Size(max = 100, message = "车间长度不能超过100")
+    private String workshop;
+
     /** 管理员ID */
     private Long managerId;
 }

@@ -20,7 +20,7 @@
             :title="order.productName"
             :label="order.workOrderNo"
             clickable
-            @click="selectedOrderId = order.workOrderId"
+            @click="selectOrder(order)"
           >
             <template #right-icon>
               <van-radio :name="order.workOrderId" />
@@ -42,9 +42,10 @@
           <van-field name="inspectionType" label="检验类型">
             <template #input>
               <van-radio-group v-model="qcForm.inspectionType" direction="horizontal">
-                <van-radio name="首检">首检</van-radio>
-                <van-radio name="巡检">巡检</van-radio>
-                <van-radio name="末检">末检</van-radio>
+                <van-radio name="FAI">首件</van-radio>
+                <van-radio name="IPQC">巡检</van-radio>
+                <van-radio name="FQC">成品</van-radio>
+                <van-radio name="IQC">来料</van-radio>
               </van-radio-group>
             </template>
           </van-field>
@@ -118,12 +119,13 @@ import { getPendingQcOrders, submitQcRecord, uploadQcImage } from '../../api/qcR
 const router = useRouter()
 const step = ref(0)
 const selectedOrderId = ref<number>(0)
+const selectedWorkOrder = ref<any>(null)
 const orders = ref<any[]>([])
 const submitting = ref(false)
 const fileList = ref<any[]>([])
 
 const qcForm = reactive({
-  inspectionType: '首检',
+  inspectionType: 'FAI',
   result: '合格',
   defectType: '',
   defectDesc: '',
@@ -135,9 +137,18 @@ async function loadOrders() {
   try {
     const res = await getPendingQcOrders() as any
     orders.value = res.data || res || []
+    if (orders.value.length > 0) {
+      selectedOrderId.value = orders.value[0].workOrderId
+      selectedWorkOrder.value = orders.value[0]
+    }
   } catch {
     orders.value = []
   }
+}
+
+function selectOrder(order: any) {
+  selectedOrderId.value = order.workOrderId
+  selectedWorkOrder.value = order
 }
 
 /** 上传照片回调 */
@@ -174,6 +185,7 @@ async function onSubmit() {
 
     await submitQcRecord({
       workOrderId: selectedOrderId.value,
+      productId: selectedWorkOrder.value?.productId,
       inspectionType: qcForm.inspectionType,
       result: qcForm.result,
       defectType: qcForm.defectType || undefined,

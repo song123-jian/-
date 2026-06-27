@@ -68,6 +68,60 @@ public class StockService {
 
         LambdaQueryWrapper<Stock> wrapper = new LambdaQueryWrapper<>();
 
+        if (request.getWarehouseId() != null) {
+            wrapper.eq(Stock::getWarehouseId, request.getWarehouseId());
+        }
+        if (request.getProductId() != null) {
+            wrapper.eq(Stock::getProductId, request.getProductId());
+        }
+        if (request.getLocationId() != null) {
+            wrapper.eq(Stock::getLocationId, request.getLocationId());
+        }
+        if ((request.getWarehouse() != null && !request.getWarehouse().trim().isEmpty())
+                || (request.getProduct() != null && !request.getProduct().trim().isEmpty())) {
+            List<Long> warehouseIds = new ArrayList<>();
+            if (request.getWarehouse() != null && !request.getWarehouse().trim().isEmpty()) {
+                List<Warehouse> warehouseList = warehouseMapper.selectList(
+                        new LambdaQueryWrapper<Warehouse>()
+                                .and(w -> w.like(Warehouse::getCode, request.getWarehouse().trim())
+                                        .or().like(Warehouse::getName, request.getWarehouse().trim()))
+                );
+                for (Warehouse warehouse : warehouseList) {
+                    warehouseIds.add(warehouse.getId());
+                }
+            }
+
+            List<Long> productIds = new ArrayList<>();
+            if (request.getProduct() != null && !request.getProduct().trim().isEmpty()) {
+                List<Product> productList = productMapper.selectList(
+                        new LambdaQueryWrapper<Product>()
+                                .and(w -> w.like(Product::getCode, request.getProduct().trim())
+                                        .or().like(Product::getName, request.getProduct().trim()))
+                );
+                for (Product product : productList) {
+                    productIds.add(product.getId());
+                }
+            }
+
+            wrapper.and(w -> {
+                boolean hasCondition = false;
+                if (!warehouseIds.isEmpty()) {
+                    w.in(Stock::getWarehouseId, warehouseIds);
+                    hasCondition = true;
+                }
+                if (!productIds.isEmpty()) {
+                    if (hasCondition) {
+                        w.or();
+                    }
+                    w.in(Stock::getProductId, productIds);
+                    hasCondition = true;
+                }
+                if (!hasCondition) {
+                    w.eq(Stock::getId, -1L);
+                }
+            });
+        }
+
         // 按创建时间降序
         wrapper.orderByDesc(Stock::getUpdatedAt);
 
@@ -101,7 +155,15 @@ public class StockService {
         // 关键词模糊搜索（流水号）
         String keyword = request.getKeyword();
         if (keyword != null && !keyword.trim().isEmpty()) {
-            wrapper.like(StockMove::getMoveNo, keyword);
+            wrapper.and(w -> w.like(StockMove::getMoveNo, keyword)
+                    .or().like(StockMove::getRemark, keyword));
+        }
+
+        if (request.getStartDate() != null && !request.getStartDate().trim().isEmpty()) {
+            wrapper.ge(StockMove::getCreatedAt, LocalDate.parse(request.getStartDate()).atStartOfDay());
+        }
+        if (request.getEndDate() != null && !request.getEndDate().trim().isEmpty()) {
+            wrapper.lt(StockMove::getCreatedAt, LocalDate.parse(request.getEndDate()).plusDays(1).atStartOfDay());
         }
 
         // 按创建时间降序

@@ -19,6 +19,8 @@ public class Warehouse {
     private String name;
     private String type;
     private String address;
+    private String factoryCode;
+    private String workshop;
     private Long managerId;
     private Integer isEnabled;
     private LocalDateTime createdAt;

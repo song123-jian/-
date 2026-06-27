@@ -25,19 +25,23 @@
     <template v-if="transferInfo">
       <van-cell-group inset title="调拨信息">
         <van-cell title="调拨单号" :value="transferInfo.transferNo" />
-        <van-cell title="产品名称" :value="transferInfo.productName" />
-        <van-cell title="数量" :value="String(transferInfo.quantity)" />
-        <van-cell title="源库位" :value="transferInfo.fromLocation" />
-        <van-cell title="目标库位" :value="transferInfo.toLocation" />
+        <van-cell title="调出仓" :value="transferInfo.fromWarehouseName" />
+        <van-cell title="调入仓" :value="transferInfo.toWarehouseName" />
         <van-cell title="状态" :value="transferInfo.status" />
       </van-cell-group>
 
+      <van-cell-group v-if="transferInfo.items?.length" inset title="调拨明细" style="margin-top: 12px">
+        <van-cell
+          v-for="item in transferInfo.items"
+          :key="item.id"
+          :title="item.productName"
+          :label="`${item.fromLocationCode || '-'} → ${item.toLocationCode || '-'} · ${item.qty}`"
+        />
+      </van-cell-group>
+
       <div class="action-btns">
-        <van-button round block type="success" @click="onConfirm('receive')" :loading="loading">
+        <van-button round block type="success" @click="onConfirm" :loading="loading">
           确认收货
-        </van-button>
-        <van-button round block type="danger" @click="onConfirm('reject')" :loading="loading" style="margin-top: 12px">
-          拒绝
         </van-button>
       </div>
     </template>
@@ -50,8 +54,8 @@
         <van-cell
           v-for="item in pendingList"
           :key="item.id"
-          :title="item.productName"
-          :label="item.transferNo"
+          :title="item.transferNo"
+          :label="`${item.fromWarehouseName || '-'} → ${item.toWarehouseName || '-'}`"
           is-link
           @click="onSelectPending(item)"
         />
@@ -81,7 +85,8 @@ function onScan() {
 async function onQuery() {
   try {
     const res = await getTransferByCode(transferCode.value) as any
-    transferInfo.value = res.data || res || null
+    const records = res.data?.records || res.data || res || []
+    transferInfo.value = Array.isArray(records) ? records[0] || null : records
     if (!transferInfo.value) {
       showToast('未找到调拨单')
     }
@@ -92,10 +97,9 @@ async function onQuery() {
 }
 
 /** 确认/拒绝调拨 */
-async function onConfirm(action: 'receive' | 'reject') {
-  const actionText = action === 'receive' ? '确认收货' : '拒绝'
+async function onConfirm() {
   try {
-    await showConfirmDialog({ title: actionText, message: `确定要${actionText}吗？` })
+    await showConfirmDialog({ title: '确认收货', message: '确定要确认收货吗？' })
   } catch {
     return
   }
@@ -104,9 +108,8 @@ async function onConfirm(action: 'receive' | 'reject') {
   try {
     await confirmTransfer({
       transferId: transferInfo.value.id,
-      action,
     })
-    showToast(`${actionText}成功`)
+    showToast('确认收货成功')
     transferInfo.value = null
     transferCode.value = ''
     loadPendingList()
@@ -127,7 +130,10 @@ function onSelectPending(item: any) {
 async function loadPendingList() {
   try {
     const res = await getPendingTransfers() as any
-    pendingList.value = res.data || res || []
+    const records = res.data?.records || res.data || res || []
+    pendingList.value = Array.isArray(records)
+      ? records.filter((item) => item.status === 'SHIPPED')
+      : []
   } catch {
     pendingList.value = []
   }

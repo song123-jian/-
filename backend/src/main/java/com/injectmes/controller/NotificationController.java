@@ -4,10 +4,12 @@ import com.injectmes.common.R;
 import com.injectmes.dto.req.PageRequest;
 import com.injectmes.dto.resp.NotificationResponse;
 import com.injectmes.dto.resp.PageResponse;
+import com.injectmes.security.LoginUserDetails;
 import com.injectmes.service.NotificationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -24,17 +26,73 @@ public class NotificationController {
      * 我的消息列表（分页）
      */
     @GetMapping
-    public R<PageResponse<NotificationResponse>> list(PageRequest request) {
-        Long userId = getCurrentUserId();
-        return notificationService.list(userId, request);
+    public R<PageResponse<NotificationResponse>> list(PageRequest request,
+                                                     @RequestParam(required = false) Integer isRead,
+                                                     @AuthenticationPrincipal LoginUserDetails loginUser) {
+        Long userId = loginUser != null ? loginUser.getUserId() : getCurrentUserId();
+        if (userId == null) {
+            return R.fail(401, "未登录");
+        }
+        return notificationService.list(userId, request, isRead);
+    }
+
+    /**
+     * 未读数量
+     */
+    @GetMapping("/unread-count")
+    public R<Long> unreadCount(@AuthenticationPrincipal LoginUserDetails loginUser) {
+        Long userId = loginUser != null ? loginUser.getUserId() : getCurrentUserId();
+        if (userId == null) {
+            return R.fail(401, "未登录");
+        }
+        return R.ok(notificationService.countUnread(userId));
     }
 
     /**
      * 标记已读
      */
     @PutMapping("/{id}/read")
-    public R<Void> markRead(@PathVariable Long id) {
-        return notificationService.markRead(id);
+    public R<Void> markRead(@PathVariable Long id,
+                            @AuthenticationPrincipal LoginUserDetails loginUser) {
+        Long userId = loginUser != null ? loginUser.getUserId() : getCurrentUserId();
+        if (userId == null) {
+            return R.fail(401, "未登录");
+        }
+        return notificationService.markRead(id, userId);
+    }
+
+    /**
+     * 标记已读（兼容移动端 POST）
+     */
+    @PostMapping("/read/{id}")
+    public R<Void> markReadAlias(@PathVariable Long id,
+                                 @AuthenticationPrincipal LoginUserDetails loginUser) {
+        return markRead(id, loginUser);
+    }
+
+    /**
+     * 全部标记已读
+     */
+    @PostMapping("/read-all")
+    public R<Void> markAllRead(@AuthenticationPrincipal LoginUserDetails loginUser) {
+        Long userId = loginUser != null ? loginUser.getUserId() : getCurrentUserId();
+        if (userId == null) {
+            return R.fail(401, "未登录");
+        }
+        return notificationService.markAllRead(userId);
+    }
+
+    /**
+     * 删除通知
+     */
+    @DeleteMapping("/{id}")
+    public R<Void> delete(@PathVariable Long id,
+                          @AuthenticationPrincipal LoginUserDetails loginUser) {
+        Long userId = loginUser != null ? loginUser.getUserId() : getCurrentUserId();
+        if (userId == null) {
+            return R.fail(401, "未登录");
+        }
+        return notificationService.delete(id, userId);
     }
 
     /**
@@ -42,10 +100,8 @@ public class NotificationController {
      */
     private Long getCurrentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication != null && authentication.getPrincipal() instanceof org.springframework.security.core.userdetails.UserDetails) {
-            // 从认证信息中获取用户名，再查询用户ID
-            String username = ((org.springframework.security.core.userdetails.UserDetails) authentication.getPrincipal()).getUsername();
-            return null; // 简化处理，实际应从UserDetails中获取userId
+        if (authentication != null && authentication.getPrincipal() instanceof LoginUserDetails userDetails) {
+            return userDetails.getUserId();
         }
         return null;
     }

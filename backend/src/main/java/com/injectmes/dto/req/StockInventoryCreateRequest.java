@@ -21,4 +21,7 @@ public class StockInventoryCreateRequest {
     /** 备注 */
     @Size(max = 500, message = "备注长度不能超过500")
     private String remark;
+
+    /** 创建人ID（可选，默认取当前登录用户） */
+    private Long operatorId;
 }

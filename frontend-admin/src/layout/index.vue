@@ -1,11 +1,11 @@
 <template>
   <el-container class="layout-container">
-    <!-- 左侧菜单 -->
-    <el-aside :width="appStore.sidebarCollapsed ? '64px' : '220px'" class="layout-aside">
-      <div class="logo-wrap">
-        <img src="/vite.svg" alt="logo" class="logo-img" />
-        <span v-show="!appStore.sidebarCollapsed" class="logo-text">注塑厂管理系统</span>
-      </div>
+      <!-- 左侧菜单 -->
+      <el-aside :width="appStore.sidebarCollapsed ? '64px' : '220px'" class="layout-aside">
+        <div class="logo-wrap">
+          <div class="logo-mark">注</div>
+          <span v-show="!appStore.sidebarCollapsed" class="logo-text">注塑厂管理系统</span>
+        </div>
       <el-menu
         :default-active="activeMenu"
         :collapse="appStore.sidebarCollapsed"
@@ -30,6 +30,7 @@
           </template>
           <el-menu-item index="/base/users">用户管理</el-menu-item>
           <el-menu-item index="/base/machines">机台管理</el-menu-item>
+          <el-menu-item index="/base/warehouses">仓库管理</el-menu-item>
           <el-menu-item index="/base/molds">模具管理</el-menu-item>
           <el-menu-item index="/base/products">产品管理</el-menu-item>
           <el-menu-item index="/base/customers">客户管理</el-menu-item>
@@ -53,11 +54,14 @@
             <el-icon><SetUp /></el-icon>
             <span>生产管理</span>
           </template>
-          <el-menu-item index="/prod/orders">生产工单</el-menu-item>
+          <el-menu-item index="/prod/orders">生产订单</el-menu-item>
           <el-menu-item index="/prod/reports">报工记录</el-menu-item>
           <el-menu-item index="/prod/downtime">停机记录</el-menu-item>
+          <el-menu-item index="/prod/mount-records">上下模记录</el-menu-item>
+          <el-menu-item index="/prod/mold-maintenance-records">模具保养记录</el-menu-item>
+          <el-menu-item index="/prod/machine-inspection-records">设备点检记录</el-menu-item>
+          <el-menu-item index="/prod/warnings">预警中心</el-menu-item>
         </el-sub-menu>
-
         <!-- 品质管理 -->
         <el-sub-menu index="/qc">
           <template #title>
@@ -125,7 +129,9 @@
           </template>
           <el-menu-item index="/system/logs">操作日志</el-menu-item>
           <el-menu-item index="/system/config">系统配置</el-menu-item>
+          <el-menu-item index="/system/integration">集成中心</el-menu-item>
           <el-menu-item index="/system/backup">数据备份</el-menu-item>
+          <el-menu-item index="/system/notifications">消息中心</el-menu-item>
         </el-sub-menu>
       </el-menu>
     </el-aside>
@@ -147,8 +153,8 @@
         </div>
         <div class="header-right">
           <!-- 消息铃铛 -->
-          <el-badge :value="0" :hidden="true" class="notice-badge">
-            <el-icon :size="20"><Bell /></el-icon>
+          <el-badge :value="unreadCount" :hidden="!unreadCount" class="notice-badge">
+            <el-icon :size="20" class="notice-icon" @click="goNotifications"><Bell /></el-icon>
           </el-badge>
           <!-- 用户信息 -->
           <el-dropdown @command="handleCommand">
@@ -175,14 +181,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/store/app'
 import { useUserStore } from '@/store/user'
+import { getUnreadNotificationCount } from '@/api/notification'
 
 const route = useRoute()
+const router = useRouter()
 const appStore = useAppStore()
 const userStore = useUserStore()
+const unreadCount = ref(0)
 
 // 当前激活的菜单
 const activeMenu = computed(() => route.path)
@@ -195,6 +204,32 @@ function handleCommand(command: string) {
     userStore.logoutAction()
   }
 }
+
+function goNotifications() {
+  router.push('/system/notifications')
+}
+
+async function loadUnreadCount() {
+  try {
+    const res: any = await getUnreadNotificationCount()
+    unreadCount.value = res.data || 0
+  } catch {
+    unreadCount.value = 0
+  }
+}
+
+function handleNotificationUpdated() {
+  loadUnreadCount()
+}
+
+onMounted(() => {
+  loadUnreadCount()
+  window.addEventListener('notification-updated', handleNotificationUpdated as EventListener)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('notification-updated', handleNotificationUpdated as EventListener)
+})
 </script>
 
 <style scoped lang="scss">
@@ -217,10 +252,18 @@ function handleCommand(command: string) {
   padding: 0 16px;
   overflow: hidden;
 
-  .logo-img {
+  .logo-mark {
     width: 32px;
     height: 32px;
     flex-shrink: 0;
+    border-radius: 8px;
+    background-color: #409eff;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 700;
   }
 
   .logo-text {
@@ -279,6 +322,10 @@ function handleCommand(command: string) {
   gap: 20px;
 
   .notice-badge {
+    cursor: pointer;
+  }
+
+  .notice-icon {
     cursor: pointer;
   }
 

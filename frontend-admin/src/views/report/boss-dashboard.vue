@@ -2,17 +2,13 @@
   <div class="page-container">
     <PageHeader title="老板驾驶舱" />
 
-    <!-- 核心指标 -->
-    <el-row :gutter="20" class="stat-row">
+    <el-row :gutter="20" class="stat-row" v-loading="loading">
       <el-col :span="6" v-for="item in statCards" :key="item.title">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-card-content">
             <div class="stat-info">
               <div class="stat-title">{{ item.title }}</div>
               <div class="stat-value">{{ item.value }}</div>
-              <div class="stat-sub" :style="{ color: item.trend > 0 ? '#67c23a' : '#f56c6c' }">
-                {{ item.trend > 0 ? '↑' : '↓' }} {{ Math.abs(item.trend) }}%
-              </div>
             </div>
             <el-icon :size="48" :style="{ color: item.color }">
               <component :is="item.icon" />
@@ -22,33 +18,17 @@
       </el-col>
     </el-row>
 
-    <!-- 图表区域 -->
     <el-row :gutter="20">
       <el-col :span="12">
-        <el-card shadow="hover">
-          <template #header><span>月度营收趋势</span></template>
-          <div ref="revenueChartRef" class="chart-container"></div>
+        <el-card shadow="hover" v-loading="loading">
+          <template #header><span>经营结构</span></template>
+          <div ref="financeChartRef" class="chart-container"></div>
         </el-card>
       </el-col>
       <el-col :span="12">
-        <el-card shadow="hover">
-          <template #header><span>成本构成</span></template>
-          <div ref="costChartRef" class="chart-container"></div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <el-row :gutter="20" style="margin-top: 20px">
-      <el-col :span="12">
-        <el-card shadow="hover">
-          <template #header><span>客户回款情况</span></template>
-          <div ref="paymentChartRef" class="chart-container"></div>
-        </el-card>
-      </el-col>
-      <el-col :span="12">
-        <el-card shadow="hover">
-          <template #header><span>利润趋势</span></template>
-          <div ref="profitChartRef" class="chart-container"></div>
+        <el-card shadow="hover" v-loading="loading">
+          <template #header><span>设备综合效率</span></template>
+          <div ref="oeeChartRef" class="chart-container"></div>
         </el-card>
       </el-col>
     </el-row>
@@ -56,97 +36,154 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import * as echarts from 'echarts'
 import PageHeader from '@/components/PageHeader.vue'
+import { getBossDashboard } from '@/api/dashboard'
+
+type DashboardBoss = {
+  monthOrderAmount?: number
+  monthPaymentAmount?: number
+  receivableBalance?: number
+  paymentRate?: number
+  monthCompletedQty?: number
+  monthBadRate?: number
+  monthSalaryTotal?: number
+  monthExpenseTotal?: number
+  monthGrossProfit?: number
+  oee?: number
+}
 
 const statCards = ref([
-  { title: '本月营收', value: '¥2,580,000', icon: 'Coin', color: '#409eff', trend: 12.5 },
-  { title: '本月利润', value: '¥680,000', icon: 'TrendCharts', color: '#67c23a', trend: 8.3 },
-  { title: '应收账款', value: '¥1,250,000', icon: 'Money', color: '#e6a23c', trend: -5.2 },
-  { title: '订单数量', value: '156', icon: 'Document', color: '#f56c6c', trend: 15.8 },
+  { title: '本月营收', value: '¥0', icon: 'Coin', color: '#409eff' },
+  { title: '本月毛利', value: '¥0', icon: 'TrendCharts', color: '#67c23a' },
+  { title: '应收账款', value: '¥0', icon: 'Money', color: '#e6a23c' },
+  { title: '回款率', value: '0.0%', icon: 'Document', color: '#f56c6c' },
 ])
+const loading = ref(false)
 
-const revenueChartRef = ref<HTMLElement>()
-const costChartRef = ref<HTMLElement>()
-const paymentChartRef = ref<HTMLElement>()
-const profitChartRef = ref<HTMLElement>()
-const charts: echarts.ECharts[] = []
+const financeChartRef = ref<HTMLElement>()
+const oeeChartRef = ref<HTMLElement>()
+let financeChart: echarts.ECharts | null = null
+let oeeChart: echarts.ECharts | null = null
+
+function moneyText(value?: number) {
+  return `¥${Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+}
 
 function initCharts() {
-  const months = ['1月', '2月', '3月', '4月', '5月', '6月']
-
-  if (revenueChartRef.value) {
-    const chart = echarts.init(revenueChartRef.value)
-    chart.setOption({
-      tooltip: { trigger: 'axis' },
-      xAxis: { type: 'category', data: months },
-      yAxis: { type: 'value', name: '金额(万)' },
-      series: [{ name: '营收', type: 'bar', data: [180, 220, 195, 258, 240, 280], itemStyle: { color: '#409eff' } }],
-    })
-    charts.push(chart)
+  if (financeChartRef.value && !financeChart) {
+    financeChart = echarts.init(financeChartRef.value)
   }
-
-  if (costChartRef.value) {
-    const chart = echarts.init(costChartRef.value)
-    chart.setOption({
-      tooltip: { trigger: 'item' },
-      legend: { bottom: 0 },
-      series: [{
-        type: 'pie', radius: ['35%', '65%'],
-        data: [
-          { value: 45, name: '原材料' },
-          { value: 25, name: '人工' },
-          { value: 15, name: '水电' },
-          { value: 10, name: '房租' },
-          { value: 5, name: '其他' },
-        ],
-      }],
-    })
-    charts.push(chart)
-  }
-
-  if (paymentChartRef.value) {
-    const chart = echarts.init(paymentChartRef.value)
-    chart.setOption({
-      tooltip: { trigger: 'axis' },
-      xAxis: { type: 'category', data: months },
-      yAxis: { type: 'value', name: '金额(万)' },
-      series: [
-        { name: '应收', type: 'bar', data: [100, 120, 110, 130, 125, 140] },
-        { name: '已收', type: 'bar', data: [85, 100, 95, 110, 105, 120] },
-      ],
-    })
-    charts.push(chart)
-  }
-
-  if (profitChartRef.value) {
-    const chart = echarts.init(profitChartRef.value)
-    chart.setOption({
-      tooltip: { trigger: 'axis' },
-      xAxis: { type: 'category', data: months },
-      yAxis: { type: 'value', name: '利润(万)' },
-      series: [{ name: '利润', type: 'line', data: [45, 55, 48, 68, 60, 72], smooth: true, areaStyle: { opacity: 0.3 }, itemStyle: { color: '#67c23a' } }],
-    })
-    charts.push(chart)
+  if (oeeChartRef.value && !oeeChart) {
+    oeeChart = echarts.init(oeeChartRef.value)
   }
 }
 
-function handleResize() { charts.forEach(c => c.resize()) }
+function buildCharts(data: DashboardBoss) {
+  financeChart?.setOption({
+    tooltip: { trigger: 'axis' },
+    xAxis: {
+      type: 'category',
+      data: ['订单金额', '收款金额', '应收余额', '工资总额', '费用总额', '毛利润'],
+    },
+    yAxis: { type: 'value', name: '金额(元)' },
+    series: [
+      {
+        type: 'bar',
+        data: [
+          data.monthOrderAmount || 0,
+          data.monthPaymentAmount || 0,
+          data.receivableBalance || 0,
+          data.monthSalaryTotal || 0,
+          data.monthExpenseTotal || 0,
+          data.monthGrossProfit || 0,
+        ],
+        itemStyle: { color: '#409eff' },
+      },
+    ],
+  })
 
-onMounted(() => { initCharts(); window.addEventListener('resize', handleResize) })
-onUnmounted(() => { window.removeEventListener('resize', handleResize); charts.forEach(c => c.dispose()) })
+  oeeChart?.setOption({
+    series: [
+      {
+        type: 'gauge',
+        progress: { show: true, width: 12 },
+        axisLine: { lineStyle: { width: 12 } },
+        detail: { valueAnimation: true, formatter: '{value}%' },
+        data: [{ value: data.oee || 0, name: 'OEE' }],
+      },
+    ],
+  })
+}
+
+async function fetchData() {
+  loading.value = true
+  try {
+    const res: any = await getBossDashboard()
+    const data: DashboardBoss = res.data || {}
+
+    statCards.value = [
+      { title: '本月营收', value: moneyText(data.monthOrderAmount), icon: 'Coin', color: '#409eff' },
+      { title: '本月毛利', value: moneyText(data.monthGrossProfit), icon: 'TrendCharts', color: '#67c23a' },
+      { title: '应收账款', value: moneyText(data.receivableBalance), icon: 'Money', color: '#e6a23c' },
+      { title: '回款率', value: `${Number(data.paymentRate || 0).toFixed(1)}%`, icon: 'Document', color: '#f56c6c' },
+    ]
+
+    buildCharts(data)
+  } catch {
+    buildCharts({})
+  } finally {
+    loading.value = false
+  }
+}
+
+function handleResize() {
+  financeChart?.resize()
+  oeeChart?.resize()
+}
+
+onMounted(async () => {
+  initCharts()
+  window.addEventListener('resize', handleResize)
+  await fetchData()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  financeChart?.dispose()
+  oeeChart?.dispose()
+})
 </script>
 
 <style scoped lang="scss">
-.stat-row { margin-bottom: 20px; }
+.stat-row {
+  margin-bottom: 20px;
+}
+
 .stat-card {
-  .stat-card-content { display: flex; align-items: center; justify-content: space-between; }
+  .stat-card-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
   .stat-info {
-    .stat-title { font-size: 14px; color: #909399; margin-bottom: 8px; }
-    .stat-value { font-size: 28px; font-weight: bold; color: #303133; }
-    .stat-sub { font-size: 13px; margin-top: 4px; }
+    .stat-title {
+      font-size: 14px;
+      color: #909399;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 28px;
+      font-weight: bold;
+      color: #303133;
+    }
   }
 }
-.chart-container { height: 320px; }
+
+.chart-container {
+  height: 320px;
+}
 </style>

@@ -63,9 +63,11 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
+import { useUserStore } from '../../store/user'
 import { getSalarySummary, getDailySalaryDetails } from '../../api/salary'
 
 const router = useRouter()
+const userStore = useUserStore()
 const tabbarActive = ref(3)
 
 const now = dayjs()
@@ -85,8 +87,8 @@ const dailyList = ref<any[]>([])
 async function loadData() {
   try {
     const [summaryRes, dailyRes] = await Promise.all([
-      getSalarySummary({ year: now.year(), month: now.month() + 1 }),
-      getDailySalaryDetails({ year: now.year(), month: now.month() + 1 }),
+      getSalarySummary({ year: now.year(), month: now.month() + 1, userId: userStore.userId || undefined }),
+      getDailySalaryDetails({ year: now.year(), month: now.month() + 1, userId: userStore.userId || undefined }),
     ])
     const summaryData = (summaryRes as any).data || summaryRes || {}
     summary.baseSalary = summaryData.baseSalary || 0

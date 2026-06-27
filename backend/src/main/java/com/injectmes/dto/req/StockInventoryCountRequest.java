@@ -16,4 +16,7 @@ public class StockInventoryCountRequest {
     @NotNull(message = "盘点明细不能为空")
     @Valid
     private List<InventoryCountItemDTO> items;
+
+    /** 操作人ID（可选，默认取当前登录用户） */
+    private Long operatorId;
 }

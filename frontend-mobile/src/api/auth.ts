@@ -8,9 +8,10 @@ export interface LoginParams {
 
 /** 登录返回结果 */
 export interface LoginResult {
-  token: string
   userId: number
+  token: string
   userName: string
+  realName?: string
   phone: string
   role: string
 }

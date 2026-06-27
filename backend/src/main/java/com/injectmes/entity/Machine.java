@@ -23,6 +23,8 @@ public class Machine {
     private String status;
     private String qrCode;
     private String location;
+    private String factoryCode;
+    private String workshop;
     private LocalDate purchaseDate;
     private String remark;
     private LocalDateTime createdAt;

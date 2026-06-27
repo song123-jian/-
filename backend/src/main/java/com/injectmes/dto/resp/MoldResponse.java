@@ -31,11 +31,32 @@ public class MoldResponse {
     /** 已用模次 */
     private Integer usedShots;
 
+    /** 距上次保养已用模次 */
+    private Integer shotsSinceMaintenance;
+
     /** 保养周期（模次） */
     private Integer maintenanceCycle;
 
+    /** 保养次数 */
+    private Integer maintenanceCount;
+
     /** 上次保养时间 */
     private LocalDateTime lastMaintenanceAt;
+
+    /** 剩余寿命模次 */
+    private Integer remainingShots;
+
+    /** 使用率 */
+    private Double usageRate;
+
+    /** 距下次保养剩余模次 */
+    private Integer remainingToMaintenance;
+
+    /** 保养进度 */
+    private Double maintenanceRate;
+
+    /** 关联产品名称 */
+    private String productName;
 
     /** 状态 */
     private String status;

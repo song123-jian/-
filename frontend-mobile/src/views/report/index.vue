@@ -41,7 +41,7 @@
             :title="order.productName"
             :label="order.workOrderNo"
             clickable
-            @click="selectedOrderId = order.workOrderId"
+            @click="selectWorkOrder(order)"
           >
             <template #right-icon>
               <van-radio :name="order.workOrderId" />
@@ -60,11 +60,13 @@
     <div v-if="step === 2" class="step-content">
       <van-form @submit="onSubmitReport">
         <van-cell-group inset>
+          <van-cell title="机台编号" :value="machineCode" />
+          <van-cell title="工单" :value="selectedWorkOrder?.workOrderNo || ''" />
           <van-field name="shift" label="班次">
             <template #input>
               <van-radio-group v-model="reportForm.shift" direction="horizontal">
-                <van-radio name="白班">白班</van-radio>
-                <van-radio name="夜班">夜班</van-radio>
+                <van-radio name="DAY">白班</van-radio>
+                <van-radio name="NIGHT">夜班</van-radio>
               </van-radio-group>
             </template>
           </van-field>
@@ -110,7 +112,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { getWorkOrdersByMachine, submitReport } from '../../api/prodReport'
@@ -121,11 +123,12 @@ const activeTab = ref(1)
 const step = ref(0)
 const machineCode = ref('')
 const selectedOrderId = ref<number>(0)
+const selectedWorkOrder = ref<any>(null)
 const workOrders = ref<any[]>([])
 const submitting = ref(false)
 
 const reportForm = reactive({
-  shift: '白班',
+  shift: 'DAY',
   quantity: '',
   defectCount: '',
   moldCount: '',
@@ -153,6 +156,8 @@ async function loadWorkOrders() {
     workOrders.value = res.data || res || []
     if (workOrders.value.length > 0) {
       step.value = 1
+      selectedOrderId.value = workOrders.value[0].workOrderId
+      selectedWorkOrder.value = workOrders.value[0]
     } else {
       showToast('未找到相关工单')
     }
@@ -161,12 +166,25 @@ async function loadWorkOrders() {
   }
 }
 
+/** 选择工单 */
+function selectWorkOrder(order: any) {
+  selectedOrderId.value = order.workOrderId
+  selectedWorkOrder.value = order
+}
+
+watch(selectedOrderId, (id) => {
+  const matched = workOrders.value.find((item) => item.workOrderId === id)
+  if (matched) {
+    selectedWorkOrder.value = matched
+  }
+})
+
 /** 提交报工 */
 async function onSubmitReport() {
   submitting.value = true
   const params = {
     workOrderId: selectedOrderId.value,
-    machineId: 0,
+    machineId: selectedWorkOrder.value?.machineId || 0,
     shift: reportForm.shift,
     quantity: Number(reportForm.quantity),
     defectCount: Number(reportForm.defectCount) || 0,
@@ -180,6 +198,8 @@ async function onSubmitReport() {
     step.value = 0
     machineCode.value = ''
     selectedOrderId.value = 0
+    selectedWorkOrder.value = null
+    workOrders.value = []
     reportForm.quantity = ''
     reportForm.defectCount = ''
     reportForm.moldCount = ''

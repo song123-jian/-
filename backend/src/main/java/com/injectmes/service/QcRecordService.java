@@ -23,7 +23,11 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import com.injectmes.security.LoginUserDetails;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -65,16 +69,26 @@ public class QcRecordService {
         }
 
         // 2. 校验产品存在
-        Product product = productMapper.selectById(request.getProductId());
+        Long productId = request.getProductId() != null ? request.getProductId() : order.getProductId();
+        Product product = productMapper.selectById(productId);
         if (product == null) {
             throw new BusinessException("产品不存在");
+        }
+        if (order.getProductId() != null && !order.getProductId().equals(product.getId())) {
+            throw new BusinessException("质检产品与工单产品不一致");
         }
 
         // 3. 构建质检记录
         QcRecord qcRecord = new QcRecord();
         BeanUtils.copyProperties(request, qcRecord);
+        qcRecord.setProductId(product.getId());
+        qcRecord.setCheckerId(resolveCurrentUserId());
         qcRecord.setCheckTime(LocalDateTime.now());
         qcRecord.setCreatedAt(LocalDateTime.now());
+
+        if (request.getImageUrls() != null && !request.getImageUrls().trim().isEmpty()) {
+            qcRecord.setImageUrls(request.getImageUrls());
+        }
 
         String checkResult = request.getCheckResult();
         String checkType = request.getCheckType();
@@ -86,6 +100,7 @@ public class QcRecordService {
             int sampleQty = request.getSampleQty() != null ? request.getSampleQty() : 0;
             int defectQty = request.getDefectQty() != null ? request.getDefectQty() : 0;
             order.setQualifiedQty(currentQualified + sampleQty - defectQty);
+            order.setUpdatedAt(LocalDateTime.now());
             prodOrderMapper.updateById(order);
 
         } else if (CheckResult.FAIL.name().equals(checkResult)) {
@@ -93,6 +108,7 @@ public class QcRecordService {
             int defectQty = request.getDefectQty() != null ? request.getDefectQty() : 0;
             int currentBadQty = order.getBadQty() != null ? order.getBadQty() : 0;
             order.setBadQty(currentBadQty + defectQty);
+            order.setUpdatedAt(LocalDateTime.now());
             prodOrderMapper.updateById(order);
 
             // 首件检验（FAI）不合格时，不允许批量报产
@@ -119,7 +135,8 @@ public class QcRecordService {
      * @param request 分页请求
      * @return 分页响应
      */
-    public R<PageResponse<QcRecordResponse>> list(PageRequest request, Long prodOrderId, Long productId, String checkType) {
+    public R<PageResponse<QcRecordResponse>> list(PageRequest request, Long prodOrderId, Long productId, String checkType,
+                                                   String checkResult, LocalDate startDate, LocalDate endDate) {
         Page<QcRecord> page = new Page<>(request.getPage(), request.getSize());
 
         LambdaQueryWrapper<QcRecord> wrapper = new LambdaQueryWrapper<>();
@@ -137,6 +154,19 @@ public class QcRecordService {
         // 按检验类型筛选
         if (checkType != null && !checkType.trim().isEmpty()) {
             wrapper.eq(QcRecord::getCheckType, checkType);
+        }
+
+        // 按检验结果筛选
+        if (checkResult != null && !checkResult.trim().isEmpty()) {
+            wrapper.eq(QcRecord::getCheckResult, checkResult);
+        }
+
+        // 按日期范围筛选
+        if (startDate != null) {
+            wrapper.ge(QcRecord::getCreatedAt, startDate.atStartOfDay());
+        }
+        if (endDate != null) {
+            wrapper.lt(QcRecord::getCreatedAt, endDate.plusDays(1).atStartOfDay());
         }
 
         // 关键词模糊搜索
@@ -211,6 +241,14 @@ public class QcRecordService {
                 .collect(Collectors.toList());
 
         return R.ok(responses);
+    }
+
+    private Long resolveCurrentUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof LoginUserDetails userDetails) {
+            return userDetails.getUserId();
+        }
+        return null;
     }
 
     /**

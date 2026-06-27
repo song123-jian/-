@@ -36,13 +36,22 @@ public class NotificationService {
      * @param request 分页请求
      * @return 分页响应
      */
-    public R<PageResponse<NotificationResponse>> list(Long userId, PageRequest request) {
+    public R<PageResponse<NotificationResponse>> list(Long userId, PageRequest request, Integer isRead) {
         Page<Notification> page = new Page<>(request.getPage(), request.getSize());
 
         LambdaQueryWrapper<Notification> wrapper = new LambdaQueryWrapper<>();
         // 按用户ID筛选
         if (userId != null) {
             wrapper.eq(Notification::getUserId, userId);
+        }
+        if (isRead != null) {
+            wrapper.eq(Notification::getIsRead, isRead);
+        }
+        String keyword = request.getKeyword();
+        if (keyword != null && !keyword.trim().isEmpty()) {
+            wrapper.and(w -> w.like(Notification::getTitle, keyword)
+                    .or()
+                    .like(Notification::getContent, keyword));
         }
         // 按创建时间降序
         wrapper.orderByDesc(Notification::getCreatedAt);
@@ -68,14 +77,74 @@ public class NotificationService {
      * @param id 通知ID
      */
     @Transactional
-    public R<Void> markRead(Long id) {
+    public R<Void> markRead(Long id, Long userId) {
         Notification notification = notificationMapper.selectById(id);
         if (notification == null) {
             return R.fail("通知不存在");
         }
+        if (userId != null && !userId.equals(notification.getUserId())) {
+            return R.fail(403, "无权操作该通知");
+        }
+        if (notification.getIsRead() != null && notification.getIsRead() == 1) {
+            return R.ok();
+        }
         notification.setIsRead(1);
         notificationMapper.updateById(notification);
         return R.ok();
+    }
+
+    /**
+     * 全部标记已读
+     */
+    @Transactional
+    public R<Void> markAllRead(Long userId) {
+        if (userId == null) {
+            return R.fail(401, "未登录");
+        }
+        List<Notification> notifications = notificationMapper.selectList(
+                new LambdaQueryWrapper<Notification>()
+                        .eq(Notification::getUserId, userId)
+                        .eq(Notification::getIsRead, 0)
+        );
+        for (Notification notification : notifications) {
+            notification.setIsRead(1);
+            notificationMapper.updateById(notification);
+        }
+        return R.ok();
+    }
+
+    /**
+     * 删除通知
+     */
+    @Transactional
+    public R<Void> delete(Long id, Long userId) {
+        if (id == null) {
+            return R.fail("通知不存在");
+        }
+        Notification notification = notificationMapper.selectById(id);
+        if (notification == null) {
+            return R.fail("通知不存在");
+        }
+        if (userId != null && !userId.equals(notification.getUserId())) {
+            return R.fail(403, "无权操作该通知");
+        }
+        notificationMapper.deleteById(id);
+        return R.ok();
+    }
+
+    /**
+     * 未读消息数量
+     */
+    public Long countUnread(Long userId) {
+        if (userId == null) {
+            return 0L;
+        }
+        Long count = notificationMapper.selectCount(
+                new LambdaQueryWrapper<Notification>()
+                        .eq(Notification::getUserId, userId)
+                        .eq(Notification::getIsRead, 0)
+        );
+        return count != null ? count : 0L;
     }
 
     /**

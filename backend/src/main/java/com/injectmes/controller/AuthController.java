@@ -50,12 +50,21 @@ public class AuthController {
         Map<String, Object> info = Map.of(
                 "id", user.getId(),
                 "username", user.getUsername(),
+                "userName", user.getUsername(),
                 "realName", user.getRealName() != null ? user.getRealName() : "",
+                "phone", user.getPhone() != null ? user.getPhone() : "",
                 "role", user.getRole() != null ? user.getRole() : "",
                 "roles", java.util.List.of(user.getRole() != null ? user.getRole() : ""),
                 "status", user.getStatus() != null ? user.getStatus() : 1
         );
         return R.ok(info);
+    }
+
+    /**
+     * 鑾峰彇褰撳墠鐢ㄦ埛淇℃伅锛堝吋瀹瑰疄鍦ㄧ鍐? */
+    @GetMapping("/user-info")
+    public R<Map<String, Object>> userInfoAlias(@RequestHeader("Authorization") String authorization) {
+        return userinfo(authorization);
     }
 
     /**

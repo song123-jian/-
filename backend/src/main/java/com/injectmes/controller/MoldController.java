@@ -29,8 +29,9 @@ public class MoldController {
      * 模具列表（分页）
      */
     @GetMapping
-    public R<PageResponse<MoldResponse>> list(PageRequest request) {
-        return moldService.list(request);
+    public R<PageResponse<MoldResponse>> list(PageRequest request,
+                                              @RequestParam(required = false) String status) {
+        return moldService.list(request, status);
     }
 
     /**
@@ -72,5 +73,13 @@ public class MoldController {
     @GetMapping("/{id}/shots")
     public R<Map<String, Object>> getShotsStats(@PathVariable Long id) {
         return moldService.getShotsStats(id);
+    }
+
+    /**
+     * 模具保养
+     */
+    @PostMapping("/{id}/maintenance")
+    public R<MoldResponse> maintenance(@PathVariable Long id) {
+        return moldService.maintenance(id);
     }
 }

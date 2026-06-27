@@ -7,11 +7,11 @@
     </PageHeader>
 
     <SearchBar @search="handleSearch" @reset="handleReset">
-      <el-form-item label="分类">
-        <el-select v-model="searchCategory" placeholder="请选择" clearable>
-          <el-option label="塑胶件" value="plastic" />
-          <el-option label="组装件" value="assembly" />
-          <el-option label="包材" value="package" />
+      <el-form-item label="类型">
+        <el-select v-model="searchType" placeholder="请选择" clearable>
+          <el-option label="原料" value="RAW" />
+          <el-option label="半成品" value="SEMI" />
+          <el-option label="成品" value="FINISH" />
         </el-select>
       </el-form-item>
     </SearchBar>
@@ -21,11 +21,11 @@
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="code" label="产品编号" width="120" />
         <el-table-column prop="name" label="产品名称" width="150" />
-        <el-table-column prop="category" label="分类" width="100" />
+        <el-table-column prop="type" label="类型" width="100" />
         <el-table-column prop="spec" label="规格" width="120" />
         <el-table-column prop="unit" label="单位" width="80" />
-        <el-table-column prop="price" label="单价" width="100" />
-        <el-table-column prop="customerName" label="客户" width="120" />
+        <el-table-column prop="piecePrice" label="单价" width="100" />
+        <el-table-column prop="customerId" label="客户ID" width="100" />
         <el-table-column prop="createdAt" label="创建时间" width="180" />
         <el-table-column label="操作" fixed="right" width="150">
           <template #default="{ row }">
@@ -50,11 +50,11 @@
         <el-form-item label="产品名称" prop="name">
           <el-input v-model="form.name" placeholder="请输入产品名称" />
         </el-form-item>
-        <el-form-item label="分类" prop="category">
-          <el-select v-model="form.category" placeholder="请选择分类">
-            <el-option label="塑胶件" value="plastic" />
-            <el-option label="组装件" value="assembly" />
-            <el-option label="包材" value="package" />
+        <el-form-item label="类型" prop="type">
+          <el-select v-model="form.type" placeholder="请选择类型">
+            <el-option label="原料" value="RAW" />
+            <el-option label="半成品" value="SEMI" />
+            <el-option label="成品" value="FINISH" />
           </el-select>
         </el-form-item>
         <el-form-item label="规格" prop="spec">
@@ -63,11 +63,11 @@
         <el-form-item label="单位" prop="unit">
           <el-input v-model="form.unit" placeholder="请输入单位" />
         </el-form-item>
-        <el-form-item label="单价" prop="price">
-          <el-input-number v-model="form.price" :min="0" :precision="2" />
+        <el-form-item label="单价" prop="piecePrice">
+          <el-input-number v-model="form.piecePrice" :min="0" :precision="2" />
         </el-form-item>
-        <el-form-item label="客户" prop="customerId">
-          <el-input v-model="form.customerId" placeholder="请输入客户" />
+        <el-form-item label="客户ID" prop="customerId">
+          <el-input-number v-model="form.customerId" :min="1" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -88,12 +88,13 @@ import { getProductList, createProduct, updateProduct, deleteProduct } from '@/a
 
 const loading = ref(false)
 const tableData = ref<any[]>([])
-const searchCategory = ref('')
+const searchType = ref('')
+const searchKeyword = ref('')
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增产品')
 const formRef = ref<FormInstance>()
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
-const form = reactive({ id: 0, code: '', name: '', category: '', spec: '', unit: '个', price: 0, customerId: '' })
+const form = reactive({ id: 0, code: '', name: '', type: '', spec: '', unit: '个', piecePrice: 0, customerId: null as number | null })
 const formRules: FormRules = {
   code: [{ required: true, message: '请输入产品编号', trigger: 'blur' }],
   name: [{ required: true, message: '请输入产品名称', trigger: 'blur' }],
@@ -102,17 +103,22 @@ const formRules: FormRules = {
 async function fetchData() {
   loading.value = true
   try {
-    const res: any = await getProductList({ page: pagination.page, pageSize: pagination.pageSize, category: searchCategory.value })
+    const res: any = await getProductList({
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      keyword: searchKeyword.value || undefined,
+      type: searchType.value || undefined,
+    })
     tableData.value = res.data?.list || []
     pagination.total = res.data?.total || 0
   } catch { /* */ } finally { loading.value = false }
 }
 
-function handleSearch() { pagination.page = 1; fetchData() }
-function handleReset() { searchCategory.value = ''; pagination.page = 1; fetchData() }
+function handleSearch(formData: { keyword: string }) { searchKeyword.value = formData.keyword || ''; pagination.page = 1; fetchData() }
+function handleReset() { searchType.value = ''; pagination.page = 1; fetchData() }
 function handleAdd() {
   dialogTitle.value = '新增产品'
-  Object.assign(form, { id: 0, code: '', name: '', category: '', spec: '', unit: '个', price: 0, customerId: '' })
+  Object.assign(form, { id: 0, code: '', name: '', type: '', spec: '', unit: '个', piecePrice: 0, customerId: null })
   dialogVisible.value = true
 }
 function handleEdit(row: any) { dialogTitle.value = '编辑产品'; Object.assign(form, row); dialogVisible.value = true }

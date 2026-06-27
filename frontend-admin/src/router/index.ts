@@ -42,6 +42,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '机台管理', icon: 'Monitor' },
       },
       {
+        path: 'warehouses',
+        name: 'Warehouses',
+        component: () => import('@/views/base/warehouses.vue'),
+        meta: { title: '仓库管理', icon: 'House' },
+      },
+      {
         path: 'molds',
         name: 'Molds',
         component: () => import('@/views/base/molds.vue'),
@@ -103,7 +109,7 @@ const routes: RouteRecordRaw[] = [
         path: 'orders',
         name: 'ProdOrders',
         component: () => import('@/views/prod/orders.vue'),
-        meta: { title: '生产工单', icon: 'List' },
+        meta: { title: '生产订单', icon: 'List' },
       },
       {
         path: 'reports',
@@ -117,9 +123,32 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/prod/downtime.vue'),
         meta: { title: '停机记录', icon: 'WarningFilled' },
       },
+      {
+        path: 'mount-records',
+        name: 'MountRecords',
+        component: () => import('@/views/prod/mount-records.vue'),
+        meta: { title: '上下模记录', icon: 'Stamp' },
+      },
+      {
+        path: 'mold-maintenance-records',
+        name: 'MoldMaintenanceRecords',
+        component: () => import('@/views/prod/mold-maintenance-records.vue'),
+        meta: { title: '模具保养记录', icon: 'Notebook' },
+      },
+      {
+        path: 'warnings',
+        name: 'WarningCenter',
+        component: () => import('@/views/prod/warnings.vue'),
+        meta: { title: '预警中心', icon: 'Bell' },
+      },
+      {
+        path: 'machine-inspection-records',
+        name: 'MachineInspectionRecords',
+        component: () => import('@/views/prod/machine-inspection-records.vue'),
+        meta: { title: '设备点检记录', icon: 'Checklist' },
+      },
     ],
   },
-  // 品质管理
   {
     path: '/qc',
     component: Layout,
@@ -247,7 +276,6 @@ const routes: RouteRecordRaw[] = [
       },
     ],
   },
-  // 报表中心
   {
     path: '/report',
     component: Layout,
@@ -273,7 +301,6 @@ const routes: RouteRecordRaw[] = [
       },
     ],
   },
-  // 系统管理
   {
     path: '/system',
     component: Layout,
@@ -292,10 +319,22 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '系统配置', icon: 'Tools' },
       },
       {
+        path: 'integration',
+        name: 'SystemIntegration',
+        component: () => import('@/views/system/integration.vue'),
+        meta: { title: '集成中心', icon: 'Link' },
+      },
+      {
         path: 'backup',
         name: 'SystemBackup',
         component: () => import('@/views/system/backup.vue'),
         meta: { title: '数据备份', icon: 'FolderChecked' },
+      },
+      {
+        path: 'notifications',
+        name: 'Notifications',
+        component: () => import('@/views/system/notifications.vue'),
+        meta: { title: '消息中心', icon: 'Bell' },
       },
     ],
   },

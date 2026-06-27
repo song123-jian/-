@@ -2,8 +2,7 @@
   <div class="page-container">
     <PageHeader title="品质看板" />
 
-    <!-- 品质指标 -->
-    <el-row :gutter="20" class="stat-row">
+    <el-row :gutter="20" class="stat-row" v-loading="loading">
       <el-col :span="6" v-for="item in statCards" :key="item.title">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-card-content">
@@ -19,26 +18,24 @@
       </el-col>
     </el-row>
 
-    <!-- 图表 -->
     <el-row :gutter="20">
       <el-col :span="12">
-        <el-card shadow="hover">
+        <el-card shadow="hover" v-loading="loading">
           <template #header><span>不良率趋势</span></template>
           <div ref="defectRateChartRef" class="chart-container"></div>
         </el-card>
       </el-col>
       <el-col :span="12">
-        <el-card shadow="hover">
+        <el-card shadow="hover" v-loading="loading">
           <template #header><span>不良类型分布</span></template>
           <div ref="defectTypeChartRef" class="chart-container"></div>
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- 品质明细 -->
-    <el-card shadow="hover" style="margin-top: 20px">
+    <el-card shadow="hover" style="margin-top: 20px" v-loading="loading">
       <template #header><span>各产品品质情况</span></template>
-      <el-table :data="qualityData" stripe>
+      <el-table :data="qualityData" stripe empty-text="暂无品质数据">
         <el-table-column prop="productName" label="产品" width="150" />
         <el-table-column prop="inspectQty" label="检验数量" width="100" />
         <el-table-column prop="passQty" label="合格数量" width="100" />
@@ -59,74 +56,194 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import * as echarts from 'echarts'
+import dayjs from 'dayjs'
 import PageHeader from '@/components/PageHeader.vue'
+import { getQualityBoard } from '@/api/dashboard'
+import { getQcRecordList } from '@/api/qcRecord'
+
+type DashboardQuality = {
+  totalCheckQty?: number
+  passQty?: number
+  failQty?: number
+  passRate?: number
+  topDefects?: Array<{ defectType?: string; qty?: number }>
+  trendData?: Array<{ date?: string; checkQty?: number; passQty?: number; failQty?: number; passRate?: number }>
+}
+
+type QcRecordItem = {
+  productName?: string
+  defectType?: string
+  defectQty?: number
+  sampleQty?: number
+  checkResult?: string
+  createdAt?: string
+}
 
 const statCards = ref([
-  { title: '整体合格率', value: '96.5%', icon: 'CircleCheck', color: '#67c23a' },
-  { title: '今日检验数', value: '8,520', icon: 'DocumentChecked', color: '#409eff' },
-  { title: '今日不良数', value: '298', icon: 'WarningFilled', color: '#f56c6c' },
-  { title: '待处理异常', value: '3', icon: 'Bell', color: '#e6a23c' },
+  { title: '整体合格率', value: '0.0%', icon: 'CircleCheck', color: '#67c23a' },
+  { title: '当月检验数', value: '0', icon: 'DocumentChecked', color: '#409eff' },
+  { title: '当月不良数', value: '0', icon: 'WarningFilled', color: '#f56c6c' },
+  { title: '不良记录数', value: '0', icon: 'Bell', color: '#e6a23c' },
 ])
+const loading = ref(false)
 
-const qualityData = ref([
-  { productName: '产品A', inspectQty: 2500, passQty: 2420, defectQty: 80, passRate: 96.8, defectRate: 3.2 },
-  { productName: '产品B', inspectQty: 1800, passQty: 1750, defectQty: 50, passRate: 97.2, defectRate: 2.8 },
-  { productName: '产品C', inspectQty: 1200, passQty: 1130, defectQty: 70, passRate: 94.2, defectRate: 5.8 },
-  { productName: '产品D', inspectQty: 3020, passQty: 2920, defectQty: 100, passRate: 96.7, defectRate: 3.3 },
-])
-
+const qualityData = ref<any[]>([])
 const defectRateChartRef = ref<HTMLElement>()
 const defectTypeChartRef = ref<HTMLElement>()
-const charts: echarts.ECharts[] = []
+let defectRateChart: echarts.ECharts | null = null
+let defectTypeChart: echarts.ECharts | null = null
 
 function initCharts() {
-  if (defectRateChartRef.value) {
-    const chart = echarts.init(defectRateChartRef.value)
-    chart.setOption({
-      tooltip: { trigger: 'axis' },
-      xAxis: { type: 'category', data: ['1月', '2月', '3月', '4月', '5月', '6月'] },
-      yAxis: { type: 'value', name: '不良率(%)' },
-      series: [{ name: '不良率', type: 'line', data: [3.5, 2.8, 4.2, 3.1, 2.9, 3.5], smooth: true, areaStyle: { opacity: 0.3 }, itemStyle: { color: '#f56c6c' } }],
-    })
-    charts.push(chart)
+  if (defectRateChartRef.value && !defectRateChart) {
+    defectRateChart = echarts.init(defectRateChartRef.value)
   }
-
-  if (defectTypeChartRef.value) {
-    const chart = echarts.init(defectTypeChartRef.value)
-    chart.setOption({
-      tooltip: { trigger: 'item' },
-      legend: { bottom: 0 },
-      series: [{
-        type: 'pie', radius: ['35%', '65%'],
-        data: [
-          { value: 35, name: '缩水' },
-          { value: 25, name: '缺胶' },
-          { value: 20, name: '毛边' },
-          { value: 12, name: '气纹' },
-          { value: 8, name: '色差' },
-        ],
-      }],
-    })
-    charts.push(chart)
+  if (defectTypeChartRef.value && !defectTypeChart) {
+    defectTypeChart = echarts.init(defectTypeChartRef.value)
   }
 }
 
-function handleResize() { charts.forEach(c => c.resize()) }
+function buildCharts(summary: DashboardQuality) {
+  const trendData = summary.trendData || []
+  const defectDates = trendData.map((item) => item.date || '-')
+  const defectRates = trendData.map((item) => Number((100 - (item.passRate || 0)).toFixed(2)))
 
-onMounted(() => { initCharts(); window.addEventListener('resize', handleResize) })
-onUnmounted(() => { window.removeEventListener('resize', handleResize); charts.forEach(c => c.dispose()) })
+  defectRateChart?.setOption({
+    tooltip: { trigger: 'axis' },
+    xAxis: { type: 'category', data: defectDates },
+    yAxis: { type: 'value', name: '不良率(%)' },
+    series: [
+      {
+        name: '不良率',
+        type: 'line',
+        data: defectRates,
+        smooth: true,
+        areaStyle: { opacity: 0.3 },
+        itemStyle: { color: '#f56c6c' },
+      },
+    ],
+  })
+
+  const topDefects = (summary.topDefects || []).map((item) => ({
+    name: item.defectType || '-',
+    value: item.qty || 0,
+  }))
+
+  defectTypeChart?.setOption({
+    tooltip: { trigger: 'item' },
+    legend: { bottom: 0 },
+    series: [
+      {
+        type: 'pie',
+        radius: ['35%', '65%'],
+        data: topDefects,
+      },
+    ],
+  })
+}
+
+function buildProductSummary(records: QcRecordItem[]) {
+  const map = new Map<string, { inspectQty: number; passQty: number; defectQty: number }>()
+
+  for (const item of records) {
+    const key = item.productName || '未命名产品'
+    const inspectQty = item.sampleQty ?? 0
+    const defectQty = item.defectQty ?? 0
+    const current = map.get(key) || { inspectQty: 0, passQty: 0, defectQty: 0 }
+    current.inspectQty += inspectQty
+    current.defectQty += defectQty
+    current.passQty += Math.max(inspectQty - defectQty, 0)
+    map.set(key, current)
+  }
+
+  qualityData.value = Array.from(map.entries())
+    .map(([productName, value]) => ({
+      productName,
+      inspectQty: value.inspectQty,
+      passQty: value.passQty,
+      defectQty: value.defectQty,
+      passRate: value.inspectQty > 0 ? Number(((value.passQty / value.inspectQty) * 100).toFixed(1)) : 0,
+      defectRate: value.inspectQty > 0 ? Number(((value.defectQty / value.inspectQty) * 100).toFixed(1)) : 0,
+    }))
+    .sort((a, b) => b.defectRate - a.defectRate)
+}
+
+async function fetchData() {
+  loading.value = true
+  try {
+    const monthStart = dayjs().startOf('month').format('YYYY-MM-DD')
+    const monthEnd = dayjs().endOf('month').format('YYYY-MM-DD')
+
+    const [summaryRes, recordRes] = await Promise.all([
+      getQualityBoard(),
+      getQcRecordList({ page: 1, pageSize: 1000, startDate: monthStart, endDate: monthEnd }),
+    ])
+
+    const summary: DashboardQuality = summaryRes.data || {}
+    statCards.value = [
+      { title: '整体合格率', value: `${(summary.passRate || 0).toFixed(1)}%`, icon: 'CircleCheck', color: '#67c23a' },
+      { title: '当月检验数', value: String(summary.totalCheckQty || 0), icon: 'DocumentChecked', color: '#409eff' },
+      { title: '当月不良数', value: String(summary.failQty || 0), icon: 'WarningFilled', color: '#f56c6c' },
+      { title: '不良记录数', value: String((summary.topDefects || []).reduce((sum, item) => sum + (item.qty || 0), 0)), icon: 'Bell', color: '#e6a23c' },
+    ]
+
+    buildCharts(summary)
+    buildProductSummary((recordRes.data?.records || []) as QcRecordItem[])
+  } catch {
+    buildCharts({})
+    buildProductSummary([])
+  } finally {
+    loading.value = false
+  }
+}
+
+function handleResize() {
+  defectRateChart?.resize()
+  defectTypeChart?.resize()
+}
+
+onMounted(async () => {
+  initCharts()
+  window.addEventListener('resize', handleResize)
+  await fetchData()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  defectRateChart?.dispose()
+  defectTypeChart?.dispose()
+})
 </script>
 
 <style scoped lang="scss">
-.stat-row { margin-bottom: 20px; }
+.stat-row {
+  margin-bottom: 20px;
+}
+
 .stat-card {
-  .stat-card-content { display: flex; align-items: center; justify-content: space-between; }
+  .stat-card-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
   .stat-info {
-    .stat-title { font-size: 14px; color: #909399; margin-bottom: 8px; }
-    .stat-value { font-size: 28px; font-weight: bold; color: #303133; }
+    .stat-title {
+      font-size: 14px;
+      color: #909399;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 28px;
+      font-weight: bold;
+      color: #303133;
+    }
   }
 }
-.chart-container { height: 320px; }
+
+.chart-container {
+  height: 320px;
+}
 </style>

@@ -12,6 +12,7 @@ import com.injectmes.entity.Machine;
 import com.injectmes.entity.Mold;
 import com.injectmes.entity.ProdOrder;
 import com.injectmes.entity.ProdReport;
+import com.injectmes.entity.Product;
 import com.injectmes.entity.SysUser;
 import com.injectmes.enums.ProdOrderStatus;
 import com.injectmes.enums.ReportType;
@@ -20,11 +21,15 @@ import com.injectmes.mapper.MachineMapper;
 import com.injectmes.mapper.MoldMapper;
 import com.injectmes.mapper.ProdOrderMapper;
 import com.injectmes.mapper.ProdReportMapper;
+import com.injectmes.mapper.ProductMapper;
 import com.injectmes.mapper.SysUserMapper;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import com.injectmes.security.LoginUserDetails;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -43,6 +48,9 @@ public class ProdReportService {
 
     @Autowired
     private ProdOrderMapper prodOrderMapper;
+
+    @Autowired
+    private ProductMapper productMapper;
 
     @Autowired
     private MoldMapper moldMapper;
@@ -73,24 +81,35 @@ public class ProdReportService {
             throw new BusinessException("生产工单不存在");
         }
 
+        Machine machine = machineMapper.selectById(request.getMachineId());
+        if (machine == null) {
+            throw new BusinessException("注塑机不存在");
+        }
+        if (order.getMachineId() != null && !order.getMachineId().equals(machine.getId())) {
+            throw new BusinessException("报工机台与工单不一致");
+        }
+
         // 2. 校验工单状态必须是RUNNING（生产中）
         if (!ProdOrderStatus.RUNNING.name().equals(order.getStatus())) {
             throw new BusinessException("工单状态不是生产中，无法报工");
         }
 
         // 3. 校验报工数量不超过计划数量×1.05（容差5%）
-        int planQtyWithTolerance = (int) Math.ceil(order.getPlanQty() * 1.05);
+        int planQty = order.getPlanQty() != null ? order.getPlanQty() : 0;
+        int planQtyWithTolerance = (int) Math.ceil(planQty * 1.05);
         int currentCompleted = order.getCompletedQty() != null ? order.getCompletedQty() : 0;
         int reportQty = request.getQty() != null ? request.getQty() : 0;
         if (currentCompleted + reportQty > planQtyWithTolerance) {
             throw new BusinessException("报工数量超出计划数量容差范围（容差5%），当前已完成："
-                    + currentCompleted + "，计划数量：" + order.getPlanQty()
+                    + currentCompleted + "，计划数量：" + planQty
                     + "，容差上限：" + planQtyWithTolerance);
         }
 
         // 4. 构建报工记录
         ProdReport prodReport = new ProdReport();
         BeanUtils.copyProperties(request, prodReport);
+        prodReport.setUserId(resolveCurrentUserId());
+        prodReport.setMachineId(machine.getId());
         prodReport.setCreatedAt(LocalDateTime.now());
 
         // 5. 根据报工类型处理
@@ -99,6 +118,7 @@ public class ProdReportService {
             // START类型：记录开工，更新工单实际开始时间
             if (order.getActualStart() == null) {
                 order.setActualStart(LocalDateTime.now());
+                order.setUpdatedAt(LocalDateTime.now());
                 prodOrderMapper.updateById(order);
             }
         } else if (ReportType.OUTPUT.name().equals(reportType)) {
@@ -111,6 +131,7 @@ public class ProdReportService {
             int reportBadQty = request.getBadQty() != null ? request.getBadQty() : 0;
             int currentBadQty = order.getBadQty() != null ? order.getBadQty() : 0;
             order.setBadQty(currentBadQty + reportBadQty);
+            order.setUpdatedAt(LocalDateTime.now());
 
             prodOrderMapper.updateById(order);
 
@@ -118,12 +139,14 @@ public class ProdReportService {
             if (request.getMoldId() != null && request.getShots() != null && request.getShots() > 0) {
                 moldMapper.update(null, new LambdaUpdateWrapper<Mold>()
                         .eq(Mold::getId, request.getMoldId())
-                        .setSql("used_shots = used_shots + " + request.getShots()));
+                        .setSql("used_shots = COALESCE(used_shots, 0) + " + request.getShots()
+                                + ", shots_since_maintenance = COALESCE(shots_since_maintenance, 0) + " + request.getShots()));
             }
         } else if (ReportType.END.name().equals(reportType)) {
             // END类型：记录完工，更新工单实际结束时间和状态
             order.setActualEnd(LocalDateTime.now());
             order.setStatus(ProdOrderStatus.FINISHED.name());
+            order.setUpdatedAt(LocalDateTime.now());
             prodOrderMapper.updateById(order);
         }
 
@@ -137,6 +160,50 @@ public class ProdReportService {
         prodReportMapper.insert(prodReport);
 
         return R.ok("报工成功", convertToResponse(prodReport));
+    }
+
+    /**
+     * 当前班次任务
+     */
+    public R<List<java.util.Map<String, Object>>> currentShiftTasks() {
+        LambdaQueryWrapper<ProdOrder> wrapper = new LambdaQueryWrapper<>();
+        wrapper.in(ProdOrder::getStatus,
+                        ProdOrderStatus.SCHEDULED.name(),
+                        ProdOrderStatus.RUNNING.name(),
+                        ProdOrderStatus.PAUSED.name())
+                .orderByAsc(ProdOrder::getPlanStart)
+                .orderByDesc(ProdOrder::getCreatedAt);
+
+        List<java.util.Map<String, Object>> result = prodOrderMapper.selectList(wrapper)
+                .stream()
+                .map(this::toTaskMap)
+                .collect(Collectors.toList());
+        return R.ok(result);
+    }
+
+    /**
+     * 根据机台编号获取工单
+     */
+    public R<List<java.util.Map<String, Object>>> workOrdersByMachineCode(String machineCode) {
+        Machine machine = resolveMachine(machineCode);
+        if (machine == null) {
+            return R.ok(List.of());
+        }
+
+        LambdaQueryWrapper<ProdOrder> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ProdOrder::getMachineId, machine.getId())
+                .in(ProdOrder::getStatus,
+                        ProdOrderStatus.SCHEDULED.name(),
+                        ProdOrderStatus.RUNNING.name(),
+                        ProdOrderStatus.PAUSED.name())
+                .orderByAsc(ProdOrder::getPlanStart)
+                .orderByDesc(ProdOrder::getCreatedAt);
+
+        List<java.util.Map<String, Object>> result = prodOrderMapper.selectList(wrapper)
+                .stream()
+                .map(this::toTaskMap)
+                .collect(Collectors.toList());
+        return R.ok(result);
     }
 
     /**
@@ -174,6 +241,7 @@ public class ProdReportService {
 
         LambdaQueryWrapper<ProdReport> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ProdReport::getUserId, userId);
+        applyDateScope(wrapper, request.getType(), request.getStartDate(), request.getEndDate());
 
         // 关键词模糊搜索
         String keyword = request.getKeyword();
@@ -198,6 +266,108 @@ public class ProdReportService {
         pageResponse.setSize(request.getSize());
 
         return R.ok(pageResponse);
+    }
+
+    public R<java.util.Map<String, Object>> myOutputStats(Long userId, String type) {
+        List<ProdReport> reports = queryUserReports(userId, type);
+        int totalQty = 0;
+        int totalDefect = 0;
+        for (ProdReport report : reports) {
+            totalQty += report.getQty() != null ? report.getQty() : 0;
+            totalDefect += report.getBadQty() != null ? report.getBadQty() : 0;
+        }
+        java.util.Map<String, Object> result = new java.util.HashMap<>();
+        result.put("totalQuantity", totalQty);
+        result.put("totalDefect", totalDefect);
+        result.put("reportCount", reports.size());
+        result.put("type", type);
+        return R.ok(result);
+    }
+
+    private Long resolveCurrentUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof LoginUserDetails userDetails) {
+            return userDetails.getUserId();
+        }
+        return null;
+    }
+
+    private List<ProdReport> queryUserReports(Long userId, String type) {
+        LambdaQueryWrapper<ProdReport> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ProdReport::getUserId, userId);
+        applyDateScope(wrapper, type, null, null);
+        wrapper.orderByDesc(ProdReport::getCreatedAt);
+        return prodReportMapper.selectList(wrapper);
+    }
+
+    private Machine resolveMachine(String machineCode) {
+        if (machineCode == null || machineCode.trim().isEmpty()) {
+            return null;
+        }
+        String normalized = machineCode.trim();
+        if (normalized.startsWith("MACHINE:")) {
+            normalized = normalized.substring("MACHINE:".length()).trim();
+        }
+
+        Machine machine = machineMapper.selectOne(
+                new LambdaQueryWrapper<Machine>().eq(Machine::getCode, normalized)
+        );
+        if (machine != null) {
+            return machine;
+        }
+
+        return machineMapper.selectOne(
+                new LambdaQueryWrapper<Machine>().eq(Machine::getQrCode, machineCode.trim())
+        );
+    }
+
+    private java.util.Map<String, Object> toTaskMap(ProdOrder order) {
+        java.util.Map<String, Object> row = new java.util.HashMap<>();
+        row.put("workOrderId", order.getId());
+        row.put("workOrderNo", order.getOrderNo());
+        row.put("productId", order.getProductId());
+        row.put("machineId", order.getMachineId());
+        row.put("status", order.getStatus());
+        row.put("planQty", order.getPlanQty());
+        row.put("completedQty", order.getCompletedQty());
+        row.put("qualifiedQty", order.getQualifiedQty());
+
+        if (order.getProductId() != null) {
+            Product product = productMapper.selectById(order.getProductId());
+            if (product != null) {
+                row.put("productName", product.getName());
+            }
+        }
+
+        if (order.getMachineId() != null) {
+            Machine machine = machineMapper.selectById(order.getMachineId());
+            if (machine != null) {
+                row.put("machineCode", machine.getCode());
+                row.put("machineName", machine.getName());
+            }
+        }
+
+        return row;
+    }
+
+    private void applyDateScope(LambdaQueryWrapper<ProdReport> wrapper, String type, String startDate, String endDate) {
+        if (startDate != null && !startDate.trim().isEmpty()) {
+            wrapper.ge(ProdReport::getCreatedAt, LocalDate.parse(startDate).atStartOfDay());
+            if (endDate != null && !endDate.trim().isEmpty()) {
+                wrapper.lt(ProdReport::getCreatedAt, LocalDate.parse(endDate).plusDays(1).atStartOfDay());
+            }
+            return;
+        }
+
+        String scope = type != null ? type.trim().toLowerCase() : "";
+        LocalDate today = LocalDate.now();
+        if ("month".equals(scope)) {
+            wrapper.ge(ProdReport::getCreatedAt, today.withDayOfMonth(1).atStartOfDay());
+            wrapper.lt(ProdReport::getCreatedAt, today.withDayOfMonth(1).plusMonths(1).atStartOfDay());
+        } else {
+            wrapper.ge(ProdReport::getCreatedAt, today.atStartOfDay());
+            wrapper.lt(ProdReport::getCreatedAt, today.plusDays(1).atStartOfDay());
+        }
     }
 
     /**

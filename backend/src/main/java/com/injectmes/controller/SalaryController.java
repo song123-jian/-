@@ -25,6 +25,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 工资管理控制器
@@ -90,6 +93,57 @@ public class SalaryController {
     public R<Map<String, Object>> monthlySummary(@RequestParam Long userId,
                                                    @RequestParam String month) {
         return salaryService.monthlySummary(userId, month);
+    }
+
+    /**
+     * 移动端工资汇总
+     */
+    @GetMapping("/summary")
+    public R<Map<String, Object>> summary(@RequestParam(required = false) Integer year,
+                                          @RequestParam(required = false) Integer month,
+                                          @RequestParam(required = false) Long userId) {
+        Map<String, Object> result = new HashMap<>();
+        if (year == null || month == null || userId == null) {
+            result.put("baseSalary", 0);
+            result.put("pieceAmount", 0);
+            result.put("overtimeAmount", 0);
+            result.put("deduction", 0);
+            result.put("totalAmount", 0);
+            return R.ok(result);
+        }
+        String monthText = String.format("%04d-%02d", year, month);
+        Map<String, Object> monthly = salaryService.monthlySummary(userId, monthText).getData();
+        result.put("baseSalary", 0);
+        result.put("pieceAmount", monthly.getOrDefault("dailyTotal", 0));
+        result.put("overtimeAmount", monthly.getOrDefault("monthBonus", 0));
+        result.put("deduction", monthly.getOrDefault("monthPenalty", 0));
+        result.put("totalAmount", monthly.getOrDefault("monthlySalary", 0));
+        return R.ok(result);
+    }
+
+    /**
+     * 移动端日工资明细
+     */
+    @GetMapping("/daily-details")
+    public R<List<Map<String, Object>>> dailyDetails(@RequestParam Integer year,
+                                                     @RequestParam Integer month,
+                                                     @RequestParam(required = false) Long userId) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        if (userId == null) {
+            return R.ok(rows);
+        }
+        String monthText = String.format("%04d-%02d", year, month);
+        Map<String, Object> monthly = salaryService.monthlySummary(userId, monthText).getData();
+        Map<String, Object> row = new HashMap<>();
+        row.put("date", monthText + "-01");
+        row.put("workHours", 0);
+        row.put("pieceCount", 0);
+        row.put("pieceAmount", monthly.getOrDefault("dailyTotal", 0));
+        row.put("overtimeHours", 0);
+        row.put("overtimeAmount", monthly.getOrDefault("monthBonus", 0));
+        row.put("dailyTotal", monthly.getOrDefault("monthlySalary", 0));
+        rows.add(row);
+        return R.ok(rows);
     }
 
     /**

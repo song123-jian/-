@@ -16,7 +16,11 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 生产报工控制器
@@ -62,6 +66,40 @@ public class ProdReportController {
     @GetMapping("/my")
     public R<PageResponse<ProdReportResponse>> myReports(PageRequest request,
                                                           @AuthenticationPrincipal LoginUserDetails loginUser) {
+        return prodReportService.myReports(request, loginUser.getUserId());
+    }
+
+    /**
+     * 当前班次任务（移动端兼容）
+     */
+    @GetMapping("/current-shift-tasks")
+    public R<List<Map<String, Object>>> currentShiftTasks() {
+        return prodReportService.currentShiftTasks();
+    }
+
+    /**
+     * 根据机台获取工单（移动端兼容）
+     */
+    @GetMapping("/work-orders")
+    public R<List<Map<String, Object>>> workOrders(@RequestParam String machineCode) {
+        return prodReportService.workOrdersByMachineCode(machineCode);
+    }
+
+    /**
+     * 我的产量统计（移动端兼容）
+     */
+    @GetMapping("/my-output-stats")
+    public R<Map<String, Object>> myOutputStats(@RequestParam(required = false) String type,
+                                                @AuthenticationPrincipal LoginUserDetails loginUser) {
+        return prodReportService.myOutputStats(loginUser.getUserId(), type);
+    }
+
+    /**
+     * 我的报工记录（移动端兼容）
+     */
+    @GetMapping("/my-reports")
+    public R<PageResponse<ProdReportResponse>> myReportsForMobile(PageRequest request,
+                                                                  @AuthenticationPrincipal LoginUserDetails loginUser) {
         return prodReportService.myReports(request, loginUser.getUserId());
     }
 

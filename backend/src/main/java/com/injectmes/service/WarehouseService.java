@@ -50,7 +50,19 @@ public class WarehouseService {
             wrapper.and(w -> w
                     .like(Warehouse::getCode, keyword)
                     .or().like(Warehouse::getName, keyword)
+                    .or().like(Warehouse::getAddress, keyword)
+                    .or().like(Warehouse::getFactoryCode, keyword)
+                    .or().like(Warehouse::getWorkshop, keyword)
             );
+        }
+        if (request.getType() != null && !request.getType().trim().isEmpty()) {
+            wrapper.eq(Warehouse::getType, request.getType().trim());
+        }
+        if (request.getFactoryCode() != null && !request.getFactoryCode().trim().isEmpty()) {
+            wrapper.eq(Warehouse::getFactoryCode, request.getFactoryCode().trim());
+        }
+        if (request.getWorkshop() != null && !request.getWorkshop().trim().isEmpty()) {
+            wrapper.like(Warehouse::getWorkshop, request.getWorkshop().trim());
         }
 
         // 按创建时间降序
@@ -149,6 +161,12 @@ public class WarehouseService {
         }
         if (request.getAddress() != null) {
             warehouse.setAddress(request.getAddress());
+        }
+        if (request.getFactoryCode() != null) {
+            warehouse.setFactoryCode(request.getFactoryCode());
+        }
+        if (request.getWorkshop() != null) {
+            warehouse.setWorkshop(request.getWorkshop());
         }
         if (request.getManagerId() != null) {
             warehouse.setManagerId(request.getManagerId());

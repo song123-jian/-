@@ -15,7 +15,7 @@
         <el-table-column prop="name" label="供应商名称" width="150" />
         <el-table-column prop="contact" label="联系人" width="100" />
         <el-table-column prop="phone" label="联系电话" width="140" />
-        <el-table-column prop="material" label="供应物料" width="150" />
+        <el-table-column prop="mainMaterial" label="主营原料" width="150" />
         <el-table-column prop="address" label="地址" min-width="200" show-overflow-tooltip />
         <el-table-column prop="createdAt" label="创建时间" width="180" />
         <el-table-column label="操作" fixed="right" width="150">
@@ -47,8 +47,8 @@
         <el-form-item label="联系电话" prop="phone">
           <el-input v-model="form.phone" placeholder="请输入联系电话" />
         </el-form-item>
-        <el-form-item label="供应物料" prop="material">
-          <el-input v-model="form.material" placeholder="请输入供应物料" />
+        <el-form-item label="主营原料" prop="mainMaterial">
+          <el-input v-model="form.mainMaterial" placeholder="请输入主营原料" />
         </el-form-item>
         <el-form-item label="地址" prop="address">
           <el-input v-model="form.address" type="textarea" placeholder="请输入地址" />
@@ -72,11 +72,12 @@ import { getSupplierList, createSupplier, updateSupplier, deleteSupplier } from 
 
 const loading = ref(false)
 const tableData = ref<any[]>([])
+const searchKeyword = ref('')
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增供应商')
 const formRef = ref<FormInstance>()
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
-const form = reactive({ id: 0, code: '', name: '', contact: '', phone: '', material: '', address: '' })
+const form = reactive({ id: 0, code: '', name: '', contact: '', phone: '', mainMaterial: '', address: '' })
 const formRules: FormRules = {
   code: [{ required: true, message: '请输入供应商编号', trigger: 'blur' }],
   name: [{ required: true, message: '请输入供应商名称', trigger: 'blur' }],
@@ -85,17 +86,17 @@ const formRules: FormRules = {
 async function fetchData() {
   loading.value = true
   try {
-    const res: any = await getSupplierList({ page: pagination.page, pageSize: pagination.pageSize })
+    const res: any = await getSupplierList({ page: pagination.page, pageSize: pagination.pageSize, keyword: searchKeyword.value || undefined })
     tableData.value = res.data?.list || []
     pagination.total = res.data?.total || 0
   } catch { /* */ } finally { loading.value = false }
 }
 
-function handleSearch() { pagination.page = 1; fetchData() }
+function handleSearch(formData: { keyword: string }) { searchKeyword.value = formData.keyword || ''; pagination.page = 1; fetchData() }
 function handleReset() { pagination.page = 1; fetchData() }
 function handleAdd() {
   dialogTitle.value = '新增供应商'
-  Object.assign(form, { id: 0, code: '', name: '', contact: '', phone: '', material: '', address: '' })
+  Object.assign(form, { id: 0, code: '', name: '', contact: '', phone: '', mainMaterial: '', address: '' })
   dialogVisible.value = true
 }
 function handleEdit(row: any) { dialogTitle.value = '编辑供应商'; Object.assign(form, row); dialogVisible.value = true }

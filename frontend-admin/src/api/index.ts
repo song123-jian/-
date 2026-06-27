@@ -26,6 +26,9 @@ service.interceptors.request.use(
 service.interceptors.response.use(
   (response: AxiosResponse) => {
     const res = response.data
+    if (res?.data && Array.isArray(res.data.records) && res.data.list === undefined) {
+      res.data.list = res.data.records
+    }
     // 根据后端约定的状态码判断请求是否成功
     if (res.code && res.code !== 200) {
       ElMessage.error(res.message || '请求失败')

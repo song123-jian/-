@@ -1,10 +1,18 @@
-﻿<template>
+<template>
   <div class="inventory-page">
     <van-nav-bar title="盘点录入" left-arrow @click-left="router.back()" />
 
     <van-form @submit="onSubmit">
       <van-cell-group inset>
-        <!-- 选择库位 -->
+        <van-field
+          v-model="warehouseName"
+          is-link
+          readonly
+          label="仓库"
+          placeholder="请选择仓库"
+          :rules="[{ required: true, message: '请选择仓库' }]"
+          @click="showWarehousePicker = true"
+        />
         <van-field
           v-model="locationName"
           is-link
@@ -14,29 +22,13 @@
           :rules="[{ required: true, message: '请选择库位' }]"
           @click="showLocationPicker = true"
         />
-
-        <!-- 扫码/选择产品 -->
         <van-field
-          v-model="productCode"
-          label="产品编码"
-          placeholder="扫码或手动输入产品编码"
-          clearable
-          :rules="[{ required: true, message: '请输入产品编码' }]"
-        >
-          <template #button>
-            <van-button size="small" type="primary" @click="onScan">扫码</van-button>
-          </template>
-        </van-field>
-
-        <!-- 产品名称（自动回显） -->
-        <van-field
-          v-if="productName"
-          v-model="productName"
-          label="产品名称"
-          readonly
+          v-model="productId"
+          label="产品ID"
+          placeholder="请输入产品ID"
+          type="digit"
+          :rules="[{ required: true, message: '请输入产品ID' }]"
         />
-
-        <!-- 实盘数量 -->
         <van-field
           v-model="actualQuantity"
           label="实盘数量"
@@ -44,6 +36,7 @@
           placeholder="请输入实盘数量"
           :rules="[{ required: true, message: '请输入实盘数量' }]"
         />
+        <van-field v-model="reason" label="原因" placeholder="可选" />
       </van-cell-group>
 
       <div class="btn-wrap">
@@ -53,7 +46,14 @@
       </div>
     </van-form>
 
-    <!-- 库位选择器 -->
+    <van-popup v-model:show="showWarehousePicker" round position="bottom">
+      <van-picker
+        :columns="warehouseColumns"
+        @confirm="onWarehouseConfirm"
+        @cancel="showWarehousePicker = false"
+      />
+    </van-popup>
+
     <van-popup v-model:show="showLocationPicker" round position="bottom">
       <van-picker
         :columns="locationColumns"
@@ -65,63 +65,82 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
-import { getLocations, submitInventoryCheck } from '../../api/stock'
+import { getLocations, getWarehouses, submitInventoryCheck } from '../../api/stock'
 
 const router = useRouter()
-const locationName = ref('')
-const locationId = ref<number>(0)
-const productCode = ref('')
-const productName = ref('')
-const actualQuantity = ref('')
-const submitting = ref(false)
+const showWarehousePicker = ref(false)
 const showLocationPicker = ref(false)
-
+const warehouseName = ref('')
+const locationName = ref('')
+const productId = ref('')
+const actualQuantity = ref('')
+const reason = ref('')
+const warehouseId = ref<number | undefined>()
+const locationId = ref<number | undefined>()
+const submitting = ref(false)
+const warehouseColumns = ref<any[]>([])
 const locationColumns = ref<any[]>([])
 
-/** 扫码 */
-function onScan() {
-  showToast('请使用扫码枪扫描产品条码')
-}
-
-/** 加载库位列表 */
-async function loadLocations() {
+async function loadWarehouses() {
   try {
-    const res = await getLocations() as any
-    const list = res.data || res || []
-    locationColumns.value = list.map((l: any) => ({
-      text: l.code,
-      value: l.id,
-    }))
+    const res = await getWarehouses() as any
+    const list = res.data?.records || res.data || []
+    warehouseColumns.value = list.map((item: any) => ({ text: item.name, value: item.id }))
   } catch {
-    // 静默处理
+    warehouseColumns.value = []
   }
 }
 
-/** 库位确认 */
+async function loadLocations(id?: number) {
+  try {
+    const res = await getLocations(id) as any
+    const list = res.data?.records || res.data || []
+    locationColumns.value = list.map((item: any) => ({ text: item.code, value: item.id }))
+  } catch {
+    locationColumns.value = []
+  }
+}
+
+function onWarehouseConfirm({ selectedOptions }: any) {
+  const option = selectedOptions[0]
+  warehouseName.value = option?.text || ''
+  warehouseId.value = option?.value
+  showWarehousePicker.value = false
+  loadLocations(warehouseId.value)
+}
+
 function onLocationConfirm({ selectedOptions }: any) {
   const option = selectedOptions[0]
   locationName.value = option?.text || ''
-  locationId.value = option?.value || 0
+  locationId.value = option?.value
   showLocationPicker.value = false
 }
 
-/** 提交盘点 */
 async function onSubmit() {
+  if (!warehouseId.value || !locationId.value) {
+    showToast('请选择仓库和库位')
+    return
+  }
+  if (!productId.value) {
+    showToast('请输入产品ID')
+    return
+  }
   submitting.value = true
   try {
     await submitInventoryCheck({
+      warehouseId: warehouseId.value,
       locationId: locationId.value,
-      productId: 0,
+      productId: Number(productId.value),
       actualQuantity: Number(actualQuantity.value),
-    })
+      reason: reason.value || undefined,
+    } as any)
     showToast('盘点提交成功')
-    // 重置表单
-    productCode.value = ''
-    productName.value = ''
+    productId.value = ''
     actualQuantity.value = ''
+    reason.value = ''
   } catch {
     showToast('提交失败')
   } finally {
@@ -130,7 +149,7 @@ async function onSubmit() {
 }
 
 onMounted(() => {
-  loadLocations()
+  loadWarehouses()
 })
 </script>
 

@@ -95,10 +95,13 @@ public class AuthService {
         tokenStore.set(tokenKey, user.getId().toString(), REFRESH_TOKEN_EXPIRE_DAYS, TimeUnit.DAYS);
 
         LoginResponse response = new LoginResponse();
+        response.setUserId(user.getId());
         response.setToken(token);
         response.setRefreshToken(refreshToken);
         response.setUsername(user.getUsername());
+        response.setUserName(user.getUsername());
         response.setRealName(user.getRealName());
+        response.setPhone(user.getPhone());
         response.setRole(user.getRole());
 
         return R.ok("登录成功", response);
@@ -132,10 +135,13 @@ public class AuthService {
         tokenStore.set(newTokenKey, user.getId().toString(), REFRESH_TOKEN_EXPIRE_DAYS, TimeUnit.DAYS);
 
         LoginResponse response = new LoginResponse();
+        response.setUserId(user.getId());
         response.setToken(newToken);
         response.setRefreshToken(newRefreshToken);
         response.setUsername(user.getUsername());
+        response.setUserName(user.getUsername());
         response.setRealName(user.getRealName());
+        response.setPhone(user.getPhone());
         response.setRole(user.getRole());
 
         return R.ok("刷新成功", response);

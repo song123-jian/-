@@ -12,6 +12,13 @@ export default defineConfig({
       resolvers: [VantResolver()],
     }),
   ],
+  css: {
+    preprocessorOptions: {
+      scss: {
+        api: 'modern-compiler',
+      },
+    },
+  },
   server: {
     port: 3000,
     // 代理配置：将 /api 请求转发到后端服务
@@ -20,11 +27,6 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
-    },
-  },
-  css: {
-    preprocessorOptions: {
-      scss: {},
     },
   },
 })

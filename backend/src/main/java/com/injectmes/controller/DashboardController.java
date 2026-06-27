@@ -2,10 +2,13 @@ package com.injectmes.controller;
 
 import com.injectmes.common.R;
 import com.injectmes.dto.resp.DashboardBossResponse;
+import com.injectmes.dto.resp.DashboardHomeResponse;
 import com.injectmes.dto.resp.DashboardProductionResponse;
 import com.injectmes.dto.resp.DashboardQualityResponse;
+import com.injectmes.security.LoginUserDetails;
 import com.injectmes.service.DashboardService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -34,6 +37,15 @@ public class DashboardController {
     @GetMapping
     public R<DashboardBossResponse> dashboard() {
         return dashboardService.bossDashboard();
+    }
+
+    /**
+     * 首页工作台
+     */
+    @GetMapping("/home")
+    public R<DashboardHomeResponse> homeDashboard(@AuthenticationPrincipal LoginUserDetails loginUser) {
+        Long userId = loginUser != null ? loginUser.getUserId() : null;
+        return dashboardService.homeDashboard(userId);
     }
 
     /**

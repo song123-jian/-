@@ -19,7 +19,7 @@
         <van-swipe-cell v-for="item in list" :key="item.id">
           <van-cell
             :title="item.title"
-            :label="item.createTime"
+            :label="item.createdAt"
             clickable
             @click="onRead(item)"
           >
@@ -33,7 +33,7 @@
             </template>
           </van-cell>
           <template #right>
-            <van-button square type="danger" text="删除" class="delete-btn" />
+            <van-button square type="danger" text="删除" class="delete-btn" @click="onDelete(item)" />
           </template>
         </van-swipe-cell>
       </van-cell-group>
@@ -44,8 +44,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { showToast } from 'vant'
-import { getNotifications, markAsRead, markAllAsRead } from '../../api/notification'
+import { showConfirmDialog, showToast } from 'vant'
+import { deleteNotification, getNotifications, markAsRead, markAllAsRead } from '../../api/notification'
 
 const router = useRouter()
 const list = ref<any[]>([])
@@ -58,7 +58,8 @@ const pageSize = 20
 async function onLoad() {
   try {
     const res = await getNotifications({ page: page.value, pageSize }) as any
-    const data = res.data || res || []
+    const pageData = res.data || res || {}
+    const data = pageData.records || []
     if (data.length === 0) {
       finished.value = true
     } else {
@@ -71,6 +72,8 @@ async function onLoad() {
     loading.value = false
   }
 }
+
+onLoad()
 
 /** 标记已读 */
 async function onRead(item: any) {
@@ -94,6 +97,22 @@ async function onMarkAllRead() {
     showToast('已全部标记为已读')
   } catch {
     showToast('操作失败')
+  }
+}
+
+/** 删除通知 */
+async function onDelete(item: any) {
+  try {
+    await showConfirmDialog({ title: '删除通知', message: '确定要删除这条通知吗？' })
+  } catch {
+    return
+  }
+  try {
+    await deleteNotification(item.id)
+    list.value = list.value.filter((row) => row.id !== item.id)
+    showToast('已删除')
+  } catch {
+    showToast('删除失败')
   }
 }
 </script>

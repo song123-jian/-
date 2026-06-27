@@ -11,10 +11,12 @@ import com.injectmes.dto.resp.PageResponse;
 import com.injectmes.dto.resp.StockInventoryResponse;
 import com.injectmes.entity.*;
 import com.injectmes.enums.InventoryStatus;
+import com.injectmes.enums.InventoryType;
 import com.injectmes.enums.MoveReason;
 import com.injectmes.enums.MoveType;
 import com.injectmes.enums.RelatedOrderType;
 import com.injectmes.exception.BusinessException;
+import com.injectmes.security.LoginUserDetails;
 import com.injectmes.mapper.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -24,8 +26,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * 盘点服务
@@ -77,7 +83,12 @@ public class StockInventoryService {
         // 关键词模糊搜索（盘点编号）
         String keyword = request.getKeyword();
         if (keyword != null && !keyword.trim().isEmpty()) {
-            wrapper.like(StockInventory::getInventoryNo, keyword);
+            wrapper.and(w -> w.like(StockInventory::getInventoryNo, keyword)
+                    .or().like(StockInventory::getRemark, keyword));
+        }
+
+        if (request.getStatus() != null && !request.getStatus().trim().isEmpty()) {
+            wrapper.eq(StockInventory::getStatus, request.getStatus().trim());
         }
 
         // 按创建时间降序
@@ -113,10 +124,11 @@ public class StockInventoryService {
         StockInventory inventory = new StockInventory();
         inventory.setInventoryNo(generateInventoryNo());
         inventory.setWarehouseId(request.getWarehouseId());
-        inventory.setInventoryType(request.getInventoryType());
+        inventory.setInventoryType(normalizeInventoryType(request.getInventoryType()));
         inventory.setStatus(InventoryStatus.DRAFT.name());
         inventory.setFreezeStock(0);
         inventory.setRemark(request.getRemark());
+        inventory.setOperatorId(resolveOperatorId(request.getOperatorId()));
         inventory.setCreatedAt(LocalDateTime.now());
 
         stockInventoryMapper.insert(inventory);
@@ -216,6 +228,9 @@ public class StockInventoryService {
             }
         }
 
+        inventory.setOperatorId(resolveOperatorId(request.getOperatorId()));
+        stockInventoryMapper.updateById(inventory);
+
         return R.ok("录入实盘成功", null);
     }
 
@@ -235,6 +250,7 @@ public class StockInventoryService {
         }
 
         inventory.setStatus(InventoryStatus.PENDING_APPROVE.name());
+        inventory.setApproverId(resolveCurrentUserId());
         stockInventoryMapper.updateById(inventory);
 
         return R.ok("提交审核成功", null);
@@ -310,6 +326,7 @@ public class StockInventoryService {
         // 解冻库存
         inventory.setFreezeStock(0);
         inventory.setStatus(InventoryStatus.FINISHED.name());
+        inventory.setApproverId(null);
         stockInventoryMapper.updateById(inventory);
 
         return R.ok("审核通过成功", null);
@@ -337,10 +354,81 @@ public class StockInventoryService {
     }
 
     /**
+     * 移动端快速实盘并审核通过
+     */
+    @Transactional
+    public R<Void> quickMobileCheck(Long warehouseId, Long locationId, Long productId, Integer actualQuantity, String reason) {
+        Warehouse warehouse = warehouseMapper.selectById(warehouseId);
+        if (warehouse == null) {
+            throw new BusinessException("仓库不存在");
+        }
+        WarehouseLocation location = warehouseLocationMapper.selectById(locationId);
+        if (location == null) {
+            throw new BusinessException("库位不存在");
+        }
+        Product product = productMapper.selectById(productId);
+        if (product == null) {
+            throw new BusinessException("产品不存在");
+        }
+
+        List<Stock> stocks = stockMapper.selectList(
+                new LambdaQueryWrapper<Stock>()
+                        .eq(Stock::getWarehouseId, warehouseId)
+                        .eq(Stock::getLocationId, locationId)
+                        .eq(Stock::getProductId, productId)
+        );
+
+        StockInventoryCreateRequest createRequest = new StockInventoryCreateRequest();
+        createRequest.setWarehouseId(warehouseId);
+        createRequest.setInventoryType("PARTIAL");
+        createRequest.setRemark("移动端实盘：" + product.getName() + "@" + location.getCode() + "，实盘数量=" + actualQuantity);
+        createRequest.setOperatorId(resolveCurrentUserId());
+        R<StockInventoryResponse> createResult = create(createRequest);
+        if (createResult.getCode() != 200 || createResult.getData() == null) {
+            throw new BusinessException("创建盘点单失败");
+        }
+
+        StockInventoryResponse inventory = createResult.getData();
+        InventoryCountItemDTO countItem = new InventoryCountItemDTO();
+        countItem.setProductId(productId);
+        countItem.setLocationId(locationId);
+        countItem.setBatchId(resolveBatchId(stocks));
+        countItem.setActualQty(BigDecimal.valueOf(actualQuantity));
+        countItem.setReason(reason != null && !reason.trim().isEmpty() ? reason : "移动端盘点");
+
+        StockInventoryCountRequest countRequest = new StockInventoryCountRequest();
+        countRequest.setItems(List.of(countItem));
+        countRequest.setOperatorId(resolveCurrentUserId());
+
+        start(inventory.getId());
+        count(inventory.getId(), countRequest);
+        submit(inventory.getId());
+        approve(inventory.getId());
+
+        return R.ok("盘点提交成功", null);
+    }
+
+    /**
      * 生成盘点单号：IV+YYYYMMDD+3位序号
      */
     private String generateInventoryNo() {
         return seqNumberService.generateNo("IV", 3);
+    }
+
+    /**
+     * 盘点类型标准化
+     */
+    private String normalizeInventoryType(String inventoryType) {
+        if (inventoryType == null || inventoryType.trim().isEmpty()) {
+            return InventoryType.FULL.name();
+        }
+        String value = inventoryType.trim().toUpperCase();
+        for (InventoryType type : InventoryType.values()) {
+            if (type.name().equals(value)) {
+                return type.name();
+            }
+        }
+        return InventoryType.FULL.name();
     }
 
     /**
@@ -391,6 +479,7 @@ public class StockInventoryService {
         response.setStatus(inventory.getStatus());
         response.setRemark(inventory.getRemark());
         response.setCreatedAt(inventory.getCreatedAt());
+        response.setUpdatedAt(inventory.getCreatedAt());
 
         // 查询仓库名称
         if (inventory.getWarehouseId() != null) {
@@ -419,6 +508,29 @@ public class StockInventoryService {
         response.setItems(itemResponses);
 
         return response;
+    }
+
+    private Long resolveOperatorId(Long operatorId) {
+        if (operatorId != null) {
+            return operatorId;
+        }
+        return resolveCurrentUserId();
+    }
+
+    private Long resolveCurrentUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof LoginUserDetails userDetails) {
+            return userDetails.getUserId();
+        }
+        return null;
+    }
+
+    private Long resolveBatchId(List<Stock> stocks) {
+        return stocks.stream()
+                .map(Stock::getBatchId)
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .orElse(null);
     }
 
     /**

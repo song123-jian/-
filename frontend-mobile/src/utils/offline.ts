@@ -208,4 +208,11 @@ export function setupAutoSync(): void {
   window.addEventListener('online', () => {
     syncOfflineReports()
   })
+
+  // 页面回到前台时再补一次同步，避免长时间后台后错过
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && navigator.onLine) {
+      syncOfflineReports()
+    }
+  })
 }

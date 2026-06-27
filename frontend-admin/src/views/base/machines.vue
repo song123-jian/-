@@ -9,10 +9,14 @@
     <SearchBar @search="handleSearch" @reset="handleReset">
       <el-form-item label="状态">
         <el-select v-model="searchStatus" placeholder="请选择" clearable>
-          <el-option label="运行中" value="running" />
-          <el-option label="停机" value="stopped" />
-          <el-option label="维修中" value="maintenance" />
+          <el-option label="运行中" value="RUNNING" />
+          <el-option label="空闲" value="IDLE" />
+          <el-option label="停机" value="STOPPED" />
+          <el-option label="维修中" value="MAINTENANCE" />
         </el-select>
+      </el-form-item>
+      <el-form-item label="车间">
+        <el-input v-model="searchWorkshop" placeholder="请输入车间" clearable />
       </el-form-item>
     </SearchBar>
 
@@ -29,6 +33,8 @@
           </template>
         </el-table-column>
         <el-table-column prop="location" label="位置" width="120" />
+        <el-table-column prop="factoryCode" label="工厂" width="120" />
+        <el-table-column prop="workshop" label="车间" width="120" />
         <el-table-column prop="createdAt" label="创建时间" width="180" />
         <el-table-column label="操作" fixed="right" width="150">
           <template #default="{ row }">
@@ -66,11 +72,18 @@
         <el-form-item label="位置" prop="location">
           <el-input v-model="form.location" placeholder="请输入位置" />
         </el-form-item>
+        <el-form-item label="工厂编码" prop="factoryCode">
+          <el-input v-model="form.factoryCode" placeholder="请输入工厂编码" />
+        </el-form-item>
+        <el-form-item label="车间" prop="workshop">
+          <el-input v-model="form.workshop" placeholder="请输入车间" />
+        </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-select v-model="form.status" placeholder="请选择状态">
-            <el-option label="运行中" value="running" />
-            <el-option label="停机" value="stopped" />
-            <el-option label="维修中" value="maintenance" />
+            <el-option label="运行中" value="RUNNING" />
+            <el-option label="空闲" value="IDLE" />
+            <el-option label="停机" value="STOPPED" />
+            <el-option label="维修中" value="MAINTENANCE" />
           </el-select>
         </el-form-item>
       </el-form>
@@ -93,6 +106,8 @@ import { getMachineList, createMachine, updateMachine, deleteMachine } from '@/a
 const loading = ref(false)
 const tableData = ref<any[]>([])
 const searchStatus = ref('')
+const searchWorkshop = ref('')
+const searchKeyword = ref('')
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增机台')
 const formRef = ref<FormInstance>()
@@ -100,39 +115,47 @@ const formRef = ref<FormInstance>()
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
 
 const form = reactive({
-  id: 0, code: '', name: '', model: '', tonnage: 100, location: '', status: 'running',
+  id: 0, code: '', name: '', model: '', tonnage: 100, location: '', factoryCode: '', workshop: '', status: 'IDLE',
 })
 
 const formRules: FormRules = {
   code: [{ required: true, message: '请输入机台编号', trigger: 'blur' }],
   name: [{ required: true, message: '请输入机台名称', trigger: 'blur' }],
+  factoryCode: [{ required: true, message: '请输入工厂编码', trigger: 'blur' }],
+  workshop: [{ required: true, message: '请输入车间', trigger: 'blur' }],
 }
 
 function statusLabel(status: string) {
-  const map: Record<string, string> = { running: '运行中', stopped: '停机', maintenance: '维修中' }
+  const map: Record<string, string> = { RUNNING: '运行中', IDLE: '空闲', STOPPED: '停机', MAINTENANCE: '维修中' }
   return map[status] || status
 }
 
 function statusTagType(status: string) {
-  const map: Record<string, string> = { running: 'success', stopped: 'danger', maintenance: 'warning' }
+  const map: Record<string, string> = { RUNNING: 'success', IDLE: 'info', STOPPED: 'danger', MAINTENANCE: 'warning' }
   return map[status] || 'info'
 }
 
 async function fetchData() {
   loading.value = true
   try {
-    const res: any = await getMachineList({ page: pagination.page, pageSize: pagination.pageSize, status: searchStatus.value })
+    const res: any = await getMachineList({
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      status: searchStatus.value || undefined,
+      keyword: searchKeyword.value || searchWorkshop.value || undefined,
+      workshop: searchWorkshop.value || undefined,
+    })
     tableData.value = res.data?.list || []
     pagination.total = res.data?.total || 0
   } catch { /* */ } finally { loading.value = false }
 }
 
-function handleSearch() { pagination.page = 1; fetchData() }
-function handleReset() { searchStatus.value = ''; pagination.page = 1; fetchData() }
+function handleSearch(formData: { keyword: string }) { searchKeyword.value = formData.keyword || ''; pagination.page = 1; fetchData() }
+function handleReset() { searchStatus.value = ''; searchWorkshop.value = ''; pagination.page = 1; fetchData() }
 
 function handleAdd() {
   dialogTitle.value = '新增机台'
-  Object.assign(form, { id: 0, code: '', name: '', model: '', tonnage: 100, location: '', status: 'running' })
+  Object.assign(form, { id: 0, code: '', name: '', model: '', tonnage: 100, location: '', factoryCode: '', workshop: '', status: 'IDLE' })
   dialogVisible.value = true
 }
 

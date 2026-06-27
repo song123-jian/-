@@ -40,6 +40,8 @@ CREATE TABLE machine (
     status ENUM('RUNNING','IDLE','MAINTENANCE','STOPPED') DEFAULT 'IDLE',
     qr_code VARCHAR(255) COMMENT '机台二维码内容',
     location VARCHAR(100) COMMENT '车间位置',
+    factory_code VARCHAR(50) COMMENT '工厂编码',
+    workshop VARCHAR(100) COMMENT '车间',
     purchase_date DATE,
     remark TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -56,7 +58,9 @@ CREATE TABLE mold (
     cavities INT NOT NULL COMMENT '穴数',
     lifetime INT COMMENT '设计寿命（模次）',
     used_shots INT DEFAULT 0 COMMENT '已使用模次',
+    shots_since_maintenance INT DEFAULT 0 COMMENT '距上次保养已使用模次',
     maintenance_cycle INT COMMENT '保养周期（模次）',
+    maintenance_count INT DEFAULT 0 COMMENT '保养次数',
     last_maintenance_at DATETIME COMMENT '上次保养时间',
     status ENUM('NORMAL','REPAIR','SCRAP') DEFAULT 'NORMAL',
     remark TEXT,
@@ -219,11 +223,49 @@ CREATE TABLE mold_mount_record (
     mount_type ENUM('MOUNT','DISMOUNT') NOT NULL,
     operator_id BIGINT COMMENT '操作人',
     operate_time DATETIME NOT NULL,
-    remark TEXT
+    remark TEXT,
+    INDEX idx_mold (mold_id),
+    INDEX idx_machine (machine_id),
+    INDEX idx_operate_time (operate_time)
 ) COMMENT '模具上下模记录表';
 
 -- ============================================================
--- 12. 停机记录表
+-- 12. ???????
+-- ============================================================
+CREATE TABLE mold_maintenance_record (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    mold_id BIGINT NOT NULL,
+    operator_id BIGINT,
+    used_shots_before INT NOT NULL COMMENT '???????',
+    shots_since_maintenance_before INT NOT NULL COMMENT '??????????',
+    maintenance_count_before INT NOT NULL COMMENT '?????',
+    operate_time DATETIME NOT NULL,
+    remark TEXT,
+    INDEX idx_mold (mold_id),
+    INDEX idx_operator (operator_id),
+    INDEX idx_operate_time (operate_time)
+) COMMENT '???????';
+
+-- ============================================================
+-- ============================================================
+-- 12.1 设备点检记录表
+-- ============================================================
+CREATE TABLE machine_inspection_record (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    machine_id BIGINT NOT NULL,
+    inspector_id BIGINT NOT NULL,
+    inspect_time DATETIME NOT NULL,
+    result ENUM('PASS','FAIL') NOT NULL,
+    items_checked VARCHAR(500) COMMENT '点检项目',
+    issues VARCHAR(500) COMMENT '异常描述',
+    remark TEXT,
+    INDEX idx_machine (machine_id),
+    INDEX idx_inspector (inspector_id),
+    INDEX idx_inspect_time (inspect_time)
+) COMMENT '设备点检记录表';
+
+-- ============================================================
+-- 13. 停机记录表
 -- ============================================================
 CREATE TABLE downtime_record (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -239,7 +281,7 @@ CREATE TABLE downtime_record (
 ) COMMENT '停机记录表';
 
 -- ============================================================
--- 13. 质检记录表
+-- 14. 质检记录表
 -- ============================================================
 CREATE TABLE qc_record (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -261,7 +303,7 @@ CREATE TABLE qc_record (
 ) COMMENT '质检记录表';
 
 -- ============================================================
--- 14. 仓库表
+-- 15. 仓库表
 -- ============================================================
 CREATE TABLE warehouse (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -269,13 +311,15 @@ CREATE TABLE warehouse (
     name VARCHAR(100) NOT NULL COMMENT '仓库名称',
     type ENUM('RAW','SEMI','FINISH','DEFECT','SCRAP') NOT NULL COMMENT '仓库类型',
     address VARCHAR(200),
+    factory_code VARCHAR(50) COMMENT '工厂编码',
+    workshop VARCHAR(100) COMMENT '车间',
     manager_id BIGINT COMMENT '仓库负责人',
     is_enabled TINYINT DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 ) COMMENT '仓库表';
 
 -- ============================================================
--- 15. 库位表
+-- 16. 库位表
 -- ============================================================
 CREATE TABLE warehouse_location (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -291,7 +335,7 @@ CREATE TABLE warehouse_location (
 ) COMMENT '库位表';
 
 -- ============================================================
--- 16. 物料批次表
+-- 17. 物料批次表
 -- ============================================================
 CREATE TABLE material_batch (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -310,7 +354,7 @@ CREATE TABLE material_batch (
 ) COMMENT '物料批次表';
 
 -- ============================================================
--- 17. 库存表
+-- 18. 库存表
 -- ============================================================
 CREATE TABLE stock (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -325,7 +369,7 @@ CREATE TABLE stock (
 ) COMMENT '库存表';
 
 -- ============================================================
--- 18. 库存流水表
+-- 19. 库存流水表
 -- ============================================================
 CREATE TABLE stock_move (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -351,7 +395,7 @@ CREATE TABLE stock_move (
 ) COMMENT '库存流水表';
 
 -- ============================================================
--- 19. 调拨单主表
+-- 20. 调拨单主表
 -- ============================================================
 CREATE TABLE stock_transfer (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -366,7 +410,7 @@ CREATE TABLE stock_transfer (
 ) COMMENT '调拨单主表';
 
 -- ============================================================
--- 20. 调拨单明细表
+-- 21. 调拨单明细表
 -- ============================================================
 CREATE TABLE stock_transfer_item (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -382,7 +426,7 @@ CREATE TABLE stock_transfer_item (
 ) COMMENT '调拨单明细表';
 
 -- ============================================================
--- 21. 盘点单主表
+-- 22. 盘点单主表
 -- ============================================================
 CREATE TABLE stock_inventory (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -398,7 +442,7 @@ CREATE TABLE stock_inventory (
 ) COMMENT '盘点单主表';
 
 -- ============================================================
--- 22. 盘点单明细表
+-- 23. 盘点单明细表
 -- ============================================================
 CREATE TABLE stock_inventory_item (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -415,7 +459,7 @@ CREATE TABLE stock_inventory_item (
 ) COMMENT '盘点单明细表';
 
 -- ============================================================
--- 23. 计件单价表
+-- 24. 计件单价表
 -- ============================================================
 CREATE TABLE piece_price (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -430,7 +474,7 @@ CREATE TABLE piece_price (
 ) COMMENT '计件单价表';
 
 -- ============================================================
--- 24. 日工资表
+-- 25. 日工资表
 -- ============================================================
 CREATE TABLE salary_daily (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -449,7 +493,7 @@ CREATE TABLE salary_daily (
 ) COMMENT '日工资表';
 
 -- ============================================================
--- 25. 工资调整表（奖惩/扣款）
+-- 26. 工资调整表（奖惩/扣款）
 -- ============================================================
 CREATE TABLE salary_adjust (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -463,7 +507,7 @@ CREATE TABLE salary_adjust (
 ) COMMENT '工资调整表';
 
 -- ============================================================
--- 26. 回款记录表
+-- 27. 回款记录表
 -- ============================================================
 CREATE TABLE payment_record (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -480,7 +524,7 @@ CREATE TABLE payment_record (
 ) COMMENT '回款记录表';
 
 -- ============================================================
--- 27. 发货单表
+-- 28. 发货单表
 -- ============================================================
 CREATE TABLE delivery_order (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -498,7 +542,7 @@ CREATE TABLE delivery_order (
 ) COMMENT '发货单表';
 
 -- ============================================================
--- 28. 发货单明细表
+-- 29. 发货单明细表
 -- ============================================================
 CREATE TABLE delivery_order_item (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -510,7 +554,7 @@ CREATE TABLE delivery_order_item (
 ) COMMENT '发货单明细表';
 
 -- ============================================================
--- 29. 费用支出表
+-- 30. 费用支出表
 -- ============================================================
 CREATE TABLE expense_record (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -525,7 +569,7 @@ CREATE TABLE expense_record (
 ) COMMENT '费用支出表';
 
 -- ============================================================
--- 30. 操作日志表
+-- 31. 操作日志表
 -- ============================================================
 CREATE TABLE sys_operation_log (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -544,7 +588,7 @@ CREATE TABLE sys_operation_log (
 ) COMMENT '操作日志表';
 
 -- ============================================================
--- 31. 系统配置表
+-- 32. 系统配置表
 -- ============================================================
 CREATE TABLE sys_config (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -555,7 +599,7 @@ CREATE TABLE sys_config (
 ) COMMENT '系统配置表';
 
 -- ============================================================
--- 32. 通知消息表
+-- 33. 通知消息表
 -- ============================================================
 CREATE TABLE notification (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -572,7 +616,7 @@ CREATE TABLE notification (
 ) COMMENT '通知消息表';
 
 -- ============================================================
--- 33. 单据序号表（并发安全的单据号分配）
+-- 34. 单据序号表（并发安全的单据号分配）
 -- ============================================================
 CREATE TABLE seq_number (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -587,13 +631,13 @@ CREATE TABLE seq_number (
 -- ============================================================
 
 -- -----------------------------------------------------------
--- 1. 插入管理员账号 songjian（密码：123456，BCrypt加密）
+-- 2. 插入管理员账号 songjian（密码：123456，BCrypt加密）
 -- -----------------------------------------------------------
 INSERT INTO sys_user (username, real_name, phone, password_hash, role, status)
 VALUES ('songjian', '宋建', '13800000000', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', 'BOSS', 1);
 
 -- -----------------------------------------------------------
--- 2. 插入4个默认仓库
+-- 3. 插入4个默认仓库
 -- -----------------------------------------------------------
 INSERT INTO warehouse (code, name, type, address) VALUES
 ('W-RAW', '原料仓', 'RAW', 'A区'),
@@ -602,7 +646,7 @@ INSERT INTO warehouse (code, name, type, address) VALUES
 ('W-DEFECT', '不良品仓', 'DEFECT', 'E区');
 
 -- -----------------------------------------------------------
--- 3. 插入3台示例注塑机
+-- 4. 插入3台示例注塑机
 -- -----------------------------------------------------------
 INSERT INTO machine (code, name, model, tonnage, status, location) VALUES
 ('IM-001', '1号注塑机', '海天MA1200', 120, 'IDLE', 'A车间'),
@@ -610,9 +654,10 @@ INSERT INTO machine (code, name, model, tonnage, status, location) VALUES
 ('IM-003', '3号注塑机', '海天MA2000', 200, 'IDLE', 'B车间');
 
 -- -----------------------------------------------------------
--- 4. 插入系统配置项（17项默认配置）
+-- 5. 插入系统配置项（17项默认配置）
 -- -----------------------------------------------------------
 INSERT INTO sys_config (config_key, config_value, config_desc) VALUES
+('system_title', '注塑厂管理系统', '系统标题'),
 ('factory_name', 'XX注塑厂', '工厂名称，显示在系统标题'),
 ('shift_day_start', '08:00', '白班开始时间'),
 ('shift_night_start', '20:00', '夜班开始时间'),
@@ -629,4 +674,7 @@ INSERT INTO sys_config (config_key, config_value, config_desc) VALUES
 ('location_capacity_check', 'false', '是否启用库位容量校验'),
 ('default_raw_warehouse', '1', '默认原料仓ID'),
 ('default_finish_warehouse', '3', '默认成品仓ID'),
-('mold_maintenance_warning_ratio', '0.8', '模具保养预警比例（达到保养周期的百分比时预警）');
+('mold_maintenance_warning_ratio', '0.8', '模具保养预警比例（达到保养周期的百分比时预警）'),
+('external_push_enabled', 'false', '是否启用外部消息推送'),
+('wecom_webhook_url', '', '企业微信 Webhook'),
+('dingtalk_webhook_url', '', '钉钉 Webhook');

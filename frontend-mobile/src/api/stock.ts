@@ -3,8 +3,11 @@
 /** 库存记录 */
 export interface StockItem {
   id: number
+  productId: number
   warehouseName: string
+  warehouseId: number
   locationCode: string
+  locationId: number
   productCode: string
   productName: string
   quantity: number
@@ -22,7 +25,6 @@ export interface InventoryCheckParams {
 /** 调拨确认参数 */
 export interface TransferConfirmParams {
   transferId: number
-  action: 'receive' | 'reject'
 }
 
 /** 查询库存 */
@@ -32,35 +34,35 @@ export function getStockList(params: {
   locationId?: number
   productCode?: string
 }) {
-  return request.get('/stock/list', { params })
+  return request.get('/stock', { params })
 }
 
 /** 获取仓库列表 */
 export function getWarehouses() {
-  return request.get('/stock/warehouses')
+  return request.get('/warehouses', { params: { page: 1, size: 200 } })
 }
 
 /** 获取库位列表 */
 export function getLocations(warehouseId?: number) {
-  return request.get('/stock/locations', { params: { warehouseId } })
+  return request.get('/warehouse-locations', { params: { warehouseId, page: 1, size: 200 } })
 }
 
 /** 提交盘点 */
 export function submitInventoryCheck(data: InventoryCheckParams) {
-  return request.post('/stock/inventory-check', data)
+  return request.post('/stock-inventories/mobile-check', data)
 }
 
 /** 确认调拨 */
 export function confirmTransfer(data: TransferConfirmParams) {
-  return request.post('/stock/transfer-confirm', data)
+  return request.put(`/stock-transfers/${data.transferId}/receive`)
 }
 
 /** 获取待调拨列表 */
 export function getPendingTransfers() {
-  return request.get('/stock/pending-transfers')
+  return request.get('/stock-transfers', { params: { page: 1, size: 50, status: 'SHIPPED' } })
 }
 
 /** 扫码获取调拨信息 */
 export function getTransferByCode(code: string) {
-  return request.get('/stock/transfer-by-code', { params: { code } })
+  return request.get('/stock-transfers', { params: { keyword: code, page: 1, size: 20 } })
 }

@@ -1,7 +1,7 @@
 import request from './index'
 
-// 获取看板数据
-export const getDashboardData = () => request.get('/dashboard')
+// 获取首页工作台数据
+export const getDashboardData = () => request.get('/dashboard/home')
 // 获取老板驾驶舱数据
 export const getBossDashboard = () => request.get('/dashboard/boss')
 // 获取生产看板数据

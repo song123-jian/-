@@ -1,7 +1,8 @@
-﻿import { createApp } from 'vue'
+import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import router from './router'
 import App from './App.vue'
+import { setupAutoSync } from './utils/offline'
 
 // 引入 Vant 基础样式
 import 'vant/lib/index.css'
@@ -12,3 +13,5 @@ app.use(createPinia())
 app.use(router)
 
 app.mount('#app')
+
+setupAutoSync()

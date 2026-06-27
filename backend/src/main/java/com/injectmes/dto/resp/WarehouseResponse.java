@@ -25,6 +25,12 @@ public class WarehouseResponse {
     /** 地址 */
     private String address;
 
+    /** 工厂编码 */
+    private String factoryCode;
+
+    /** 车间 */
+    private String workshop;
+
     /** 管理员ID */
     private Long managerId;
 

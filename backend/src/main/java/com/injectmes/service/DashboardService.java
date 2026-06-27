@@ -2,11 +2,17 @@ package com.injectmes.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.injectmes.common.R;
+import com.injectmes.dto.req.PageRequest;
 import com.injectmes.dto.resp.DashboardBossResponse;
+import com.injectmes.dto.resp.DashboardHomeResponse;
 import com.injectmes.dto.resp.DashboardProductionResponse;
 import com.injectmes.dto.resp.DashboardQualityResponse;
+import com.injectmes.dto.resp.NotificationResponse;
+import com.injectmes.dto.resp.PageResponse;
 import com.injectmes.dto.resp.OeeResponse;
 import com.injectmes.entity.*;
+import com.injectmes.enums.ProdOrderStatus;
+import com.injectmes.enums.SaleOrderStatus;
 import com.injectmes.mapper.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -16,6 +22,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -45,6 +52,72 @@ public class DashboardService {
     private DowntimeRecordMapper downtimeRecordMapper;
     @Autowired
     private ProductMapper productMapper;
+    @Autowired
+    private NotificationService notificationService;
+
+    /**
+     * 首页工作台数据
+     */
+    public R<DashboardHomeResponse> homeDashboard(Long userId) {
+        DashboardHomeResponse response = new DashboardHomeResponse();
+
+        LocalDate today = LocalDate.now();
+        LocalDateTime dayStart = today.atStartOfDay();
+        LocalDateTime dayEnd = today.plusDays(1).atStartOfDay();
+
+        // 今日产量
+        LambdaQueryWrapper<ProdReport> todayReportWrapper = new LambdaQueryWrapper<>();
+        todayReportWrapper.ge(ProdReport::getCreatedAt, dayStart);
+        todayReportWrapper.lt(ProdReport::getCreatedAt, dayEnd);
+        List<ProdReport> todayReports = prodReportMapper.selectList(todayReportWrapper);
+        int todayProductionQty = todayReports.stream()
+                .mapToInt(report -> report.getQty() != null ? report.getQty() : 0)
+                .sum();
+        response.setTodayProductionQty(todayProductionQty);
+
+        // 待处理工单
+        Long pendingOrderCount = prodOrderMapper.selectCount(
+                new LambdaQueryWrapper<ProdOrder>()
+                        .in(ProdOrder::getStatus,
+                                ProdOrderStatus.SCHEDULED.name(),
+                                ProdOrderStatus.RUNNING.name(),
+                                ProdOrderStatus.PAUSED.name())
+        );
+        response.setPendingOrderQty(pendingOrderCount != null ? pendingOrderCount.intValue() : 0);
+
+        // 在线机台
+        Long runningMachineCount = machineMapper.selectCount(
+                new LambdaQueryWrapper<Machine>()
+                        .eq(Machine::getStatus, "RUNNING")
+        );
+        response.setRunningMachineQty(runningMachineCount != null ? runningMachineCount.intValue() : 0);
+
+        // 未读消息与待办
+        long unreadCount = 0L;
+        List<DashboardHomeResponse.TodoItem> todoList = new ArrayList<>();
+        if (userId != null) {
+            unreadCount = notificationService.countUnread(userId);
+
+            PageRequest notificationRequest = new PageRequest();
+            notificationRequest.setPage(1);
+            notificationRequest.setSize(5);
+            R<PageResponse<NotificationResponse>> unreadResult =
+                    notificationService.list(userId, notificationRequest, 0);
+            if (unreadResult != null && unreadResult.getData() != null
+                    && unreadResult.getData().getRecords() != null) {
+                todoList = unreadResult.getData().getRecords().stream()
+                        .map(this::convertToTodoItem)
+                        .collect(Collectors.toList());
+            }
+        }
+        response.setUnreadNotificationQty(unreadCount);
+        response.setTodoList(todoList);
+
+        response.setProductionTrend(buildProductionTrend());
+        response.setOrderStatusDistribution(buildOrderStatusDistribution());
+
+        return R.ok(response);
+    }
 
     /**
      * 老板驾驶舱数据（严格按技术文档11.1节）
@@ -413,6 +486,123 @@ public class DashboardService {
         response.setTrendData(trendData);
 
         return R.ok(response);
+    }
+
+    /**
+     * 近7日产量趋势
+     */
+    private List<DashboardHomeResponse.ProductionTrend> buildProductionTrend() {
+        List<DashboardHomeResponse.ProductionTrend> trendList = new ArrayList<>();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM-dd");
+
+        for (int offset = 6; offset >= 0; offset--) {
+            LocalDate date = LocalDate.now().minusDays(offset);
+            LocalDateTime start = date.atStartOfDay();
+            LocalDateTime end = date.plusDays(1).atStartOfDay();
+
+            LambdaQueryWrapper<ProdReport> wrapper = new LambdaQueryWrapper<>();
+            wrapper.ge(ProdReport::getCreatedAt, start);
+            wrapper.lt(ProdReport::getCreatedAt, end);
+            List<ProdReport> reports = prodReportMapper.selectList(wrapper);
+
+            int qty = reports.stream()
+                    .mapToInt(report -> report.getQty() != null ? report.getQty() : 0)
+                    .sum();
+
+            DashboardHomeResponse.ProductionTrend item = new DashboardHomeResponse.ProductionTrend();
+            item.setDate(date.format(formatter));
+            item.setQty(qty);
+            trendList.add(item);
+        }
+
+        return trendList;
+    }
+
+    /**
+     * 订单状态分布
+     */
+    private List<DashboardHomeResponse.OrderStatusItem> buildOrderStatusDistribution() {
+        Map<String, Integer> statusCountMap = new LinkedHashMap<>();
+        for (SaleOrderStatus status : SaleOrderStatus.values()) {
+            statusCountMap.put(status.name(), 0);
+        }
+
+        List<SaleOrder> orders = saleOrderMapper.selectList(new LambdaQueryWrapper<>());
+        for (SaleOrder order : orders) {
+            if (order.getStatus() == null) {
+                continue;
+            }
+            statusCountMap.merge(order.getStatus(), 1, Integer::sum);
+        }
+
+        List<DashboardHomeResponse.OrderStatusItem> result = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : statusCountMap.entrySet()) {
+            DashboardHomeResponse.OrderStatusItem item = new DashboardHomeResponse.OrderStatusItem();
+            item.setStatus(entry.getKey());
+            item.setLabel(resolveSaleOrderStatusLabel(entry.getKey()));
+            item.setCount(entry.getValue());
+            result.add(item);
+        }
+        return result;
+    }
+
+    /**
+     * 通知转待办
+     */
+    private DashboardHomeResponse.TodoItem convertToTodoItem(NotificationResponse notification) {
+        DashboardHomeResponse.TodoItem item = new DashboardHomeResponse.TodoItem();
+        item.setType(resolveNotificationTypeLabel(notification.getType()));
+        item.setContent(buildNotificationContent(notification));
+        item.setTime(notification.getCreatedAt());
+        item.setStatus(resolveNotificationPriority(notification.getType()));
+        return item;
+    }
+
+    private String resolveSaleOrderStatusLabel(String status) {
+        if (status == null) {
+            return "未知";
+        }
+        for (SaleOrderStatus item : SaleOrderStatus.values()) {
+            if (item.name().equals(status)) {
+                return item.getDescription();
+            }
+        }
+        return status;
+    }
+
+    private String resolveNotificationTypeLabel(String type) {
+        if ("ERROR".equals(type)) {
+            return "异常";
+        }
+        if ("WARNING".equals(type)) {
+            return "预警";
+        }
+        if ("INFO".equals(type)) {
+            return "消息";
+        }
+        return "消息";
+    }
+
+    private String resolveNotificationPriority(String type) {
+        if ("ERROR".equals(type)) {
+            return "紧急";
+        }
+        if ("WARNING".equals(type)) {
+            return "一般";
+        }
+        return "提醒";
+    }
+
+    private String buildNotificationContent(NotificationResponse notification) {
+        String title = notification.getTitle() != null ? notification.getTitle() : "";
+        String content = notification.getContent() != null ? notification.getContent() : "";
+        if (title.isEmpty()) {
+            return content;
+        }
+        if (content.isEmpty()) {
+            return title;
+        }
+        return title + "：" + content;
     }
 
     /**

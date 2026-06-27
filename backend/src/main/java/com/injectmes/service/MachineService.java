@@ -25,6 +25,7 @@ import javax.imageio.ImageIO;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.Locale;
 import java.util.Base64;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -63,6 +64,16 @@ public class MachineService {
                     .like(Machine::getCode, keyword)
                     .or().like(Machine::getName, keyword)
             );
+        }
+
+        if (request.getStatus() != null && !request.getStatus().trim().isEmpty()) {
+            wrapper.eq(Machine::getStatus, normalizeStatus(request.getStatus(), null));
+        }
+        if (request.getFactoryCode() != null && !request.getFactoryCode().trim().isEmpty()) {
+            wrapper.eq(Machine::getFactoryCode, request.getFactoryCode().trim());
+        }
+        if (request.getWorkshop() != null && !request.getWorkshop().trim().isEmpty()) {
+            wrapper.like(Machine::getWorkshop, request.getWorkshop().trim());
         }
 
         // 按创建时间降序
@@ -121,9 +132,17 @@ public class MachineService {
         if (request.getTonnage() != null) {
             machine.setTonnage(request.getTonnage().intValue());
         }
-        machine.setStatus("IDLE");
+        machine.setStatus(normalizeStatus(request.getStatus(), "IDLE"));
+        if (request.getFactoryCode() != null) {
+            machine.setFactoryCode(request.getFactoryCode());
+        }
+        if (request.getWorkshop() != null) {
+            machine.setWorkshop(request.getWorkshop());
+        }
         // 自动生成二维码内容
-        machine.setQrCode("MACHINE:" + request.getCode());
+        machine.setQrCode(request.getQrCode() != null && !request.getQrCode().trim().isEmpty()
+                ? request.getQrCode().trim()
+                : "MACHINE:" + request.getCode());
         machine.setCreatedAt(LocalDateTime.now());
 
         machineMapper.insert(machine);
@@ -156,10 +175,16 @@ public class MachineService {
             machine.setTonnage(request.getTonnage().intValue());
         }
         if (request.getStatus() != null) {
-            machine.setStatus(request.getStatus());
+            machine.setStatus(normalizeStatus(request.getStatus(), machine.getStatus()));
         }
         if (request.getLocation() != null) {
             machine.setLocation(request.getLocation());
+        }
+        if (request.getFactoryCode() != null) {
+            machine.setFactoryCode(request.getFactoryCode());
+        }
+        if (request.getWorkshop() != null) {
+            machine.setWorkshop(request.getWorkshop());
         }
         if (request.getPurchaseDate() != null) {
             machine.setPurchaseDate(request.getPurchaseDate());
@@ -240,5 +265,19 @@ public class MachineService {
             response.setTonnage(java.math.BigDecimal.valueOf(machine.getTonnage()));
         }
         return response;
+    }
+
+    private String normalizeStatus(String status, String defaultStatus) {
+        if (status == null || status.trim().isEmpty()) {
+            return defaultStatus;
+        }
+        String normalized = status.trim().toUpperCase(Locale.ROOT);
+        if (!"RUNNING".equals(normalized)
+                && !"IDLE".equals(normalized)
+                && !"MAINTENANCE".equals(normalized)
+                && !"STOPPED".equals(normalized)) {
+            throw new BusinessException("不支持的机台状态");
+        }
+        return normalized;
     }
 }

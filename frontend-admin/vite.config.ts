@@ -17,6 +17,13 @@ export default defineConfig({
       resolvers: [ElementPlusResolver()],
     }),
   ],
+  css: {
+    preprocessorOptions: {
+      scss: {
+        api: 'modern-compiler',
+      },
+    },
+  },
   server: {
     port: 3000,
     // 代理配置，将 /api 请求转发到后端

@@ -2,7 +2,6 @@ package com.injectmes.controller;
 
 import com.injectmes.common.R;
 import com.injectmes.dto.req.PageRequest;
-import com.injectmes.dto.req.StockInventoryCountRequest;
 import com.injectmes.dto.req.StockInventoryCreateRequest;
 import com.injectmes.dto.resp.PageResponse;
 import com.injectmes.dto.resp.StockInventoryResponse;
@@ -51,8 +50,16 @@ public class StockInventoryController {
      * 录入实盘
      */
     @PutMapping("/{id}/count")
-    public R<Void> count(@PathVariable Long id, @Valid @RequestBody StockInventoryCountRequest request) {
+    public R<Void> count(@PathVariable Long id, @Valid @RequestBody com.injectmes.dto.req.StockInventoryCountRequest request) {
         return stockInventoryService.count(id, request);
+    }
+
+    /**
+     * 提交审核
+     */
+    @PutMapping("/{id}/submit")
+    public R<Void> submit(@PathVariable Long id) {
+        return stockInventoryService.submit(id);
     }
 
     /**
@@ -69,5 +76,27 @@ public class StockInventoryController {
     @PutMapping("/{id}/reject")
     public R<Void> reject(@PathVariable Long id) {
         return stockInventoryService.reject(id);
+    }
+
+    /**
+     * 移动端快速实盘兼容接口
+     */
+    @PostMapping("/mobile-check")
+    public R<Void> mobileCheck(@RequestBody java.util.Map<String, Object> body) {
+        Object warehouseIdValue = body.get("warehouseId");
+        Object locationIdValue = body.get("locationId");
+        Object productIdValue = body.get("productId");
+        Object actualQuantityValue = body.get("actualQuantity");
+
+        if (warehouseIdValue == null || locationIdValue == null || productIdValue == null || actualQuantityValue == null) {
+            return R.fail("参数不能为空");
+        }
+
+        Long warehouseId = Long.valueOf(String.valueOf(warehouseIdValue));
+        Long locationId = Long.valueOf(String.valueOf(locationIdValue));
+        Long productId = Long.valueOf(String.valueOf(productIdValue));
+        Integer actualQuantity = new java.math.BigDecimal(String.valueOf(actualQuantityValue)).intValue();
+        String reason = body.get("reason") != null ? String.valueOf(body.get("reason")) : "移动端盘点";
+        return stockInventoryService.quickMobileCheck(warehouseId, locationId, productId, actualQuantity, reason);
     }
 }

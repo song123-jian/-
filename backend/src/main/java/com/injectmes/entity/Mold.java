@@ -21,7 +21,9 @@ public class Mold {
     private Integer cavities;
     private Integer lifetime;
     private Integer usedShots;
+    private Integer shotsSinceMaintenance;
     private Integer maintenanceCycle;
+    private Integer maintenanceCount;
     private LocalDateTime lastMaintenanceAt;
     private String status;
     private String remark;

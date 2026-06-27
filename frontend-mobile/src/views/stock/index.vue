@@ -38,10 +38,10 @@
         v-for="item in stockList"
         :key="item.id"
         :title="item.productName"
-        :label="`${item.productCode} · ${item.warehouseName} - ${item.locationCode}`"
+        :label="`${item.batchNo || '-'} · ${item.warehouseName} - ${item.locationCode || '-'}`"
       >
         <template #value>
-          <span class="stock-qty">{{ item.quantity }} {{ item.unit }}</span>
+          <span class="stock-qty">{{ item.qty }}{{ item.availableQty ? ` / ${item.availableQty}` : '' }}</span>
         </template>
       </van-cell>
     </van-cell-group>
@@ -83,6 +83,8 @@ const showLocationPicker = ref(false)
 const stockList = ref<any[]>([])
 const warehouses = ref<any[]>([])
 const locations = ref<any[]>([])
+const warehousePage = ref({ records: [] as any[] })
+const locationPage = ref({ records: [] as any[] })
 
 /** 仓库选择列 */
 const warehouseColumns = ref<any[]>([])
@@ -93,7 +95,8 @@ const locationColumns = ref<any[]>([])
 async function loadWarehouses() {
   try {
     const res = await getWarehouses() as any
-    warehouses.value = res.data || res || []
+    warehousePage.value = res.data || res || { records: [] }
+    warehouses.value = warehousePage.value.records || []
     warehouseColumns.value = warehouses.value.map((w: any) => ({
       text: w.name,
       value: w.id,
@@ -107,7 +110,8 @@ async function loadWarehouses() {
 async function loadLocations(wId?: number) {
   try {
     const res = await getLocations(wId) as any
-    locations.value = res.data || res || []
+    locationPage.value = res.data || res || { records: [] }
+    locations.value = locationPage.value.records || []
     locationColumns.value = locations.value.map((l: any) => ({
       text: l.code,
       value: l.id,
@@ -125,7 +129,7 @@ async function onSearch() {
       warehouseId: warehouseId.value,
       locationId: locationId.value,
     }) as any
-    stockList.value = res.data || res || []
+    stockList.value = res.data?.records || res.data || res?.records || res || []
   } catch {
     stockList.value = []
   }

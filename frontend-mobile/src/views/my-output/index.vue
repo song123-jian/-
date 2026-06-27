@@ -33,7 +33,7 @@
           v-for="record in records"
           :key="record.id"
           :title="record.productName"
-          :label="`${record.workOrderNo} · ${record.reportTime}`"
+          :label="`${record.workOrderNo} · ${record.createdAt || record.reportTime || ''}`"
         >
           <template #value>
             <div class="record-value">
@@ -79,14 +79,14 @@ async function loadData() {
   try {
     const [statsRes, recordsRes] = await Promise.all([
       getMyOutputStats({ type: activeTab.value as 'day' | 'month' }),
-      getMyReports({ type: activeTab.value as 'day' | 'month' }),
+      getMyReports({ type: activeTab.value as 'day' | 'month', page: 1, size: 50 }),
     ])
     const statsData = (statsRes as any).data || statsRes || {}
     stats.totalQuantity = statsData.totalQuantity || 0
     stats.totalDefect = statsData.totalDefect || 0
     stats.reportCount = statsData.reportCount || 0
 
-    records.value = (recordsRes as any).data || recordsRes || []
+    records.value = (recordsRes as any).data?.records || (recordsRes as any).data || []
   } catch {
     // 静默处理
   }
