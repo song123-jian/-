@@ -26,7 +26,7 @@
 
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading">
-        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column prop="id" label="编号" width="80" />
         <el-table-column prop="inventoryNo" label="盘点单号" width="160" />
         <el-table-column prop="warehouseName" label="仓库" width="140" />
         <el-table-column prop="inventoryType" label="盘点类型" width="100">
@@ -71,7 +71,7 @@
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="520px">
       <el-form ref="formRef" :model="form" :rules="formRules" label-width="90px">
         <el-form-item label="仓库" prop="warehouseId">
-          <el-input v-model="form.warehouseId" placeholder="请输入仓库ID" />
+          <el-input v-model="form.warehouseId" placeholder="请输入仓库编号" />
         </el-form-item>
         <el-form-item label="盘点类型" prop="inventoryType">
           <el-select v-model="form.inventoryType" placeholder="请选择盘点类型">
@@ -133,7 +133,7 @@ const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
 const form = reactive({ id: 0, warehouseId: '', inventoryType: 'FULL', remark: '' })
 
 const formRules: FormRules = {
-  warehouseId: [{ required: true, message: '请输入仓库ID', trigger: 'blur' }],
+  warehouseId: [{ required: true, message: '请输入仓库编号', trigger: 'blur' }],
   inventoryType: [{ required: true, message: '请选择盘点类型', trigger: 'change' }],
 }
 

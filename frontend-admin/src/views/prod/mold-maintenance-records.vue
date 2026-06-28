@@ -28,7 +28,7 @@
 
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading">
-        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column prop="id" label="编号" width="80" />
         <el-table-column prop="operateTime" label="保养时间" width="180">
           <template #default="{ row }">
             {{ formatDateTime(row.operateTime) }}

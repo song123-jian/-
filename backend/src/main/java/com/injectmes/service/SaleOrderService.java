@@ -294,6 +294,21 @@ public class SaleOrderService {
     /**
      * 生成订单号：SO+YYYYMMDD+3位序号（如SO20260617001）
      */
+    @Transactional
+    public R<Void> delete(Long id) {
+        SaleOrder saleOrder = saleOrderMapper.selectById(id);
+        if (saleOrder == null) {
+            throw new BusinessException("销售订单不存在");
+        }
+
+        saleOrderItemMapper.delete(
+                new LambdaQueryWrapper<SaleOrderItem>()
+                        .eq(SaleOrderItem::getSaleOrderId, id)
+        );
+        saleOrderMapper.deleteById(id);
+        return R.ok("删除成功", null);
+    }
+
     private String generateOrderNo() {
         return seqNumberService.generateNo("SO", 3);
     }

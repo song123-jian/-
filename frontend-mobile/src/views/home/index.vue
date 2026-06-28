@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="home-page">
     <!-- 顶部用户信息 -->
     <div class="user-header">

@@ -1,188 +1,229 @@
 <template>
-  <div class="page-container">
-    <PageHeader title="机台管理">
-      <el-button type="primary" @click="handleAdd">
-        <el-icon><Plus /></el-icon>新增机台
+  <MasterCrudPage :title="config.title" :metrics="metrics">
+    <template #toolbar>
+      <el-button
+        v-for="action in config.toolbarActions"
+        :key="action.key"
+        :type="action.type || 'default'"
+        :plain="action.plain"
+        :disabled="action.requiresSelection && selectedRows.length === 0"
+        @click="handleToolbarAction(action.key)"
+      >
+        <el-icon v-if="action.icon"><component :is="action.icon" /></el-icon>
+        {{ action.label }}
       </el-button>
-    </PageHeader>
+      <input ref="fileInput" class="hidden-file-input" type="file" accept=".xlsx,.xls" @change="handleFileChange" />
+    </template>
 
-    <SearchBar @search="handleSearch" @reset="handleReset">
-      <el-form-item label="状态">
-        <el-select v-model="searchStatus" placeholder="请选择" clearable>
-          <el-option label="运行中" value="RUNNING" />
-          <el-option label="空闲" value="IDLE" />
-          <el-option label="停机" value="STOPPED" />
-          <el-option label="维修中" value="MAINTENANCE" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="车间">
-        <el-input v-model="searchWorkshop" placeholder="请输入车间" clearable />
-      </el-form-item>
-    </SearchBar>
+    <template #search>
+      <SearchBar :keyword="searchKeyword" @search="handleSearch" @reset="handleReset">
+        <template #default>
+          <el-form-item v-for="field in config.searchFields" :key="field.prop" :label="field.label">
+            <el-select
+              v-if="field.type === 'select'"
+              v-model="searchState[field.prop as keyof typeof searchState]"
+              :placeholder="field.placeholder || '全部'"
+              clearable
+              :filterable="field.filterable"
+              :style="{ width: field.width || '140px' }"
+            >
+              <el-option v-for="option in field.options || []" :key="String(option.value)" :label="option.label" :value="option.value" />
+            </el-select>
+            <el-input
+              v-else
+              v-model="searchState[field.prop as keyof typeof searchState]"
+              :placeholder="field.placeholder || '请输入'"
+              clearable
+              :style="{ width: field.width || '180px' }"
+            />
+          </el-form-item>
+        </template>
+      </SearchBar>
+    </template>
 
-    <el-card shadow="hover">
-      <el-table :data="tableData" stripe v-loading="loading">
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="code" label="机台编号" width="120" />
-        <el-table-column prop="name" label="机台名称" width="150" />
-        <el-table-column prop="model" label="型号" width="120" />
-        <el-table-column prop="tonnage" label="吨位" width="100" />
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="statusTagType(row.status)">{{ statusLabel(row.status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="location" label="位置" width="120" />
-        <el-table-column prop="factoryCode" label="工厂" width="120" />
-        <el-table-column prop="workshop" label="车间" width="120" />
-        <el-table-column prop="createdAt" label="创建时间" width="180" />
-        <el-table-column label="操作" fixed="right" width="150">
-          <template #default="{ row }">
-            <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
-            <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-pagination
-        v-model:current-page="pagination.page"
-        v-model:page-size="pagination.pageSize"
-        :total="pagination.total"
-        :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
-        class="pagination"
-        @size-change="fetchData"
-        @current-change="fetchData"
+    <template #table>
+      <BaseCrudTable
+        :config="config"
+        :rows="tableData"
+        :loading="loading"
+        :pagination="pagination"
+        action-label="操作"
+        show-selection
+        @selection-change="handleSelectionChange"
+        @page-change="fetchData"
+        @row-action="handleRowAction"
       />
-    </el-card>
+    </template>
 
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px">
-      <el-form ref="formRef" :model="form" :rules="formRules" label-width="80px">
-        <el-form-item label="机台编号" prop="code">
-          <el-input v-model="form.code" placeholder="请输入机台编号" />
-        </el-form-item>
-        <el-form-item label="机台名称" prop="name">
-          <el-input v-model="form.name" placeholder="请输入机台名称" />
-        </el-form-item>
-        <el-form-item label="型号" prop="model">
-          <el-input v-model="form.model" placeholder="请输入型号" />
-        </el-form-item>
-        <el-form-item label="吨位" prop="tonnage">
-          <el-input-number v-model="form.tonnage" :min="1" />
-        </el-form-item>
-        <el-form-item label="位置" prop="location">
-          <el-input v-model="form.location" placeholder="请输入位置" />
-        </el-form-item>
-        <el-form-item label="工厂编码" prop="factoryCode">
-          <el-input v-model="form.factoryCode" placeholder="请输入工厂编码" />
-        </el-form-item>
-        <el-form-item label="车间" prop="workshop">
-          <el-input v-model="form.workshop" placeholder="请输入车间" />
-        </el-form-item>
-        <el-form-item label="状态" prop="status">
-          <el-select v-model="form.status" placeholder="请选择状态">
-            <el-option label="运行中" value="RUNNING" />
-            <el-option label="空闲" value="IDLE" />
-            <el-option label="停机" value="STOPPED" />
-            <el-option label="维修中" value="MAINTENANCE" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit">确定</el-button>
-      </template>
+    <template #detail>
+      <BaseCrudDetail :title="config.detailTitle" :empty-text="config.emptyDetailText" :row="selectedMachine" :items="config.detailItems" />
+    </template>
+
+    <BaseCrudForm v-model="dialogVisible" :title="dialogTitle" :config="config" :model="form" :is-editing="!!form.id" @submit="handleSubmit" />
+
+    <el-dialog v-model="qrVisible" title="机台二维码" width="420px">
+      <div v-if="qrCode" class="qr-box">
+        <img :src="qrCode" alt="机台二维码" />
+      </div>
+      <el-empty v-else description="暂无二维码" />
     </el-dialog>
-  </div>
+  </MasterCrudPage>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
-import type { FormInstance, FormRules } from 'element-plus'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import PageHeader from '@/components/PageHeader.vue'
+import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import MasterCrudPage from '@/components/MasterCrudPage.vue'
 import SearchBar from '@/components/SearchBar.vue'
-import { getMachineList, createMachine, updateMachine, deleteMachine } from '@/api/machine'
+import BaseCrudTable from '@/components/BaseCrudTable.vue'
+import BaseCrudForm from '@/components/BaseCrudForm.vue'
+import BaseCrudDetail from '@/components/BaseCrudDetail.vue'
+import { exportData, importData } from '@/api/importExport'
+import { createMachine, deleteMachine, getMachineList, getMachineQrCode, updateMachine } from '@/api/machine'
+import { machinePageConfig as config } from '@/views/base/base-data-schema'
+import { useBaseCrudPage } from '@/composables/useBaseCrudPage'
 
-const loading = ref(false)
-const tableData = ref<any[]>([])
-const searchStatus = ref('')
-const searchWorkshop = ref('')
-const searchKeyword = ref('')
-const dialogVisible = ref(false)
-const dialogTitle = ref('新增机台')
-const formRef = ref<FormInstance>()
+const router = useRouter()
+const fileInput = ref<HTMLInputElement | null>(null)
+const qrVisible = ref(false)
+const qrCode = ref('')
 
-const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
-
-const form = reactive({
-  id: 0, code: '', name: '', model: '', tonnage: 100, location: '', factoryCode: '', workshop: '', status: 'IDLE',
+const {
+  loading,
+  tableData,
+  selectedRow: selectedMachine,
+  selectedRows,
+  dialogVisible,
+  dialogTitle,
+  searchKeyword,
+  searchState,
+  form,
+  pagination,
+  metrics,
+  fetchData,
+  handleSearch,
+  handleReset,
+  handleSelectionChange,
+  openAdd: handleAdd,
+  openEdit: handleEdit,
+  submitForm: handleSubmit,
+  deleteRow: handleDelete,
+} = useBaseCrudPage({
+  config,
+  api: {
+    list: getMachineList,
+    create: createMachine,
+    update: updateMachine,
+    remove: deleteMachine,
+  },
+  titles: {
+    add: '新增机台',
+    edit: '编辑机台',
+  },
+  messages: {
+    createSuccess: '创建成功',
+    updateSuccess: '更新成功',
+    deleteSuccess: '删除成功',
+  },
+  deleteConfirmText: (row) => `确认删除机台 ${row.name}？`,
 })
 
-const formRules: FormRules = {
-  code: [{ required: true, message: '请输入机台编号', trigger: 'blur' }],
-  name: [{ required: true, message: '请输入机台名称', trigger: 'blur' }],
-  factoryCode: [{ required: true, message: '请输入工厂编码', trigger: 'blur' }],
-  workshop: [{ required: true, message: '请输入车间', trigger: 'blur' }],
-}
-
-function statusLabel(status: string) {
-  const map: Record<string, string> = { RUNNING: '运行中', IDLE: '空闲', STOPPED: '停机', MAINTENANCE: '维修中' }
-  return map[status] || status
-}
-
-function statusTagType(status: string) {
-  const map: Record<string, string> = { RUNNING: 'success', IDLE: 'info', STOPPED: 'danger', MAINTENANCE: 'warning' }
-  return map[status] || 'info'
-}
-
-async function fetchData() {
-  loading.value = true
+async function handleToggle(row: any) {
+  const nextStatus = row.status === 'RUNNING' ? 'STOPPED' : 'RUNNING'
   try {
-    const res: any = await getMachineList({
-      page: pagination.page,
-      pageSize: pagination.pageSize,
-      status: searchStatus.value || undefined,
-      keyword: searchKeyword.value || searchWorkshop.value || undefined,
-      workshop: searchWorkshop.value || undefined,
-    })
-    tableData.value = res.data?.list || []
-    pagination.total = res.data?.total || 0
-  } catch { /* */ } finally { loading.value = false }
+    await updateMachine(row.id, { status: nextStatus })
+    ElMessage.success('状态已更新')
+    fetchData()
+  } catch {}
 }
 
-function handleSearch(formData: { keyword: string }) { searchKeyword.value = formData.keyword || ''; pagination.page = 1; fetchData() }
-function handleReset() { searchStatus.value = ''; searchWorkshop.value = ''; pagination.page = 1; fetchData() }
-
-function handleAdd() {
-  dialogTitle.value = '新增机台'
-  Object.assign(form, { id: 0, code: '', name: '', model: '', tonnage: 100, location: '', factoryCode: '', workshop: '', status: 'IDLE' })
-  dialogVisible.value = true
-}
-
-function handleEdit(row: any) {
-  dialogTitle.value = '编辑机台'
-  Object.assign(form, row)
-  dialogVisible.value = true
-}
-
-async function handleSubmit() {
-  const valid = await formRef.value?.validate().catch(() => false)
-  if (!valid) return
+async function handleQr(row: any) {
   try {
-    if (form.id) { await updateMachine(form.id, form); ElMessage.success('更新成功') }
-    else { await createMachine(form); ElMessage.success('创建成功') }
-    dialogVisible.value = false; fetchData()
-  } catch { /* */ }
+    const res: any = await getMachineQrCode(row.id)
+    qrCode.value = res.data || ''
+    qrVisible.value = true
+  } catch {
+    ElMessage.error('二维码生成失败')
+  }
 }
 
-async function handleDelete(row: any) {
-  await ElMessageBox.confirm('确定删除该机台？', '提示', { type: 'warning' })
-  try { await deleteMachine(row.id); ElMessage.success('删除成功'); fetchData() } catch { /* */ }
+async function handleBatchStatus(status: string) {
+  if (selectedRows.value.length === 0) return
+  try {
+    for (const row of selectedRows.value) {
+      await updateMachine(row.id, { status })
+    }
+    ElMessage.success('批量更新成功')
+    selectedRows.value = []
+    fetchData()
+  } catch {}
 }
 
-onMounted(() => { fetchData() })
+function handleImportClick() {
+  fileInput.value?.click()
+}
+
+async function handleFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  try {
+    await importData('machine', file)
+    ElMessage.success('导入成功')
+    fetchData()
+  } catch {}
+}
+
+async function handleExport() {
+  try {
+    await exportData('machine', `机台导出_${Date.now()}.xlsx`)
+  } catch {}
+}
+
+function goLogs() {
+  router.push({ path: '/system/logs', query: { keyword: config.logKeyword } })
+}
+
+function handleInspect(row: any) {
+  selectedMachine.value = row
+}
+
+function handleRowAction(key: string, row: any) {
+  if (key === 'inspect') return handleInspect(row)
+  if (key === 'toggle') return handleToggle(row)
+  if (key === 'qrcode') return handleQr(row)
+  if (key === 'edit') return handleEdit(row)
+  if (key === 'delete') return handleDelete(row)
+}
+
+async function handleToolbarAction(key: string) {
+  if (key === 'add') return handleAdd()
+  if (key === 'refresh') return fetchData()
+  if (key === 'batch-enable') return handleBatchStatus('RUNNING')
+  if (key === 'batch-stop') return handleBatchStatus('STOPPED')
+  if (key === 'import') return handleImportClick()
+  if (key === 'export') return handleExport()
+  if (key === 'logs') return goLogs()
+}
+
+onMounted(fetchData)
 </script>
 
 <style scoped lang="scss">
-.pagination { margin-top: 16px; display: flex; justify-content: flex-end; }
+.hidden-file-input {
+  display: none;
+}
+
+.qr-box {
+  display: flex;
+  justify-content: center;
+}
+
+.qr-box img {
+  width: 280px;
+  height: 280px;
+  object-fit: contain;
+}
 </style>

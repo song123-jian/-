@@ -2,11 +2,12 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { login as loginApi, logout as logoutApi, getUserInfo as getUserInfoApi } from '@/api/auth'
 import router from '@/router'
+import { clearStoredToken, getStoredToken, setStoredToken } from '@/utils/auth-storage'
 
 // 用户状态管理
 export const useUserStore = defineStore('user', () => {
   // Token
-  const token = ref<string>(localStorage.getItem('token') || '')
+  const token = ref<string>(getStoredToken())
   // 用户信息
   const userInfo = ref<any>({})
   // 角色列表
@@ -19,7 +20,7 @@ export const useUserStore = defineStore('user', () => {
       throw new Error('登录返回数据异常')
     }
     token.value = res.data.token
-    localStorage.setItem('token', res.data.token)
+    setStoredToken(res.data.token)
     // 获取用户信息（容错：失败不阻断登录跳转）
     try {
       await getUserInfoAction()
@@ -47,7 +48,7 @@ export const useUserStore = defineStore('user', () => {
     token.value = ''
     userInfo.value = {}
     roles.value = []
-    localStorage.removeItem('token')
+    clearStoredToken()
     router.push('/login')
   }
 

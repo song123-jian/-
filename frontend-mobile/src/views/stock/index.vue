@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="stock-page">
     <van-nav-bar title="库存查询" left-arrow @click-left="router.back()" />
 

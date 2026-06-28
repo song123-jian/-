@@ -1,6 +1,7 @@
 package com.injectmes.controller;
 
 import com.injectmes.common.R;
+import com.injectmes.annotation.OperationLog;
 import com.injectmes.dto.req.MachineCreateRequest;
 import com.injectmes.dto.req.MachineUpdateRequest;
 import com.injectmes.dto.req.PageRequest;
@@ -27,6 +28,7 @@ public class MachineController {
      * 机台列表（分页）
      */
     @GetMapping
+    @OperationLog(module = "机台管理", action = "查询列表")
     public R<PageResponse<MachineResponse>> list(PageRequest request) {
         return machineService.list(request);
     }
@@ -35,7 +37,8 @@ public class MachineController {
      * 机台详情
      */
     @GetMapping("/{id}")
-    public R<MachineResponse> getById(@PathVariable Long id) {
+    @OperationLog(module = "机台管理", action = "查看详情")
+    public R<MachineResponse> getById(@PathVariable(name = "id") Long id) {
         return machineService.getById(id);
     }
 
@@ -43,6 +46,7 @@ public class MachineController {
      * 新增机台
      */
     @PostMapping
+    @OperationLog(module = "机台管理", action = "新增")
     public R<MachineResponse> create(@Valid @RequestBody MachineCreateRequest request) {
         return machineService.create(request);
     }
@@ -51,7 +55,8 @@ public class MachineController {
      * 编辑机台
      */
     @PutMapping("/{id}")
-    public R<MachineResponse> update(@PathVariable Long id, @Valid @RequestBody MachineUpdateRequest request) {
+    @OperationLog(module = "机台管理", action = "编辑")
+    public R<MachineResponse> update(@PathVariable(name = "id") Long id, @Valid @RequestBody MachineUpdateRequest request) {
         return machineService.update(id, request);
     }
 
@@ -59,7 +64,8 @@ public class MachineController {
      * 删除机台
      */
     @DeleteMapping("/{id}")
-    public R<Void> delete(@PathVariable Long id) {
+    @OperationLog(module = "机台管理", action = "删除")
+    public R<Void> delete(@PathVariable(name = "id") Long id) {
         machineService.delete(id);
         return R.ok();
     }
@@ -68,7 +74,8 @@ public class MachineController {
      * 生成二维码
      */
     @GetMapping("/{id}/qrcode")
-    public R<String> generateQrCode(@PathVariable Long id) {
+    @OperationLog(module = "机台管理", action = "生成二维码")
+    public R<String> generateQrCode(@PathVariable(name = "id") Long id) {
         return machineService.generateQrCode(id);
     }
 }

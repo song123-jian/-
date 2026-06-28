@@ -29,7 +29,7 @@ export default defineConfig({
     // 代理配置，将 /api 请求转发到后端
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8081',
         changeOrigin: true,
       },
     },

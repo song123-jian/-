@@ -2,6 +2,8 @@ import request from './index'
 
 // 获取模具列表
 export const getMoldList = (params: any) => request.get('/molds', { params })
+// 获取模具详情
+export const getMoldDetail = (id: number) => request.get(`/molds/${id}`)
 // 获取模具模次统计
 export const getMoldShotsStats = (id: number) => request.get(`/molds/${id}/shots`)
 // 创建模具

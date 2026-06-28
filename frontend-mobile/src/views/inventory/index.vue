@@ -24,10 +24,10 @@
         />
         <van-field
           v-model="productId"
-          label="产品ID"
-          placeholder="请输入产品ID"
+          label="产品编号"
+          placeholder="请输入产品编号"
           type="digit"
-          :rules="[{ required: true, message: '请输入产品ID' }]"
+          :rules="[{ required: true, message: '请输入产品编号' }]"
         />
         <van-field
           v-model="actualQuantity"
@@ -125,7 +125,7 @@ async function onSubmit() {
     return
   }
   if (!productId.value) {
-    showToast('请输入产品ID')
+    showToast('请输入产品编号')
     return
   }
   submitting.value = true

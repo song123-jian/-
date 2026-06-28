@@ -19,13 +19,17 @@ defineProps<{
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  gap: 16px;
+  min-height: 44px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e8ebf0;
 
   .page-title {
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 600;
     color: #303133;
     margin: 0;
+    line-height: 1.2;
   }
 
   .page-extra {

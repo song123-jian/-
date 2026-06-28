@@ -30,8 +30,8 @@ public class ReportController {
      */
     @GetMapping("/oee")
     public R<OeeResponse> oeeStats(
-            @RequestParam(required = false) Long machineId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+            @RequestParam(name = "machineId", required = false) Long machineId,
+            @RequestParam(name = "date", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         return dashboardService.oeeStats(machineId, date);
     }
 }

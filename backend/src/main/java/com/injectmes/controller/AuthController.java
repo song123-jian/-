@@ -9,8 +9,6 @@ import com.injectmes.security.JwtUtils;
 import com.injectmes.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -80,7 +78,7 @@ public class AuthController {
      */
     @PostMapping("/refresh")
     public R<LoginResponse> refresh(@RequestBody Map<String, String> body) {
-        String refreshToken = body.get("refreshToken");
+        String refreshToken = body.getOrDefault("refreshToken", body.get("token"));
         return authService.refresh(refreshToken);
     }
 

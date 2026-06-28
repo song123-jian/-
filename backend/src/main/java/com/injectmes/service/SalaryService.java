@@ -410,6 +410,71 @@ public class SalaryService {
     /**
      * 解析月份字符串
      */
+    @Transactional
+    public R<PiecePriceResponse> updatePrice(Long id, PiecePriceRequest request) {
+        PiecePrice piecePrice = piecePriceMapper.selectById(id);
+        if (piecePrice == null) {
+            throw new BusinessException("计件单价不存在");
+        }
+        BeanUtils.copyProperties(request, piecePrice);
+        piecePrice.setId(id);
+        piecePriceMapper.updateById(piecePrice);
+        return R.ok("更新成功", convertPriceToResponse(piecePrice));
+    }
+
+    @Transactional
+    public R<Void> deletePrice(Long id) {
+        PiecePrice piecePrice = piecePriceMapper.selectById(id);
+        if (piecePrice == null) {
+            throw new BusinessException("计件单价不存在");
+        }
+        piecePriceMapper.deleteById(id);
+        return R.ok("删除成功", null);
+    }
+
+    @Transactional
+    public R<SalaryAdjustResponse> updateAdjust(Long id, SalaryAdjustRequest request) {
+        SalaryAdjust salaryAdjust = salaryAdjustMapper.selectById(id);
+        if (salaryAdjust == null) {
+            throw new BusinessException("奖惩记录不存在");
+        }
+        BeanUtils.copyProperties(request, salaryAdjust);
+        salaryAdjust.setId(id);
+        salaryAdjustMapper.updateById(salaryAdjust);
+        return R.ok("更新成功", convertAdjustToResponse(salaryAdjust));
+    }
+
+    @Transactional
+    public R<Void> deleteAdjust(Long id) {
+        SalaryAdjust salaryAdjust = salaryAdjustMapper.selectById(id);
+        if (salaryAdjust == null) {
+            throw new BusinessException("奖惩记录不存在");
+        }
+        salaryAdjustMapper.deleteById(id);
+        return R.ok("删除成功", null);
+    }
+
+    @Transactional
+    public R<Void> monthlySettle(Long userId, String month) {
+        monthlySummary(userId, month);
+        YearMonth yearMonth = parseYearMonth(month);
+        LocalDate monthStart = LocalDate.of(yearMonth.year, yearMonth.month, 1);
+        LocalDate monthEnd = monthStart.plusMonths(1);
+
+        LambdaQueryWrapper<SalaryDaily> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SalaryDaily::getUserId, userId);
+        wrapper.ge(SalaryDaily::getWorkDate, monthStart);
+        wrapper.lt(SalaryDaily::getWorkDate, monthEnd);
+        wrapper.eq(SalaryDaily::getStatus, SalaryStatus.DRAFT.name());
+
+        List<SalaryDaily> dailyList = salaryDailyMapper.selectList(wrapper);
+        for (SalaryDaily daily : dailyList) {
+            daily.setStatus(SalaryStatus.SETTLED.name());
+            salaryDailyMapper.updateById(daily);
+        }
+        return R.ok("结算成功", null);
+    }
+
     private YearMonth parseYearMonth(String month) {
         try {
             String[] parts = month.split("-");

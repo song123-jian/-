@@ -50,6 +50,9 @@ public class CustomerService {
                     .or().like(Customer::getShortName, keyword)
             );
         }
+        if (request.getStatus() != null && !request.getStatus().trim().isEmpty()) {
+            wrapper.eq(Customer::getStatus, Integer.valueOf(request.getStatus().trim()));
+        }
 
         // 按创建时间降序
         wrapper.orderByDesc(Customer::getCreatedAt);

@@ -61,6 +61,31 @@ public class ExpenseService {
     }
 
     /**
+     * 更新费用
+     */
+    @Transactional
+    public R<ExpenseResponse> update(Long id, ExpenseRequest request) {
+        ExpenseRecord record = requireRecord(id);
+        record.setExpenseType(request.getExpenseType());
+        record.setAmount(request.getAmount());
+        record.setExpenseDate(request.getExpenseDate());
+        record.setPayee(request.getPayee());
+        record.setRemark(request.getRemark());
+        expenseRecordMapper.updateById(record);
+        return R.ok("更新成功", convertToResponse(record));
+    }
+
+    /**
+     * 删除费用
+     */
+    @Transactional
+    public R<Void> delete(Long id) {
+        requireRecord(id);
+        expenseRecordMapper.deleteById(id);
+        return R.ok("删除成功", null);
+    }
+
+    /**
      * 费用列表（分页，支持expenseType/日期范围筛选）
      */
     public R<PageResponse<ExpenseResponse>> list(PageRequest request, String expenseType,
@@ -106,6 +131,14 @@ public class ExpenseService {
      */
     private String generateExpenseNo() {
         return seqNumberService.generateNo("EXP", 3);
+    }
+
+    private ExpenseRecord requireRecord(Long id) {
+        ExpenseRecord record = expenseRecordMapper.selectById(id);
+        if (record == null) {
+            throw new BusinessException("费用记录不存在");
+        }
+        return record;
     }
 
     /**

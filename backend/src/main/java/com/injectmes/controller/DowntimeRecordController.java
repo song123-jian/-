@@ -37,12 +37,12 @@ public class DowntimeRecordController {
 
     @GetMapping
     public R<PageResponse<DowntimeRecordResponse>> list(PageRequest request,
-                                                        @RequestParam(required = false) Long machineId,
-                                                        @RequestParam(required = false) String reason,
-                                                        @RequestParam(required = false) String downtimeType,
-                                                        @RequestParam(required = false)
+                                                        @RequestParam(name = "machineId", required = false) Long machineId,
+                                                        @RequestParam(name = "reason", required = false) String reason,
+                                                        @RequestParam(name = "downtimeType", required = false) String downtimeType,
+                                                        @RequestParam(name = "startDate", required = false)
                                                         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-                                                        @RequestParam(required = false)
+                                                        @RequestParam(name = "endDate", required = false)
                                                         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return downtimeRecordService.list(request, machineId, reason, downtimeType, startDate, endDate);
     }
@@ -55,7 +55,7 @@ public class DowntimeRecordController {
     }
 
     @PutMapping("/{id}")
-    public R<DowntimeRecordResponse> update(@PathVariable Long id,
+    public R<DowntimeRecordResponse> update(@PathVariable(name = "id") Long id,
                                             @Valid @RequestBody DowntimeRecordRequest request,
                                             @AuthenticationPrincipal LoginUserDetails loginUser) {
         Long operatorId = loginUser != null ? loginUser.getUserId() : null;
@@ -63,7 +63,7 @@ public class DowntimeRecordController {
     }
 
     @DeleteMapping("/{id}")
-    public R<Void> delete(@PathVariable Long id) {
+    public R<Void> delete(@PathVariable(name = "id") Long id) {
         return downtimeRecordService.delete(id);
     }
 }

@@ -1,6 +1,7 @@
 import axios from 'axios'
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
 import { ElMessage } from 'element-plus'
+import { clearStoredToken, getStoredToken } from '@/utils/auth-storage'
 
 // 创建 axios 实例
 const service: AxiosInstance = axios.create({
@@ -11,7 +12,7 @@ const service: AxiosInstance = axios.create({
 // 请求拦截器：自动添加 Token
 service.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
+    const token = getStoredToken()
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -34,7 +35,7 @@ service.interceptors.response.use(
       ElMessage.error(res.message || '请求失败')
       // Token 过期或无效
       if (res.code === 401) {
-        localStorage.removeItem('token')
+        clearStoredToken()
         window.location.href = '/login'
       }
       return Promise.reject(new Error(res.message || '请求失败'))
@@ -56,7 +57,7 @@ service.interceptors.response.use(
     ElMessage.error(message)
     // 401 跳转登录
     if (status === 401) {
-      localStorage.removeItem('token')
+      clearStoredToken()
       window.location.href = '/login'
     }
     return Promise.reject(error)

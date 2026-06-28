@@ -44,6 +44,12 @@ public class ImportExportService {
     private CustomerMapper customerMapper;
 
     @Autowired
+    private MachineMapper machineMapper;
+
+    @Autowired
+    private MoldMapper moldMapper;
+
+    @Autowired
     private PiecePriceMapper piecePriceMapper;
 
     @Autowired
@@ -88,6 +94,8 @@ public class ImportExportService {
             switch (type) {
                 case "product" -> importProduct(file);
                 case "customer" -> importCustomer(file);
+                case "machine" -> importMachine(file);
+                case "mold" -> importMold(file);
                 case "piecePrice" -> importPiecePrice(file);
                 case "stock" -> importStock(file);
                 default -> throw new BusinessException("不支持的导入类型: " + type);
@@ -121,6 +129,9 @@ public class ImportExportService {
                 case "payment" -> exportPayment(response);
                 case "stock" -> exportStock(response);
                 case "qcRecord" -> exportQcRecord(response);
+                case "product" -> exportProduct(response);
+                case "machine" -> exportMachine(response);
+                case "mold" -> exportMold(response);
                 default -> throw new BusinessException("不支持的导出类型: " + type);
             }
         } catch (BusinessException e) {
@@ -147,6 +158,22 @@ public class ImportExportService {
     private void importCustomer(MultipartFile file) throws IOException {
         EasyExcel.read(file.getInputStream(), CustomerImportDTO.class,
                 new DataImportListener<>(customerMapper, CustomerImportDTO.class)).sheet().doRead();
+    }
+
+    /**
+     * 导入机台信息
+     */
+    private void importMachine(MultipartFile file) throws IOException {
+        EasyExcel.read(file.getInputStream(), MachineImportDTO.class,
+                new DataImportListener<>(machineMapper, MachineImportDTO.class)).sheet().doRead();
+    }
+
+    /**
+     * 导入模具信息
+     */
+    private void importMold(MultipartFile file) throws IOException {
+        EasyExcel.read(file.getInputStream(), MoldImportDTO.class,
+                new DataImportListener<>(moldMapper, MoldImportDTO.class)).sheet().doRead();
     }
 
     /**
@@ -190,6 +217,86 @@ public class ImportExportService {
         }
 
         writeExcel(response, exportList, SaleOrderExportDTO.class, "销售订单");
+    }
+
+    /**
+     * 导出产品
+     */
+    private void exportProduct(HttpServletResponse response) throws IOException {
+        List<Product> dataList = productMapper.selectList(new LambdaQueryWrapper<Product>().orderByDesc(Product::getCreatedAt));
+        List<ProductExportDTO> exportList = new ArrayList<>();
+        for (Product item : dataList) {
+            ProductExportDTO dto = new ProductExportDTO();
+            dto.setId(item.getId());
+            dto.setCode(item.getCode());
+            dto.setName(item.getName());
+            dto.setSpec(item.getSpec());
+            dto.setType(item.getType());
+            dto.setUnit(item.getUnit());
+            dto.setPiecePrice(item.getPiecePrice());
+            dto.setCavityYield(item.getCavityYield());
+            dto.setCycleTimeSec(item.getCycleTimeSec());
+            dto.setSafeStock(item.getSafeStock());
+            dto.setWeightG(item.getWeightG());
+            dto.setRawMaterialUsage(item.getRawMaterialUsage());
+            dto.setColor(item.getColor());
+            dto.setStatus(item.getStatus() != null ? String.valueOf(item.getStatus()) : null);
+            dto.setCreatedAt(item.getCreatedAt() != null ? item.getCreatedAt().toString() : "");
+            exportList.add(dto);
+        }
+        writeExcel(response, exportList, ProductExportDTO.class, "产品");
+    }
+
+    /**
+     * 导出机台
+     */
+    private void exportMachine(HttpServletResponse response) throws IOException {
+        List<Machine> dataList = machineMapper.selectList(new LambdaQueryWrapper<Machine>().orderByDesc(Machine::getCreatedAt));
+        List<MachineExportDTO> exportList = new ArrayList<>();
+        for (Machine item : dataList) {
+            MachineExportDTO dto = new MachineExportDTO();
+            dto.setId(item.getId());
+            dto.setCode(item.getCode());
+            dto.setName(item.getName());
+            dto.setModel(item.getModel());
+            dto.setTonnage(item.getTonnage());
+            dto.setStatus(item.getStatus());
+            dto.setQrCode(item.getQrCode());
+            dto.setLocation(item.getLocation());
+            dto.setFactoryCode(item.getFactoryCode());
+            dto.setWorkshop(item.getWorkshop());
+            dto.setPurchaseDate(item.getPurchaseDate() != null ? item.getPurchaseDate().toString() : "");
+            dto.setRemark(item.getRemark());
+            dto.setCreatedAt(item.getCreatedAt() != null ? item.getCreatedAt().toString() : "");
+            exportList.add(dto);
+        }
+        writeExcel(response, exportList, MachineExportDTO.class, "机台");
+    }
+
+    /**
+     * 导出模具
+     */
+    private void exportMold(HttpServletResponse response) throws IOException {
+        List<Mold> dataList = moldMapper.selectList(new LambdaQueryWrapper<Mold>().orderByDesc(Mold::getCreatedAt));
+        List<MoldExportDTO> exportList = new ArrayList<>();
+        for (Mold item : dataList) {
+            MoldExportDTO dto = new MoldExportDTO();
+            dto.setId(item.getId());
+            dto.setCode(item.getCode());
+            dto.setName(item.getName());
+            dto.setProductId(item.getProductId());
+            dto.setCavities(item.getCavities());
+            dto.setLifetime(item.getLifetime());
+            dto.setUsedShots(item.getUsedShots());
+            dto.setShotsSinceMaintenance(item.getShotsSinceMaintenance());
+            dto.setMaintenanceCycle(item.getMaintenanceCycle());
+            dto.setMaintenanceCount(item.getMaintenanceCount());
+            dto.setStatus(item.getStatus());
+            dto.setRemark(item.getRemark());
+            dto.setCreatedAt(item.getCreatedAt() != null ? item.getCreatedAt().toString() : "");
+            exportList.add(dto);
+        }
+        writeExcel(response, exportList, MoldExportDTO.class, "模具");
     }
 
     /**
@@ -395,6 +502,40 @@ public class ImportExportService {
         private String color;
     }
 
+    @Data
+    public static class ProductExportDTO {
+        @ExcelProperty("ID")
+        private Long id;
+        @ExcelProperty("产品编码")
+        private String code;
+        @ExcelProperty("产品名称")
+        private String name;
+        @ExcelProperty("规格")
+        private String spec;
+        @ExcelProperty("类型")
+        private String type;
+        @ExcelProperty("单位")
+        private String unit;
+        @ExcelProperty("计件单价")
+        private BigDecimal piecePrice;
+        @ExcelProperty("穴数")
+        private Integer cavityYield;
+        @ExcelProperty("周期(秒)")
+        private Integer cycleTimeSec;
+        @ExcelProperty("安全库存")
+        private Integer safeStock;
+        @ExcelProperty("重量(g)")
+        private BigDecimal weightG;
+        @ExcelProperty("原料用量")
+        private BigDecimal rawMaterialUsage;
+        @ExcelProperty("颜色")
+        private String color;
+        @ExcelProperty("状态")
+        private String status;
+        @ExcelProperty("创建时间")
+        private String createdAt;
+    }
+
     /**
      * 客户信息导入DTO
      */
@@ -420,6 +561,118 @@ public class ImportExportService {
         private String creditLevel;
         @ExcelProperty("账期(天)")
         private Integer paymentDays;
+    }
+
+    /**
+     * 机台信息导入DTO
+     */
+    @Data
+    public static class MachineImportDTO {
+        @ExcelProperty("设备编码")
+        private String code;
+        @ExcelProperty("设备名称")
+        private String name;
+        @ExcelProperty("状态")
+        private String status;
+        @ExcelProperty("型号")
+        private String model;
+        @ExcelProperty("吨位")
+        private Integer tonnage;
+        @ExcelProperty("位置")
+        private String location;
+        @ExcelProperty("工厂编码")
+        private String factoryCode;
+        @ExcelProperty("车间")
+        private String workshop;
+        @ExcelProperty("购入日期")
+        private LocalDate purchaseDate;
+        @ExcelProperty("备注")
+        private String remark;
+        @ExcelProperty("二维码")
+        private String qrCode;
+    }
+
+    @Data
+    public static class MachineExportDTO {
+        @ExcelProperty("ID")
+        private Long id;
+        @ExcelProperty("设备编码")
+        private String code;
+        @ExcelProperty("设备名称")
+        private String name;
+        @ExcelProperty("型号")
+        private String model;
+        @ExcelProperty("吨位")
+        private Integer tonnage;
+        @ExcelProperty("状态")
+        private String status;
+        @ExcelProperty("二维码")
+        private String qrCode;
+        @ExcelProperty("位置")
+        private String location;
+        @ExcelProperty("工厂编码")
+        private String factoryCode;
+        @ExcelProperty("车间")
+        private String workshop;
+        @ExcelProperty("购入日期")
+        private String purchaseDate;
+        @ExcelProperty("备注")
+        private String remark;
+        @ExcelProperty("创建时间")
+        private String createdAt;
+    }
+
+    /**
+     * 模具信息导入DTO
+     */
+    @Data
+    public static class MoldImportDTO {
+        @ExcelProperty("模具编码")
+        private String code;
+        @ExcelProperty("模具名称")
+        private String name;
+        @ExcelProperty("产品ID")
+        private Long productId;
+        @ExcelProperty("穴数")
+        private Integer cavities;
+        @ExcelProperty("寿命")
+        private Integer lifetime;
+        @ExcelProperty("保养周期")
+        private Integer maintenanceCycle;
+        @ExcelProperty("状态")
+        private String status;
+        @ExcelProperty("备注")
+        private String remark;
+    }
+
+    @Data
+    public static class MoldExportDTO {
+        @ExcelProperty("ID")
+        private Long id;
+        @ExcelProperty("模具编码")
+        private String code;
+        @ExcelProperty("模具名称")
+        private String name;
+        @ExcelProperty("产品ID")
+        private Long productId;
+        @ExcelProperty("穴数")
+        private Integer cavities;
+        @ExcelProperty("寿命")
+        private Integer lifetime;
+        @ExcelProperty("已用模次")
+        private Integer usedShots;
+        @ExcelProperty("距维护")
+        private Integer shotsSinceMaintenance;
+        @ExcelProperty("保养周期")
+        private Integer maintenanceCycle;
+        @ExcelProperty("保养次数")
+        private Integer maintenanceCount;
+        @ExcelProperty("状态")
+        private String status;
+        @ExcelProperty("备注")
+        private String remark;
+        @ExcelProperty("创建时间")
+        private String createdAt;
     }
 
     /**
@@ -696,6 +949,10 @@ public class ImportExportService {
                             productMapper.insert(product);
                         } else if (entity instanceof Customer customer) {
                             customerMapper.insert(customer);
+                        } else if (entity instanceof Machine machine) {
+                            machineMapper.insert(machine);
+                        } else if (entity instanceof Mold mold) {
+                            moldMapper.insert(mold);
                         } else if (entity instanceof PiecePrice piecePrice) {
                             piecePriceMapper.insert(piecePrice);
                         } else if (entity instanceof Stock stock) {
@@ -748,6 +1005,36 @@ public class ImportExportService {
                 entity.setCreditLevel(dto.getCreditLevel());
                 entity.setPaymentDays(dto.getPaymentDays());
                 entity.setStatus(1);
+                entity.setCreatedAt(LocalDateTime.now());
+                return entity;
+            } else if (item instanceof MachineImportDTO dto) {
+                Machine entity = new Machine();
+                entity.setCode(dto.getCode());
+                entity.setName(dto.getName());
+                entity.setStatus(dto.getStatus() != null && !dto.getStatus().trim().isEmpty() ? dto.getStatus().trim() : "IDLE");
+                entity.setModel(dto.getModel());
+                entity.setTonnage(dto.getTonnage());
+                entity.setLocation(dto.getLocation());
+                entity.setFactoryCode(dto.getFactoryCode());
+                entity.setWorkshop(dto.getWorkshop());
+                entity.setPurchaseDate(dto.getPurchaseDate());
+                entity.setRemark(dto.getRemark());
+                entity.setQrCode(dto.getQrCode());
+                entity.setCreatedAt(LocalDateTime.now());
+                return entity;
+            } else if (item instanceof MoldImportDTO dto) {
+                Mold entity = new Mold();
+                entity.setCode(dto.getCode());
+                entity.setName(dto.getName());
+                entity.setProductId(dto.getProductId());
+                entity.setCavities(dto.getCavities());
+                entity.setLifetime(dto.getLifetime());
+                entity.setMaintenanceCycle(dto.getMaintenanceCycle());
+                entity.setStatus(dto.getStatus() != null && !dto.getStatus().trim().isEmpty() ? dto.getStatus().trim() : "NORMAL");
+                entity.setRemark(dto.getRemark());
+                entity.setUsedShots(0);
+                entity.setShotsSinceMaintenance(0);
+                entity.setMaintenanceCount(0);
                 entity.setCreatedAt(LocalDateTime.now());
                 return entity;
             } else if (item instanceof PiecePriceImportDTO dto) {

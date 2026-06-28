@@ -27,7 +27,7 @@ public class WarehouseLocationController {
      */
     @GetMapping
     public R<PageResponse<WarehouseLocationResponse>> list(
-            @RequestParam(required = false) Long warehouseId,
+            @RequestParam(name = "warehouseId", required = false) Long warehouseId,
             PageRequest request) {
         return warehouseLocationService.list(warehouseId, request);
     }
@@ -44,7 +44,7 @@ public class WarehouseLocationController {
      * 编辑库位
      */
     @PutMapping("/{id}")
-    public R<WarehouseLocationResponse> update(@PathVariable Long id, @Valid @RequestBody WarehouseLocationCreateRequest request) {
+    public R<WarehouseLocationResponse> update(@PathVariable(name = "id") Long id, @Valid @RequestBody WarehouseLocationCreateRequest request) {
         return warehouseLocationService.update(id, request);
     }
 
@@ -52,7 +52,7 @@ public class WarehouseLocationController {
      * 删除库位
      */
     @DeleteMapping("/{id}")
-    public R<Void> delete(@PathVariable Long id) {
+    public R<Void> delete(@PathVariable(name = "id") Long id) {
         return warehouseLocationService.delete(id);
     }
 }

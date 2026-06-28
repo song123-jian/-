@@ -5,15 +5,20 @@ import com.injectmes.dto.req.ExpenseRequest;
 import com.injectmes.dto.req.PageRequest;
 import com.injectmes.dto.resp.ExpenseResponse;
 import com.injectmes.dto.resp.PageResponse;
-import com.injectmes.entity.ExpenseRecord;
-import com.injectmes.mapper.ExpenseRecordMapper;
 import com.injectmes.service.ExpenseService;
 import jakarta.validation.Valid;
-import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 
@@ -28,49 +33,28 @@ public class ExpenseController {
     @Autowired
     private ExpenseService expenseService;
 
-    @Autowired
-    private ExpenseRecordMapper expenseRecordMapper;
-
-    /**
-     * 费用列表
-     */
     @GetMapping("/expenses")
     public R<PageResponse<ExpenseResponse>> list(PageRequest request,
-                                                   @RequestParam(required = false) String expenseType,
-                                                   @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-                                                   @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+                                                 @RequestParam(name = "expenseType", required = false) String expenseType,
+                                                 @RequestParam(name = "startDate", required = false)
+                                                 @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+                                                 @RequestParam(name = "endDate", required = false)
+                                                 @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return expenseService.list(request, expenseType, startDate, endDate);
     }
 
-    /**
-     * 费用登记
-     */
     @PostMapping("/expenses")
     public R<ExpenseResponse> create(@Valid @RequestBody ExpenseRequest request) {
         return expenseService.create(request);
     }
 
-    /**
-     * 更新费用
-     */
     @PutMapping("/expenses/{id}")
-    public R<Void> update(@PathVariable Long id, @Valid @RequestBody ExpenseRequest request) {
-        ExpenseRecord record = expenseRecordMapper.selectById(id);
-        if (record == null) {
-            return R.fail("费用记录不存在");
-        }
-        BeanUtils.copyProperties(request, record);
-        record.setId(id);
-        expenseRecordMapper.updateById(record);
-        return R.ok("更新成功", null);
+    public R<ExpenseResponse> update(@PathVariable Long id, @Valid @RequestBody ExpenseRequest request) {
+        return expenseService.update(id, request);
     }
 
-    /**
-     * 删除费用
-     */
     @DeleteMapping("/expenses/{id}")
     public R<Void> delete(@PathVariable Long id) {
-        expenseRecordMapper.deleteById(id);
-        return R.ok("删除成功", null);
+        return expenseService.delete(id);
     }
 }

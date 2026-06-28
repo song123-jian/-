@@ -18,7 +18,7 @@
 
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading">
-        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column prop="id" label="编号" width="80" />
         <el-table-column prop="moveNo" label="流水号" width="160" />
         <el-table-column prop="productName" label="产品" width="150" />
         <el-table-column prop="warehouseName" label="仓库" width="140" />

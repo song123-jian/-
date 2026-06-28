@@ -24,8 +24,7 @@ import java.util.stream.Stream;
 /**
  * 备份定时任务
  * 每日凌晨2:00执行备份
- * - 执行mysqldump全量备份
- * - 压缩备份文件
+ * - 执行pg_dump全量备份
  * - 保留30天
  */
 @Component
@@ -39,7 +38,7 @@ public class BackupTask {
     @Autowired
     private SysConfigMapper sysConfigMapper;
 
-    @Value("${spring.datasource.url:jdbc:mysql://localhost:3306/inject_erp}")
+    @Value("${spring.datasource.url:jdbc:postgresql://localhost:5432/inject_erp}")
     private String dbUrl;
 
     @Value("${spring.datasource.username:root}")
@@ -53,8 +52,7 @@ public class BackupTask {
 
     /**
      * 每日凌晨2:00执行备份
-     * - 执行mysqldump全量备份
-     * - 压缩备份文件
+     * - 执行pg_dump全量备份
      * - 保留30天
      */
     @Scheduled(cron = "0 0 2 * * ?")
@@ -78,73 +76,49 @@ public class BackupTask {
             String sqlFileName = String.format("%s_%s.sql", dbName, timestamp);
             String sqlFilePath = backupDir.resolve(sqlFileName).toString();
 
-            // 执行mysqldump全量备份
-            executeMysqldump(sqlFilePath);
-
-            // 压缩备份文件
-            String zipFilePath = sqlFilePath.replace(".sql", ".zip");
-            compressFile(sqlFilePath, zipFilePath);
-
-            // 删除原始SQL文件
-            Files.deleteIfExists(Paths.get(sqlFilePath));
+            // 执行pg_dump全量备份
+            executePgDump(sqlFilePath);
 
             // 清理过期备份
             cleanOldBackups(backupDir, keepDays);
 
-            log.info("========== 数据库备份完成，文件：{} ==========", zipFilePath);
+            log.info("========== 数据库备份完成，文件：{} ==========", sqlFilePath);
         } catch (Exception e) {
             log.error("数据库备份失败：{}", e.getMessage(), e);
         }
     }
 
     /**
-     * 执行mysqldump命令
+     * 执行pg_dump命令
      */
-    private void executeMysqldump(String outputFile) throws IOException, InterruptedException {
+    private void executePgDump(String outputFile) throws IOException, InterruptedException {
         String dbName = extractDbName();
         String host = extractDbHost();
         String port = extractDbPort();
 
         ProcessBuilder processBuilder = new ProcessBuilder(
-                "mysqldump",
+                "pg_dump",
                 "-h", host,
-                "-P", port,
-                "-u", dbUsername,
-                "-p" + dbPassword,
-                "--single-transaction",
-                "--routines",
-                "--triggers",
-                "--result-file=" + outputFile,
+                "-p", port,
+                "-U", dbUsername,
+                "--no-owner",
+                "--no-privileges",
+                "--format=plain",
+                "-f", outputFile,
                 dbName
         );
 
+        processBuilder.environment().put("PGPASSWORD", dbPassword);
+        processBuilder.environment().put("PGSSLMODE", extractSslMode());
         processBuilder.redirectErrorStream(true);
         Process process = processBuilder.start();
 
         int exitCode = process.waitFor();
         if (exitCode != 0) {
-            throw new RuntimeException("mysqldump执行失败，退出码：" + exitCode);
+            throw new RuntimeException("pg_dump执行失败，退出码：" + exitCode);
         }
 
-        log.info("mysqldump执行成功，输出文件：{}", outputFile);
-    }
-
-    /**
-     * 压缩文件
-     */
-    private void compressFile(String sourcePath, String targetPath) throws IOException, InterruptedException {
-        ProcessBuilder processBuilder = new ProcessBuilder(
-                "zip", "-j", targetPath, sourcePath
-        );
-        processBuilder.redirectErrorStream(true);
-        Process process = processBuilder.start();
-
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            log.warn("压缩备份文件失败，退出码：{}，保留原始SQL文件", exitCode);
-        } else {
-            log.info("压缩备份文件成功：{}", targetPath);
-        }
+        log.info("pg_dump执行成功，输出文件：{}", outputFile);
     }
 
     /**
@@ -154,7 +128,7 @@ public class BackupTask {
         LocalDate cutoffDate = LocalDate.now().minusDays(keepDays);
 
         try (Stream<Path> paths = Files.list(backupDir)) {
-            paths.filter(path -> path.toString().endsWith(".zip") || path.toString().endsWith(".sql"))
+            paths.filter(path -> path.toString().endsWith(".sql"))
                     .forEach(path -> {
                         try {
                             LocalDate fileDate = LocalDate.ofEpochDay(
@@ -194,59 +168,64 @@ public class BackupTask {
      * 从数据源URL中提取数据库名
      */
     private String extractDbName() {
-        // jdbc:mysql://localhost:3306/inject_erp -> inject_erp
-        try {
-            String url = dbUrl;
-            int lastSlash = url.lastIndexOf('/');
-            if (lastSlash >= 0) {
-                String dbPart = url.substring(lastSlash + 1);
-                // 去除可能的参数
-                int questionMark = dbPart.indexOf('?');
-                if (questionMark >= 0) {
-                    dbPart = dbPart.substring(0, questionMark);
-                }
-                return dbPart;
-            }
-        } catch (Exception e) {
-            // 忽略
-        }
-        return "inject_erp";
+        return parseJdbcParts().dbName();
     }
 
     /**
      * 从数据源URL中提取主机地址
      */
     private String extractDbHost() {
-        try {
-            // jdbc:mysql://localhost:3306/inject_erp -> localhost
-            String url = dbUrl;
-            int start = url.indexOf("//") + 2;
-            int end = url.indexOf(':', start);
-            if (start > 0 && end > start) {
-                return url.substring(start, end);
-            }
-        } catch (Exception e) {
-            // 忽略
-        }
-        return "localhost";
+        return parseJdbcParts().host();
     }
 
     /**
      * 从数据源URL中提取端口
      */
     private String extractDbPort() {
-        try {
-            // jdbc:mysql://localhost:3306/inject_erp -> 3306
-            String url = dbUrl;
-            int start = url.indexOf("//") + 2;
-            int colonIndex = url.indexOf(':', start);
-            int slashIndex = url.indexOf('/', colonIndex);
-            if (colonIndex > 0 && slashIndex > colonIndex) {
-                return url.substring(colonIndex + 1, slashIndex);
-            }
-        } catch (Exception e) {
-            // 忽略
+        return parseJdbcParts().port();
+    }
+
+    private String extractSslMode() {
+        int questionIdx = dbUrl.indexOf('?');
+        if (questionIdx < 0) {
+            return "require";
         }
-        return "3306";
+        String query = dbUrl.substring(questionIdx + 1);
+        for (String pair : query.split("&")) {
+            String[] kv = pair.split("=", 2);
+            if (kv.length == 2 && "sslmode".equalsIgnoreCase(kv[0]) && !kv[1].isBlank()) {
+                return kv[1];
+            }
+        }
+        return "require";
+    }
+
+    private JdbcParts parseJdbcParts() {
+        if (dbUrl == null || !dbUrl.startsWith("jdbc:")) {
+            return new JdbcParts("localhost", "5432", "inject_erp");
+        }
+
+        String stripped = dbUrl.substring("jdbc:".length());
+        int schemeIdx = stripped.indexOf("://");
+        String remainder = schemeIdx >= 0 ? stripped.substring(schemeIdx + 3) : stripped;
+        int slashIdx = remainder.indexOf('/');
+        if (slashIdx < 0) {
+            return new JdbcParts("localhost", "5432", "inject_erp");
+        }
+
+        String hostPort = remainder.substring(0, slashIdx);
+        String dbPart = remainder.substring(slashIdx + 1);
+        int questionIdx = dbPart.indexOf('?');
+        if (questionIdx >= 0) {
+            dbPart = dbPart.substring(0, questionIdx);
+        }
+
+        int colonIdx = hostPort.lastIndexOf(':');
+        String host = colonIdx >= 0 ? hostPort.substring(0, colonIdx) : hostPort;
+        String port = colonIdx >= 0 ? hostPort.substring(colonIdx + 1) : "5432";
+        return new JdbcParts(host, port, dbPart);
+    }
+
+    private record JdbcParts(String host, String port, String dbName) {
     }
 }

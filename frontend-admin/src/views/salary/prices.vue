@@ -10,7 +10,7 @@
 
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading">
-        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column prop="id" label="编号" width="80" />
         <el-table-column prop="productName" label="产品" width="150" />
         <el-table-column prop="processName" label="工序" width="120" />
         <el-table-column prop="unitPrice" label="计件单价(元)" width="120" />

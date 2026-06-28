@@ -1,6 +1,7 @@
 package com.injectmes.controller;
 
 import com.injectmes.common.R;
+import com.injectmes.annotation.OperationLog;
 import com.injectmes.dto.req.MoldCreateRequest;
 import com.injectmes.dto.req.MoldUpdateRequest;
 import com.injectmes.dto.req.PageRequest;
@@ -29,8 +30,9 @@ public class MoldController {
      * 模具列表（分页）
      */
     @GetMapping
+    @OperationLog(module = "模具管理", action = "查询列表")
     public R<PageResponse<MoldResponse>> list(PageRequest request,
-                                              @RequestParam(required = false) String status) {
+                                              @RequestParam(name = "status", required = false) String status) {
         return moldService.list(request, status);
     }
 
@@ -38,7 +40,8 @@ public class MoldController {
      * 模具详情
      */
     @GetMapping("/{id}")
-    public R<MoldResponse> getById(@PathVariable Long id) {
+    @OperationLog(module = "模具管理", action = "查看详情")
+    public R<MoldResponse> getById(@PathVariable(name = "id") Long id) {
         return moldService.getById(id);
     }
 
@@ -46,6 +49,7 @@ public class MoldController {
      * 新增模具
      */
     @PostMapping
+    @OperationLog(module = "模具管理", action = "新增")
     public R<MoldResponse> create(@Valid @RequestBody MoldCreateRequest request) {
         return moldService.create(request);
     }
@@ -54,7 +58,8 @@ public class MoldController {
      * 编辑模具
      */
     @PutMapping("/{id}")
-    public R<MoldResponse> update(@PathVariable Long id, @Valid @RequestBody MoldUpdateRequest request) {
+    @OperationLog(module = "模具管理", action = "编辑")
+    public R<MoldResponse> update(@PathVariable(name = "id") Long id, @Valid @RequestBody MoldUpdateRequest request) {
         return moldService.update(id, request);
     }
 
@@ -62,7 +67,8 @@ public class MoldController {
      * 删除模具
      */
     @DeleteMapping("/{id}")
-    public R<Void> delete(@PathVariable Long id) {
+    @OperationLog(module = "模具管理", action = "删除")
+    public R<Void> delete(@PathVariable(name = "id") Long id) {
         moldService.delete(id);
         return R.ok();
     }
@@ -71,7 +77,8 @@ public class MoldController {
      * 模次统计
      */
     @GetMapping("/{id}/shots")
-    public R<Map<String, Object>> getShotsStats(@PathVariable Long id) {
+    @OperationLog(module = "模具管理", action = "查看统计")
+    public R<Map<String, Object>> getShotsStats(@PathVariable(name = "id") Long id) {
         return moldService.getShotsStats(id);
     }
 
@@ -79,7 +86,8 @@ public class MoldController {
      * 模具保养
      */
     @PostMapping("/{id}/maintenance")
-    public R<MoldResponse> maintenance(@PathVariable Long id) {
+    @OperationLog(module = "模具管理", action = "保养")
+    public R<MoldResponse> maintenance(@PathVariable(name = "id") Long id) {
         return moldService.maintenance(id);
     }
 }

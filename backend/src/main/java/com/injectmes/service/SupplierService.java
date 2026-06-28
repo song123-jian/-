@@ -49,6 +49,9 @@ public class SupplierService {
                     .or().like(Supplier::getName, keyword)
             );
         }
+        if (request.getStatus() != null && !request.getStatus().trim().isEmpty()) {
+            wrapper.eq(Supplier::getStatus, Integer.valueOf(request.getStatus().trim()));
+        }
 
         // 按创建时间降序
         wrapper.orderByDesc(Supplier::getCreatedAt);

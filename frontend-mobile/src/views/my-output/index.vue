@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="my-output-page">
     <van-nav-bar title="我的产量" left-arrow @click-left="router.back()" />
 

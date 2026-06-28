@@ -64,6 +64,9 @@ public class WarehouseService {
         if (request.getWorkshop() != null && !request.getWorkshop().trim().isEmpty()) {
             wrapper.like(Warehouse::getWorkshop, request.getWorkshop().trim());
         }
+        if (request.getStatus() != null && !request.getStatus().trim().isEmpty()) {
+            wrapper.eq(Warehouse::getIsEnabled, "1".equals(request.getStatus().trim()) ? 1 : 0);
+        }
 
         // 按创建时间降序
         wrapper.orderByDesc(Warehouse::getCreatedAt);

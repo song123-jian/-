@@ -189,6 +189,28 @@ public class PaymentService {
     /**
      * 生成回款单号：PAY+YYYYMMDD+3位序号（如PAY20260617001）
      */
+    @Transactional
+    public R<PaymentResponse> update(Long id, PaymentRequest request) {
+        PaymentRecord record = paymentRecordMapper.selectById(id);
+        if (record == null) {
+            throw new BusinessException("回款记录不存在");
+        }
+        BeanUtils.copyProperties(request, record);
+        record.setId(id);
+        paymentRecordMapper.updateById(record);
+        return R.ok("更新成功", convertToResponse(record));
+    }
+
+    @Transactional
+    public R<Void> delete(Long id) {
+        PaymentRecord record = paymentRecordMapper.selectById(id);
+        if (record == null) {
+            throw new BusinessException("回款记录不存在");
+        }
+        paymentRecordMapper.deleteById(id);
+        return R.ok("删除成功", null);
+    }
+
     private String generatePaymentNo() {
         return seqNumberService.generateNo("PAY", 3);
     }

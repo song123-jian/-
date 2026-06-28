@@ -21,10 +21,10 @@
           <el-input v-model="form.system_title" placeholder="请输入系统标题" />
         </el-form-item>
         <el-form-item label="默认原料仓" prop="default_raw_warehouse">
-          <el-input v-model="form.default_raw_warehouse" placeholder="请输入默认原料仓ID" />
+          <el-input v-model="form.default_raw_warehouse" placeholder="请输入默认原料仓编号" />
         </el-form-item>
         <el-form-item label="默认成品仓" prop="default_finish_warehouse">
-          <el-input v-model="form.default_finish_warehouse" placeholder="请输入默认成品仓ID" />
+          <el-input v-model="form.default_finish_warehouse" placeholder="请输入默认成品仓编号" />
         </el-form-item>
         <el-form-item label="白班开始时间" prop="shift_day_start">
           <el-input v-model="form.shift_day_start" placeholder="08:00" />

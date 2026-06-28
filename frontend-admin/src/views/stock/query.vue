@@ -3,17 +3,17 @@
     <PageHeader title="库存查询" />
 
     <SearchBar @search="handleSearch" @reset="handleReset">
-      <el-form-item label="仓库ID">
-        <el-input v-model="searchWarehouseId" placeholder="请输入仓库ID" clearable />
+      <el-form-item label="仓库编号">
+        <el-input v-model="searchWarehouseId" placeholder="请输入仓库编号" clearable />
       </el-form-item>
-      <el-form-item label="产品ID">
-        <el-input v-model="searchProductId" placeholder="请输入产品ID" clearable />
+      <el-form-item label="产品编号">
+        <el-input v-model="searchProductId" placeholder="请输入产品编号" clearable />
       </el-form-item>
     </SearchBar>
 
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading">
-        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column prop="id" label="编号" width="80" />
         <el-table-column prop="productCode" label="产品编码" width="120">
           <template #default="{ row }">
             {{ row.productCode || row.code || '-' }}

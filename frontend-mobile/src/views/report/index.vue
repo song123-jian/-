@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="report-page">
     <van-nav-bar title="扫码报工" left-arrow @click-left="onBack" />
 

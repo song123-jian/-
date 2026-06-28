@@ -29,7 +29,10 @@ import com.injectmes.security.LoginUserDetails;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -135,6 +138,28 @@ public class QcRecordService {
      * @param request 分页请求
      * @return 分页响应
      */
+    @Transactional
+    public R<QcRecordResponse> update(Long id, QcRecordRequest request) {
+        QcRecord qcRecord = qcRecordMapper.selectById(id);
+        if (qcRecord == null) {
+            throw new BusinessException("质检记录不存在");
+        }
+        BeanUtils.copyProperties(request, qcRecord);
+        qcRecord.setId(id);
+        qcRecordMapper.updateById(qcRecord);
+        return R.ok("更新成功", convertToResponse(qcRecord));
+    }
+
+    @Transactional
+    public R<Void> delete(Long id) {
+        QcRecord qcRecord = qcRecordMapper.selectById(id);
+        if (qcRecord == null) {
+            throw new BusinessException("质检记录不存在");
+        }
+        qcRecordMapper.deleteById(id);
+        return R.ok("删除成功", null);
+    }
+
     public R<PageResponse<QcRecordResponse>> list(PageRequest request, Long prodOrderId, Long productId, String checkType,
                                                    String checkResult, LocalDate startDate, LocalDate endDate) {
         Page<QcRecord> page = new Page<>(request.getPage(), request.getSize());
@@ -241,6 +266,29 @@ public class QcRecordService {
                 .collect(Collectors.toList());
 
         return R.ok(responses);
+    }
+
+    public R<List<Map<String, Object>>> pendingOrders() {
+        List<ProdOrder> orders = prodOrderMapper.selectList(
+                new LambdaQueryWrapper<ProdOrder>()
+                        .in(ProdOrder::getStatus,
+                                ProdOrderStatus.SCHEDULED.name(),
+                                ProdOrderStatus.RUNNING.name(),
+                                ProdOrderStatus.PAUSED.name())
+                        .orderByDesc(ProdOrder::getCreatedAt)
+        );
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (ProdOrder order : orders) {
+            Product product = order.getProductId() != null ? productMapper.selectById(order.getProductId()) : null;
+            Map<String, Object> row = new HashMap<>();
+            row.put("workOrderId", order.getId());
+            row.put("workOrderNo", order.getOrderNo());
+            row.put("productId", order.getProductId());
+            row.put("productName", product != null ? product.getName() : "");
+            row.put("status", order.getStatus());
+            result.add(row);
+        }
+        return R.ok(result);
     }
 
     private Long resolveCurrentUserId() {

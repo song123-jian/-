@@ -14,7 +14,7 @@
 
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading" show-summary>
-        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column prop="id" label="编号" width="80" />
         <el-table-column prop="workerName" label="员工" width="100" />
         <el-table-column prop="workDays" label="出勤天数" width="100" />
         <el-table-column prop="pieceAmount" label="计件工资" width="120" />

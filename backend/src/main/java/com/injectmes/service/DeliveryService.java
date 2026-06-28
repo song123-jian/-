@@ -1,9 +1,12 @@
 package com.injectmes.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.injectmes.common.R;
+import com.injectmes.dto.req.PageRequest;
 import com.injectmes.dto.req.DeliveryCreateRequest;
 import com.injectmes.dto.req.DeliveryItemDTO;
+import com.injectmes.dto.resp.PageResponse;
 import com.injectmes.dto.resp.DeliveryResponse;
 import com.injectmes.entity.*;
 import com.injectmes.enums.DeliveryStatus;
@@ -127,6 +130,27 @@ public class DeliveryService {
         }
 
         return R.ok(convertToResponse(deliveryOrder));
+    }
+
+    /**
+     * 发货单列表
+     */
+    public R<PageResponse<DeliveryResponse>> list(PageRequest request) {
+        Page<DeliveryOrder> page = new Page<>(request.getPage(), request.getSize());
+        LambdaQueryWrapper<DeliveryOrder> wrapper = new LambdaQueryWrapper<>();
+        wrapper.orderByDesc(DeliveryOrder::getCreatedAt);
+        Page<DeliveryOrder> result = deliveryOrderMapper.selectPage(page, wrapper);
+
+        List<DeliveryResponse> records = result.getRecords().stream()
+                .map(this::convertToResponse)
+                .collect(Collectors.toList());
+
+        PageResponse<DeliveryResponse> pageResponse = new PageResponse<>();
+        pageResponse.setRecords(records);
+        pageResponse.setTotal(result.getTotal());
+        pageResponse.setPage(request.getPage());
+        pageResponse.setSize(request.getSize());
+        return R.ok(pageResponse);
     }
 
     /**
@@ -292,8 +316,32 @@ public class DeliveryService {
     /**
      * 生成发货单号：DO+YYYYMMDD+3位序号（如DO20260617001）
      */
+    @Transactional
+    public R<DeliveryResponse> update(Long id, DeliveryCreateRequest request) {
+        DeliveryOrder deliveryOrder = requireDeliveryOrder(id);
+        BeanUtils.copyProperties(request, deliveryOrder);
+        deliveryOrder.setId(id);
+        deliveryOrderMapper.updateById(deliveryOrder);
+        return R.ok("更新成功", convertToResponse(deliveryOrder));
+    }
+
+    @Transactional
+    public R<Void> delete(Long id) {
+        requireDeliveryOrder(id);
+        deliveryOrderMapper.deleteById(id);
+        return R.ok("删除成功", null);
+    }
+
     private String generateDeliveryNo() {
         return seqNumberService.generateNo("DO", 3);
+    }
+
+    private DeliveryOrder requireDeliveryOrder(Long id) {
+        DeliveryOrder deliveryOrder = deliveryOrderMapper.selectById(id);
+        if (deliveryOrder == null) {
+            throw new BusinessException("发货单不存在");
+        }
+        return deliveryOrder;
     }
 
     /**

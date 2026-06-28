@@ -55,6 +55,9 @@ public class ProductService {
         if (type != null && !type.trim().isEmpty()) {
             wrapper.eq(Product::getType, type.trim());
         }
+        if (request.getStatus() != null && !request.getStatus().trim().isEmpty()) {
+            wrapper.eq(Product::getStatus, Integer.valueOf(request.getStatus().trim()));
+        }
 
         // 按创建时间降序
         wrapper.orderByDesc(Product::getCreatedAt);

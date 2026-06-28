@@ -7,413 +7,392 @@
 -- ============================================================
 
 -- 创建数据库
-CREATE DATABASE IF NOT EXISTS inject_erp DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE inject_erp;
 
 -- ============================================================
 -- 1. 系统用户表
 -- ============================================================
 CREATE TABLE sys_user (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
     real_name VARCHAR(50) NOT NULL,
     phone VARCHAR(20),
     password_hash VARCHAR(255) NOT NULL,
-    role ENUM('BOSS','PROD_MANAGER','OPERATOR','QC','SALES','FINANCE') NOT NULL,
-    status TINYINT DEFAULT 1 COMMENT '1启用 0禁用',
+    role VARCHAR(64) NOT NULL,
+    status SMALLINT DEFAULT 1,
     login_fail_count INT DEFAULT 0,
-    lock_until DATETIME COMMENT '锁定截止时间',
-    last_login_at DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) COMMENT '系统用户表';
+    lock_until TIMESTAMP,
+    last_login_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
 -- 2. 机台设备表
 -- ============================================================
 CREATE TABLE machine (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    code VARCHAR(50) NOT NULL UNIQUE COMMENT '机台编号 如IM-001',
-    name VARCHAR(100) NOT NULL COMMENT '机台名称',
-    model VARCHAR(100) COMMENT '机型 如海天MA1200',
-    tonnage INT COMMENT '吨位',
-    status ENUM('RUNNING','IDLE','MAINTENANCE','STOPPED') DEFAULT 'IDLE',
-    qr_code VARCHAR(255) COMMENT '机台二维码内容',
-    location VARCHAR(100) COMMENT '车间位置',
-    factory_code VARCHAR(50) COMMENT '工厂编码',
-    workshop VARCHAR(100) COMMENT '车间',
+    id BIGSERIAL PRIMARY KEY,
+    code VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    model VARCHAR(100),
+    tonnage INT,
+    status VARCHAR(64) DEFAULT 'IDLE',
+    qr_code VARCHAR(255),
+    location VARCHAR(100),
+    factory_code VARCHAR(50),
+    workshop VARCHAR(100),
     purchase_date DATE,
     remark TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-) COMMENT '机台设备表';
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
 -- 3. 模具表
 -- ============================================================
 CREATE TABLE mold (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    code VARCHAR(50) NOT NULL UNIQUE COMMENT '模具编号 如M-2024001',
-    name VARCHAR(100) NOT NULL COMMENT '模具名称',
-    product_id BIGINT COMMENT '关联产品',
-    cavities INT NOT NULL COMMENT '穴数',
-    lifetime INT COMMENT '设计寿命（模次）',
-    used_shots INT DEFAULT 0 COMMENT '已使用模次',
-    shots_since_maintenance INT DEFAULT 0 COMMENT '距上次保养已使用模次',
-    maintenance_cycle INT COMMENT '保养周期（模次）',
-    maintenance_count INT DEFAULT 0 COMMENT '保养次数',
-    last_maintenance_at DATETIME COMMENT '上次保养时间',
-    status ENUM('NORMAL','REPAIR','SCRAP') DEFAULT 'NORMAL',
+    id BIGSERIAL PRIMARY KEY,
+    code VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    product_id BIGINT,
+    cavities INT NOT NULL,
+    lifetime INT,
+    used_shots INT DEFAULT 0,
+    shots_since_maintenance INT DEFAULT 0,
+    maintenance_cycle INT,
+    maintenance_count INT DEFAULT 0,
+    last_maintenance_at TIMESTAMP,
+    status VARCHAR(64) DEFAULT 'NORMAL',
     remark TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-) COMMENT '模具表';
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
 -- 4. 产品/物料表
 -- ============================================================
 CREATE TABLE product (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    code VARCHAR(50) NOT NULL UNIQUE COMMENT '物料编码',
-    name VARCHAR(100) NOT NULL COMMENT '物料名称',
-    spec VARCHAR(200) COMMENT '规格描述',
-    type ENUM('RAW','SEMI','FINISH') NOT NULL COMMENT '原料/半成品/成品',
-    unit VARCHAR(20) DEFAULT '个' COMMENT '计量单位',
-    piece_price DECIMAL(10,4) COMMENT '计件单价（元/个）',
-    cavity_yield INT COMMENT '每模产出数',
-    cycle_time_sec INT COMMENT '标准成型周期（秒）',
-    safe_stock INT DEFAULT 0 COMMENT '安全库存',
-    weight_g DECIMAL(10,2) COMMENT '单件重量（克）',
-    raw_material_id BIGINT COMMENT '关联原料（成品对应原料）',
-    raw_material_usage DECIMAL(10,4) COMMENT '单件原料用量（克）',
-    color VARCHAR(50) COMMENT '颜色',
-    customer_id BIGINT COMMENT '专属客户（客定产品）',
-    image_url VARCHAR(500) COMMENT '产品图片',
-    status TINYINT DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-) COMMENT '产品/物料表';
+    id BIGSERIAL PRIMARY KEY,
+    code VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    spec VARCHAR(200),
+    type VARCHAR(64) NOT NULL,
+    unit VARCHAR(20) DEFAULT '个',
+    piece_price DECIMAL(10,4),
+    cavity_yield INT,
+    cycle_time_sec INT,
+    safe_stock INT DEFAULT 0,
+    weight_g DECIMAL(10,2),
+    raw_material_id BIGINT,
+    raw_material_usage DECIMAL(10,4),
+    color VARCHAR(50),
+    customer_id BIGINT,
+    image_url VARCHAR(500),
+    status SMALLINT DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
 -- 5. 客户表
 -- ============================================================
 CREATE TABLE customer (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    code VARCHAR(50) NOT NULL UNIQUE COMMENT '客户编号',
-    name VARCHAR(100) NOT NULL COMMENT '客户名称',
-    short_name VARCHAR(50) COMMENT '简称',
-    contact VARCHAR(50) COMMENT '联系人',
+    id BIGSERIAL PRIMARY KEY,
+    code VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    short_name VARCHAR(50),
+    contact VARCHAR(50),
     phone VARCHAR(20),
     address VARCHAR(500),
-    tax_no VARCHAR(50) COMMENT '税号',
-    invoice_title VARCHAR(200) COMMENT '开票抬头',
-    credit_level ENUM('A','B','C') DEFAULT 'B' COMMENT '信用等级',
-    payment_days INT DEFAULT 30 COMMENT '账期（天）',
-    sales_user_id BIGINT COMMENT '负责销售员',
-    status TINYINT DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-) COMMENT '客户表';
+    tax_no VARCHAR(50),
+    invoice_title VARCHAR(200),
+    credit_level VARCHAR(64) DEFAULT 'B',
+    payment_days INT DEFAULT 30,
+    sales_user_id BIGINT,
+    status SMALLINT DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
 -- 6. 供应商表
 -- ============================================================
 CREATE TABLE supplier (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     code VARCHAR(50) NOT NULL UNIQUE,
     name VARCHAR(100) NOT NULL,
     contact VARCHAR(50),
     phone VARCHAR(20),
     address VARCHAR(500),
-    main_material VARCHAR(200) COMMENT '主营原料',
-    status TINYINT DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-) COMMENT '供应商表';
+    main_material VARCHAR(200),
+    status SMALLINT DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
 -- 7. 销售订单主表
 -- ============================================================
 CREATE TABLE sale_order (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    order_no VARCHAR(50) NOT NULL UNIQUE COMMENT '订单号 如SO20260617001',
+    id BIGSERIAL PRIMARY KEY,
+    order_no VARCHAR(50) NOT NULL UNIQUE,
     customer_id BIGINT NOT NULL,
     order_date DATE NOT NULL,
-    delivery_date DATE COMMENT '要求交期',
-    total_amount DECIMAL(12,2) COMMENT '订单总金额',
-    received_amount DECIMAL(12,2) DEFAULT 0 COMMENT '已回款金额',
-    status ENUM('DRAFT','CONFIRMED','PRODUCING','DELIVERED','CLOSED','CANCELLED') DEFAULT 'DRAFT',
-    sales_user_id BIGINT COMMENT '销售员',
+    delivery_date DATE,
+    total_amount DECIMAL(12,2),
+    received_amount DECIMAL(12,2) DEFAULT 0,
+    status VARCHAR(64) DEFAULT 'DRAFT',
+    sales_user_id BIGINT,
     remark TEXT,
     created_by BIGINT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) COMMENT '销售订单主表';
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
 -- 8. 销售订单明细表
 -- ============================================================
 CREATE TABLE sale_order_item (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     sale_order_id BIGINT NOT NULL,
     product_id BIGINT NOT NULL,
-    qty INT NOT NULL COMMENT '订购数量',
-    unit_price DECIMAL(10,4) COMMENT '单价',
-    amount DECIMAL(12,2) COMMENT '金额',
-    delivered_qty INT DEFAULT 0 COMMENT '已发货数量',
-    produced_qty INT DEFAULT 0 COMMENT '已生产数量',
-    remark VARCHAR(500),
-    INDEX idx_sale_order (sale_order_id)
-) COMMENT '销售订单明细表';
+    qty INT NOT NULL,
+    unit_price DECIMAL(10,4),
+    amount DECIMAL(12,2),
+    delivered_qty INT DEFAULT 0,
+    produced_qty INT DEFAULT 0,
+    remark VARCHAR(500)
+);
 
 -- ============================================================
 -- 9. 生产工单表
 -- ============================================================
 CREATE TABLE prod_order (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    order_no VARCHAR(50) NOT NULL UNIQUE COMMENT '工单号 如PO20260617001',
-    sale_order_id BIGINT COMMENT '关联销售订单',
-    sale_order_item_id BIGINT COMMENT '关联订单明细',
+    id BIGSERIAL PRIMARY KEY,
+    order_no VARCHAR(50) NOT NULL UNIQUE,
+    sale_order_id BIGINT,
+    sale_order_item_id BIGINT,
     product_id BIGINT NOT NULL,
     machine_id BIGINT,
     mold_id BIGINT,
-    plan_qty INT NOT NULL COMMENT '计划数量',
-    completed_qty INT DEFAULT 0 COMMENT '完工数量',
-    qualified_qty INT DEFAULT 0 COMMENT '合格数量',
-    bad_qty INT DEFAULT 0 COMMENT '不良数量',
-    raw_material_qty DECIMAL(10,2) COMMENT '需领原料量（克）',
-    plan_start DATETIME COMMENT '计划开始',
-    plan_end DATETIME COMMENT '计划结束',
-    actual_start DATETIME COMMENT '实际开始',
-    actual_end DATETIME COMMENT '实际结束',
-    status ENUM('WAITING','SCHEDULED','RUNNING','PAUSED','FINISHED','CLOSED') DEFAULT 'WAITING',
-    priority INT DEFAULT 5 COMMENT '优先级 1最高 9最低',
+    plan_qty INT NOT NULL,
+    completed_qty INT DEFAULT 0,
+    qualified_qty INT DEFAULT 0,
+    bad_qty INT DEFAULT 0,
+    raw_material_qty DECIMAL(10,2),
+    plan_start TIMESTAMP,
+    plan_end TIMESTAMP,
+    actual_start TIMESTAMP,
+    actual_end TIMESTAMP,
+    status VARCHAR(64) DEFAULT 'WAITING',
+    priority INT DEFAULT 5,
     remark TEXT,
     created_by BIGINT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) COMMENT '生产工单表';
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
 -- 10. 报工记录表
 -- ============================================================
 CREATE TABLE prod_report (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     prod_order_id BIGINT NOT NULL,
-    user_id BIGINT NOT NULL COMMENT '操作工',
+    user_id BIGINT NOT NULL,
     machine_id BIGINT NOT NULL,
     mold_id BIGINT,
-    report_type ENUM('START','OUTPUT','END') NOT NULL,
-    shift ENUM('DAY','NIGHT') COMMENT '班次',
-    qty INT DEFAULT 0 COMMENT '本班产量',
-    bad_qty INT DEFAULT 0 COMMENT '本班不良数',
-    shots INT DEFAULT 0 COMMENT '本班模次',
-    start_time DATETIME,
-    end_time DATETIME,
-    work_minutes INT COMMENT '工作分钟数',
-    sync_status TINYINT DEFAULT 1 COMMENT '0离线 1已同步',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_order (prod_order_id),
-    INDEX idx_user_date (user_id, created_at)
-) COMMENT '报工记录表';
+    report_type VARCHAR(64) NOT NULL,
+    shift VARCHAR(64),
+    qty INT DEFAULT 0,
+    bad_qty INT DEFAULT 0,
+    shots INT DEFAULT 0,
+    start_time TIMESTAMP,
+    end_time TIMESTAMP,
+    work_minutes INT,
+    sync_status SMALLINT DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
--- 11. 模具上下模记录表
--- ============================================================
-CREATE TABLE mold_mount_record (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    mold_id BIGINT NOT NULL,
-    machine_id BIGINT NOT NULL,
-    prod_order_id BIGINT,
-    mount_type ENUM('MOUNT','DISMOUNT') NOT NULL,
-    operator_id BIGINT COMMENT '操作人',
-    operate_time DATETIME NOT NULL,
-    remark TEXT,
-    INDEX idx_mold (mold_id),
-    INDEX idx_machine (machine_id),
-    INDEX idx_operate_time (operate_time)
-) COMMENT '模具上下模记录表';
-
--- ============================================================
--- 12. ???????
--- ============================================================
-CREATE TABLE mold_maintenance_record (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    mold_id BIGINT NOT NULL,
-    operator_id BIGINT,
-    used_shots_before INT NOT NULL COMMENT '???????',
-    shots_since_maintenance_before INT NOT NULL COMMENT '??????????',
-    maintenance_count_before INT NOT NULL COMMENT '?????',
-    operate_time DATETIME NOT NULL,
-    remark TEXT,
-    INDEX idx_mold (mold_id),
-    INDEX idx_operator (operator_id),
-    INDEX idx_operate_time (operate_time)
-) COMMENT '???????';
-
--- ============================================================
--- ============================================================
--- 12.1 设备点检记录表
--- ============================================================
-CREATE TABLE machine_inspection_record (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    machine_id BIGINT NOT NULL,
-    inspector_id BIGINT NOT NULL,
-    inspect_time DATETIME NOT NULL,
-    result ENUM('PASS','FAIL') NOT NULL,
-    items_checked VARCHAR(500) COMMENT '点检项目',
-    issues VARCHAR(500) COMMENT '异常描述',
-    remark TEXT,
-    INDEX idx_machine (machine_id),
-    INDEX idx_inspector (inspector_id),
-    INDEX idx_inspect_time (inspect_time)
-) COMMENT '设备点检记录表';
-
--- ============================================================
--- 13. 停机记录表
+-- 11. 停机记录表
 -- ============================================================
 CREATE TABLE downtime_record (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     prod_order_id BIGINT,
     machine_id BIGINT NOT NULL,
-    reason ENUM('MOLD_CHANGE','MATERIAL_SHORTAGE','QUALITY_ISSUE','EQUIPMENT_FAULT','BREAK','OTHER') NOT NULL,
-    start_time DATETIME NOT NULL,
-    end_time DATETIME,
-    duration_minutes INT COMMENT '停机时长（分钟）',
+    reason VARCHAR(64) NOT NULL,
+    start_time TIMESTAMP NOT NULL,
+    end_time TIMESTAMP,
+    duration_minutes INT,
     operator_id BIGINT,
     remark TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-) COMMENT '停机记录表';
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
--- 14. 质检记录表
+-- 12. 上下模记录表
+-- ============================================================
+CREATE TABLE mold_mount_record (
+    id BIGSERIAL PRIMARY KEY,
+    mold_id BIGINT NOT NULL,
+    machine_id BIGINT NOT NULL,
+    prod_order_id BIGINT,
+    mount_type VARCHAR(64) NOT NULL,
+    operator_id BIGINT,
+    operate_time TIMESTAMP NOT NULL,
+    remark TEXT
+);
+
+-- ============================================================
+-- 13. 模具保养记录表
+-- ============================================================
+CREATE TABLE mold_maintenance_record (
+    id BIGSERIAL PRIMARY KEY,
+    mold_id BIGINT NOT NULL,
+    operator_id BIGINT,
+    used_shots_before INT NOT NULL,
+    shots_since_maintenance_before INT NOT NULL,
+    maintenance_count_before INT NOT NULL,
+    operate_time TIMESTAMP NOT NULL,
+    remark TEXT
+);
+
+-- ============================================================
+-- 14. 设备点检记录表
+-- ============================================================
+CREATE TABLE machine_inspection_record (
+    id BIGSERIAL PRIMARY KEY,
+    machine_id BIGINT NOT NULL,
+    inspector_id BIGINT NOT NULL,
+    inspect_time TIMESTAMP NOT NULL,
+    result VARCHAR(64) NOT NULL,
+    items_checked VARCHAR(500),
+    issues VARCHAR(500),
+    remark TEXT
+);
+
+-- ============================================================
+-- 15. 质检记录表
 -- ============================================================
 CREATE TABLE qc_record (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     prod_order_id BIGINT,
     product_id BIGINT NOT NULL,
-    check_type ENUM('IQC','FAI','IPQC','FQC') NOT NULL,
-    check_result ENUM('PASS','FAIL','CONDITIONAL') NOT NULL,
-    defect_type VARCHAR(50) COMMENT '缺陷类型',
-    defect_desc VARCHAR(500) COMMENT '缺陷描述',
+    check_type VARCHAR(64) NOT NULL,
+    check_result VARCHAR(64) NOT NULL,
+    defect_type VARCHAR(50),
+    defect_desc VARCHAR(500),
     defect_qty INT DEFAULT 0,
-    sample_qty INT COMMENT '抽样数量',
+    sample_qty INT,
     checker_id BIGINT NOT NULL,
-    check_time DATETIME NOT NULL,
-    image_urls VARCHAR(1000) COMMENT '质检照片URL（逗号分隔）',
+    check_time TIMESTAMP NOT NULL,
+    image_urls VARCHAR(1000),
     remark TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_order (prod_order_id),
-    INDEX idx_product (product_id)
-) COMMENT '质检记录表';
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
--- 15. 仓库表
+-- 16. 仓库表
 -- ============================================================
 CREATE TABLE warehouse (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    code VARCHAR(50) NOT NULL UNIQUE COMMENT '仓库编码 如W-RAW',
-    name VARCHAR(100) NOT NULL COMMENT '仓库名称',
-    type ENUM('RAW','SEMI','FINISH','DEFECT','SCRAP') NOT NULL COMMENT '仓库类型',
+    id BIGSERIAL PRIMARY KEY,
+    code VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    type VARCHAR(64) NOT NULL,
     address VARCHAR(200),
-    factory_code VARCHAR(50) COMMENT '工厂编码',
-    workshop VARCHAR(100) COMMENT '车间',
-    manager_id BIGINT COMMENT '仓库负责人',
-    is_enabled TINYINT DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-) COMMENT '仓库表';
+    factory_code VARCHAR(50),
+    workshop VARCHAR(100),
+    manager_id BIGINT,
+    is_enabled SMALLINT DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
--- 16. 库位表
+-- 17. 库位表
 -- ============================================================
 CREATE TABLE warehouse_location (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     warehouse_id BIGINT NOT NULL,
-    code VARCHAR(50) NOT NULL COMMENT '库位编码 如A-01-01',
+    code VARCHAR(50) NOT NULL,
     name VARCHAR(100),
-    area VARCHAR(50) COMMENT '库区',
-    shelf VARCHAR(50) COMMENT '货架',
-    layer INT COMMENT '层数',
-    position INT COMMENT '位置',
-    is_enabled TINYINT DEFAULT 1,
-    UNIQUE KEY uk_wh_location (warehouse_id, code)
-) COMMENT '库位表';
+    area VARCHAR(50),
+    shelf VARCHAR(50),
+    layer INT,
+    position INT,
+    is_enabled SMALLINT DEFAULT 1,
+    CONSTRAINT uk_wh_location UNIQUE (warehouse_id, code)
+);
 
 -- ============================================================
--- 17. 物料批次表
--- ============================================================
-CREATE TABLE material_batch (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    batch_no VARCHAR(50) NOT NULL UNIQUE COMMENT '批次号',
-    product_id BIGINT NOT NULL,
-    warehouse_id BIGINT NOT NULL,
-    supplier_id BIGINT COMMENT '供应商',
-    production_date DATE COMMENT '生产日期/来料日期',
-    expiry_date DATE COMMENT '有效期至',
-    initial_qty INT COMMENT '初始数量',
-    remaining_qty INT DEFAULT 0 COMMENT '剩余数量',
-    status ENUM('NORMAL','LOCKED','EXPIRED','RETURNED') DEFAULT 'NORMAL',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_product (product_id),
-    INDEX idx_batch_no (batch_no)
-) COMMENT '物料批次表';
-
--- ============================================================
--- 18. 库存表
+-- 17.1 库存表
 -- ============================================================
 CREATE TABLE stock (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     product_id BIGINT NOT NULL,
     warehouse_id BIGINT NOT NULL,
-    location_id BIGINT COMMENT '库位ID',
-    batch_id BIGINT COMMENT '批次ID（原料/成品批次管理时必填）',
-    qty INT DEFAULT 0 COMMENT '当前库存数量',
-    locked_qty INT DEFAULT 0 COMMENT '锁定数量（已分配工单）',
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_stock (product_id, warehouse_id, location_id, batch_id)
-) COMMENT '库存表';
+    location_id BIGINT,
+    batch_id BIGINT,
+    qty INT DEFAULT 0,
+    locked_qty INT DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_stock UNIQUE (product_id, warehouse_id, location_id, batch_id)
+);
 
 -- ============================================================
--- 19. 库存流水表
+-- 18. 物料批次表
+-- ============================================================
+CREATE TABLE material_batch (
+    id BIGSERIAL PRIMARY KEY,
+    batch_no VARCHAR(50) NOT NULL UNIQUE,
+    product_id BIGINT NOT NULL,
+    warehouse_id BIGINT NOT NULL,
+    supplier_id BIGINT,
+    production_date DATE,
+    expiry_date DATE,
+    initial_qty INT,
+    remaining_qty INT DEFAULT 0,
+    status VARCHAR(64) DEFAULT 'NORMAL',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================
+-- 18.1 库存流水表
 -- ============================================================
 CREATE TABLE stock_move (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    move_no VARCHAR(50) NOT NULL UNIQUE COMMENT '流水号',
+    id BIGSERIAL PRIMARY KEY,
+    move_no VARCHAR(50) NOT NULL UNIQUE,
     product_id BIGINT NOT NULL,
     warehouse_id BIGINT NOT NULL,
-    location_id BIGINT COMMENT '库位ID',
-    batch_id BIGINT COMMENT '批次ID',
-    to_warehouse_id BIGINT COMMENT '目标仓库ID（调拨时）',
-    to_location_id BIGINT COMMENT '目标库位ID（调拨时）',
-    to_batch_id BIGINT COMMENT '目标批次ID（调拨时）',
-    move_type ENUM('IN','OUT','TRANSFER') NOT NULL,
-    move_reason ENUM('PURCHASE','PICKING','PRODUCE_IN','SALE_OUT','RETURN','INVENTORY_ADJ','TRANSFER','DEFECT') NOT NULL,
+    location_id BIGINT,
+    batch_id BIGINT,
+    to_warehouse_id BIGINT,
+    to_location_id BIGINT,
+    to_batch_id BIGINT,
+    move_type VARCHAR(64) NOT NULL,
+    move_reason VARCHAR(64) NOT NULL,
     qty INT NOT NULL,
-    related_order_id BIGINT COMMENT '关联单据ID',
-    related_order_type ENUM('SALE_ORDER','PROD_ORDER','PURCHASE_ORDER','TRANSFER','INVENTORY') COMMENT '关联单据类型',
+    related_order_id BIGINT,
+    related_order_type VARCHAR(64),
     operator_id BIGINT,
-    operate_time DATETIME NOT NULL,
+    operate_time TIMESTAMP NOT NULL,
     remark TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_warehouse (warehouse_id),
-    INDEX idx_product (product_id)
-) COMMENT '库存流水表';
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
--- 20. 调拨单主表
+-- 18.2 调拨单主表
 -- ============================================================
 CREATE TABLE stock_transfer (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    transfer_no VARCHAR(50) NOT NULL UNIQUE COMMENT '调拨单号',
+    id BIGSERIAL PRIMARY KEY,
+    transfer_no VARCHAR(50) NOT NULL UNIQUE,
     from_warehouse_id BIGINT NOT NULL,
     to_warehouse_id BIGINT NOT NULL,
-    status ENUM('DRAFT','SHIPPED','RECEIVED','CLOSED') DEFAULT 'DRAFT',
+    status VARCHAR(64) DEFAULT 'DRAFT',
     operator_id BIGINT,
-    receive_time DATETIME,
+    receive_time TIMESTAMP,
     remark TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-) COMMENT '调拨单主表';
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
--- 21. 调拨单明细表
+-- 19. 调拨单明细表
 -- ============================================================
 CREATE TABLE stock_transfer_item (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     transfer_id BIGINT NOT NULL,
     product_id BIGINT NOT NULL,
     from_location_id BIGINT,
@@ -421,210 +400,200 @@ CREATE TABLE stock_transfer_item (
     from_batch_id BIGINT,
     qty INT NOT NULL,
     received_qty INT DEFAULT 0,
-    remark VARCHAR(500),
-    INDEX idx_transfer (transfer_id)
-) COMMENT '调拨单明细表';
+    remark VARCHAR(500)
+);
 
 -- ============================================================
--- 22. 盘点单主表
+-- 20. 盘点单主表
 -- ============================================================
 CREATE TABLE stock_inventory (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    inventory_no VARCHAR(50) NOT NULL UNIQUE COMMENT '盘点单号',
+    id BIGSERIAL PRIMARY KEY,
+    inventory_no VARCHAR(50) NOT NULL UNIQUE,
     warehouse_id BIGINT NOT NULL,
-    inventory_type ENUM('FULL','PARTIAL') NOT NULL COMMENT '全盘/抽盘',
-    status ENUM('DRAFT','COUNTING','PENDING_APPROVE','FINISHED','CANCELLED') DEFAULT 'DRAFT',
-    freeze_stock TINYINT DEFAULT 0 COMMENT '是否冻结库存',
+    inventory_type VARCHAR(64) NOT NULL,
+    status VARCHAR(64) DEFAULT 'DRAFT',
+    freeze_stock SMALLINT DEFAULT 0,
     operator_id BIGINT,
     approver_id BIGINT,
     remark TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-) COMMENT '盘点单主表';
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
--- 23. 盘点单明细表
+-- 21. 盘点单明细表
 -- ============================================================
 CREATE TABLE stock_inventory_item (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     inventory_id BIGINT NOT NULL,
     product_id BIGINT NOT NULL,
     location_id BIGINT,
     batch_id BIGINT,
-    book_qty INT DEFAULT 0 COMMENT '账面数量',
-    actual_qty INT DEFAULT 0 COMMENT '实盘数量',
-    diff_qty INT DEFAULT 0 COMMENT '差异数量',
-    diff_amount DECIMAL(12,2) COMMENT '差异金额',
-    reason VARCHAR(200) COMMENT '差异原因',
-    INDEX idx_inventory (inventory_id)
-) COMMENT '盘点单明细表';
+    book_qty INT DEFAULT 0,
+    actual_qty INT DEFAULT 0,
+    diff_qty INT DEFAULT 0,
+    diff_amount DECIMAL(12,2),
+    reason VARCHAR(200)
+);
 
 -- ============================================================
--- 24. 计件单价表
+-- 22. 计件单价表
 -- ============================================================
 CREATE TABLE piece_price (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     product_id BIGINT NOT NULL,
-    process_name VARCHAR(50) DEFAULT '注塑' COMMENT '工序名称',
-    price DECIMAL(10,4) NOT NULL COMMENT '单价（元/个）',
-    effective_date DATE NOT NULL COMMENT '生效日期',
-    expire_date DATE COMMENT '失效日期',
+    process_name VARCHAR(50) DEFAULT '注塑',
+    price DECIMAL(10,4) NOT NULL,
+    effective_date DATE NOT NULL,
+    expire_date DATE,
     created_by BIGINT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_product (product_id)
-) COMMENT '计件单价表';
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
--- 25. 日工资表
+-- 23. 日工资表
 -- ============================================================
 CREATE TABLE salary_daily (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     work_date DATE NOT NULL,
-    total_qualified_qty INT DEFAULT 0 COMMENT '当日合格品总数',
-    total_piece_amount DECIMAL(10,4) DEFAULT 0 COMMENT '计件工资合计',
-    subsidy DECIMAL(10,4) DEFAULT 0 COMMENT '补贴',
-    deduction DECIMAL(10,4) DEFAULT 0 COMMENT '扣款',
-    total_amount DECIMAL(10,4) DEFAULT 0 COMMENT '当日工资总额',
-    status ENUM('DRAFT','CONFIRMED') DEFAULT 'DRAFT',
+    total_qualified_qty INT DEFAULT 0,
+    total_piece_amount DECIMAL(10,4) DEFAULT 0,
+    subsidy DECIMAL(10,4) DEFAULT 0,
+    deduction DECIMAL(10,4) DEFAULT 0,
+    total_amount DECIMAL(10,4) DEFAULT 0,
+    status VARCHAR(64) DEFAULT 'DRAFT',
     confirmed_by BIGINT,
-    confirmed_at DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_user_date (user_id, work_date)
-) COMMENT '日工资表';
+    confirmed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_user_date UNIQUE (user_id, work_date)
+);
 
 -- ============================================================
--- 26. 工资调整表（奖惩/扣款）
+-- 24. 工资调整表
 -- ============================================================
 CREATE TABLE salary_adjust (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
-    adjust_type ENUM('BONUS','PENALTY','OVERTIME','SUBSIDY','OTHER') NOT NULL,
-    amount DECIMAL(10,4) NOT NULL COMMENT '金额（正为加、负为减）',
+    adjust_type VARCHAR(64) NOT NULL,
+    amount DECIMAL(10,4) NOT NULL,
     adjust_date DATE NOT NULL,
     reason VARCHAR(500),
     created_by BIGINT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-) COMMENT '工资调整表';
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
--- 27. 回款记录表
+-- 25. 回款记录表
 -- ============================================================
 CREATE TABLE payment_record (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    payment_no VARCHAR(50) NOT NULL UNIQUE COMMENT '回款单号',
+    id BIGSERIAL PRIMARY KEY,
+    payment_no VARCHAR(50) NOT NULL UNIQUE,
     customer_id BIGINT NOT NULL,
     sale_order_id BIGINT,
     pay_amount DECIMAL(12,2) NOT NULL,
     pay_date DATE NOT NULL,
-    pay_method ENUM('CASH','BANK_TRANSFER','WECHAT','ALIPAY','ACCEPTANCE') NOT NULL,
-    invoice_no VARCHAR(50) COMMENT '发票号',
+    pay_method VARCHAR(64) NOT NULL,
+    invoice_no VARCHAR(50),
     remark TEXT,
     created_by BIGINT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-) COMMENT '回款记录表';
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
--- 28. 发货单表
+-- 26. 发货单表
 -- ============================================================
 CREATE TABLE delivery_order (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    delivery_no VARCHAR(50) NOT NULL UNIQUE COMMENT '发货单号',
+    id BIGSERIAL PRIMARY KEY,
+    delivery_no VARCHAR(50) NOT NULL UNIQUE,
     sale_order_id BIGINT NOT NULL,
     customer_id BIGINT NOT NULL,
     delivery_date DATE NOT NULL,
-    total_qty INT COMMENT '发货总数',
-    logistics_company VARCHAR(100) COMMENT '物流公司',
-    tracking_no VARCHAR(100) COMMENT '物流单号',
-    status ENUM('PENDING','SHIPPED','RECEIVED') DEFAULT 'PENDING',
+    total_qty INT,
+    logistics_company VARCHAR(100),
+    tracking_no VARCHAR(100),
+    status VARCHAR(64) DEFAULT 'PENDING',
     operator_id BIGINT,
     remark TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-) COMMENT '发货单表';
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
--- 29. 发货单明细表
+-- 27. 发货单明细表
 -- ============================================================
 CREATE TABLE delivery_order_item (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     delivery_order_id BIGINT NOT NULL,
     sale_order_item_id BIGINT NOT NULL,
     product_id BIGINT NOT NULL,
-    qty INT NOT NULL,
-    INDEX idx_delivery (delivery_order_id)
-) COMMENT '发货单明细表';
+    qty INT NOT NULL
+);
 
 -- ============================================================
--- 30. 费用支出表
+-- 28. 费用支出表
 -- ============================================================
 CREATE TABLE expense_record (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     expense_no VARCHAR(50) NOT NULL UNIQUE,
-    expense_type ENUM('RENT','ELECTRICITY','WATER','MATERIAL','MAINTENANCE','SALARY','OTHER') NOT NULL,
+    expense_type VARCHAR(64) NOT NULL,
     amount DECIMAL(12,2) NOT NULL,
     expense_date DATE NOT NULL,
-    payee VARCHAR(100) COMMENT '收款方',
+    payee VARCHAR(100),
     remark TEXT,
     created_by BIGINT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-) COMMENT '费用支出表';
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
--- 31. 操作日志表
+-- 29. 操作日志表
 -- ============================================================
 CREATE TABLE sys_operation_log (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     user_id BIGINT,
     username VARCHAR(50),
-    module VARCHAR(50) COMMENT '模块名',
-    action VARCHAR(50) COMMENT '操作类型',
-    target_type VARCHAR(50) COMMENT '操作对象类型',
-    target_id BIGINT COMMENT '操作对象ID',
-    old_value TEXT COMMENT '修改前值（JSON）',
-    new_value TEXT COMMENT '修改后值（JSON）',
+    module VARCHAR(50),
+    action VARCHAR(50),
+    target_type VARCHAR(50),
+    target_id BIGINT,
+    old_value TEXT,
+    new_value TEXT,
     ip VARCHAR(50),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_time (created_at),
-    INDEX idx_user (user_id)
-) COMMENT '操作日志表';
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
--- 32. 系统配置表
+-- 30. 系统配置表
 -- ============================================================
 CREATE TABLE sys_config (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     config_key VARCHAR(100) NOT NULL UNIQUE,
     config_value TEXT,
     config_desc VARCHAR(500),
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) COMMENT '系统配置表';
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
--- 33. 通知消息表
+-- 31. 通知消息表
 -- ============================================================
 CREATE TABLE notification (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    user_id BIGINT NOT NULL COMMENT '接收用户ID',
-    title VARCHAR(200) NOT NULL COMMENT '通知标题',
-    content TEXT NOT NULL COMMENT '通知内容',
-    type ENUM('WARNING','INFO','ERROR') NOT NULL DEFAULT 'INFO' COMMENT '通知类型',
-    is_read TINYINT DEFAULT 0 COMMENT '是否已读 0未读 1已读',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_user (user_id),
-    INDEX idx_type (type),
-    INDEX idx_is_read (is_read),
-    INDEX idx_created_at (created_at)
-) COMMENT '通知消息表';
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    content TEXT NOT NULL,
+    type VARCHAR(64) NOT NULL DEFAULT 'INFO',
+    is_read SMALLINT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
--- 34. 单据序号表（并发安全的单据号分配）
+-- 32. 单据序号表（并发安全的单据号分配）
 -- ============================================================
 CREATE TABLE seq_number (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    seq_type VARCHAR(20) NOT NULL COMMENT '序号类型编码，如 SO/PO/DO/PAY/EXP/TR/IV/SM/BATCH',
-    seq_date DATE NOT NULL COMMENT '当前日期',
-    current_seq INT NOT NULL DEFAULT 0 COMMENT '当前序号值',
-    UNIQUE KEY uk_type_date (seq_type, seq_date)
-) COMMENT '单据序号表';
+    id BIGSERIAL PRIMARY KEY,
+    seq_type VARCHAR(20) NOT NULL,
+    seq_date DATE NOT NULL,
+    current_seq INT NOT NULL DEFAULT 0,
+    CONSTRAINT uk_type_date UNIQUE (seq_type, seq_date)
+);
 
 -- ============================================================
 -- 初始数据插入
@@ -661,7 +630,7 @@ INSERT INTO sys_config (config_key, config_value, config_desc) VALUES
 ('factory_name', 'XX注塑厂', '工厂名称，显示在系统标题'),
 ('shift_day_start', '08:00', '白班开始时间'),
 ('shift_night_start', '20:00', '夜班开始时间'),
-('overtime_threshold_min', '480', '日工时超此值计加班（分钟）'),
+('overtime_threshold_min', '480', '日工时超过此值计加班（分钟）'),
 ('bad_rate_warning', '5', '不良率预警阈值（%）'),
 ('delivery_warning_days', '3', '交期预警天数'),
 ('stock_warning_enabled', 'true', '是否启用库存预警'),
@@ -674,7 +643,7 @@ INSERT INTO sys_config (config_key, config_value, config_desc) VALUES
 ('location_capacity_check', 'false', '是否启用库位容量校验'),
 ('default_raw_warehouse', '1', '默认原料仓ID'),
 ('default_finish_warehouse', '3', '默认成品仓ID'),
-('mold_maintenance_warning_ratio', '0.8', '模具保养预警比例（达到保养周期的百分比时预警）'),
+('mold_maintenance_warning_ratio', '0.8', '模具保养预警比例（达到保养周期百分比时预警）'),
 ('external_push_enabled', 'false', '是否启用外部消息推送'),
 ('wecom_webhook_url', '', '企业微信 Webhook'),
 ('dingtalk_webhook_url', '', '钉钉 Webhook');

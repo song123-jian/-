@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="notifications-page">
     <van-nav-bar title="消息通知" left-arrow @click-left="router.back()">
       <template #right>

@@ -10,7 +10,7 @@
 
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading">
-        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column prop="id" label="编号" width="80" />
         <el-table-column prop="orderNo" label="领料单号" width="150" />
         <el-table-column prop="prodOrderNo" label="生产工单" width="150" />
         <el-table-column prop="materialName" label="物料名称" width="150" />

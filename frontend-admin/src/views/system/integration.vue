@@ -15,7 +15,7 @@
               <el-form ref="telemetryFormRef" :model="telemetryForm" label-width="110px" class="panel-form">
                 <el-row :gutter="16">
                   <el-col :span="12">
-                    <el-form-item label="机台ID">
+                    <el-form-item label="机台编号">
                       <el-input-number v-model="telemetryForm.machineId" :min="1" style="width: 100%" />
                     </el-form-item>
                   </el-col>
@@ -35,7 +35,7 @@
                     </el-form-item>
                   </el-col>
                   <el-col :span="12">
-                    <el-form-item label="工单ID">
+                    <el-form-item label="生产单编号">
                       <el-input-number v-model="telemetryForm.prodOrderId" :min="1" style="width: 100%" />
                     </el-form-item>
                   </el-col>
@@ -45,7 +45,7 @@
                     </el-form-item>
                   </el-col>
                   <el-col :span="12">
-                    <el-form-item label="模具ID">
+                    <el-form-item label="模具编号">
                       <el-input-number v-model="telemetryForm.moldId" :min="1" style="width: 100%" />
                     </el-form-item>
                   </el-col>
@@ -118,7 +118,7 @@
                   type="info"
                   :closable="false"
                   show-icon
-                  title="机台ID 或 机台编码至少填写一个"
+                  title="机台编号或机台编码至少填写一个"
                   class="form-tip"
                 />
                 <el-form-item>
@@ -164,7 +164,7 @@
                     <el-option label="批次" value="BATCH" />
                   </el-select>
                 </el-form-item>
-                <el-form-item label="目标ID" prop="targetId">
+                <el-form-item label="目标编号" prop="targetId">
                   <el-input-number v-model="labelForm.targetId" :min="1" />
                 </el-form-item>
                 <el-form-item>
@@ -181,7 +181,7 @@
               <el-form ref="scaleFormRef" :model="scaleForm" :rules="scaleRules" label-width="110px" class="panel-form">
                 <el-row :gutter="16">
                   <el-col :span="12">
-                    <el-form-item label="产品ID">
+                    <el-form-item label="产品编号">
                       <el-input-number v-model="scaleForm.productId" :min="1" style="width: 100%" />
                     </el-form-item>
                   </el-col>
@@ -325,7 +325,7 @@ const scanRules: FormRules = {
 
 const labelRules: FormRules = {
   targetType: [{ required: true, message: '请选择目标类型', trigger: 'change' }],
-  targetId: [{ required: true, message: '请输入目标ID', trigger: 'change' }],
+  targetId: [{ required: true, message: '请输入目标编号', trigger: 'change' }],
 }
 
 const scaleRules: FormRules = {
@@ -435,7 +435,7 @@ function fillPushSample() {
 
 async function submitTelemetry() {
   if (!telemetryForm.machineId && !telemetryForm.machineCode.trim()) {
-    ElMessage.warning('机台ID或机台编码至少填写一个')
+    ElMessage.warning('机台编号或机台编码至少填写一个')
     return
   }
   loading.telemetry = true

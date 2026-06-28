@@ -1,5 +1,6 @@
 package com.injectmes.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.injectmes.common.R;
 import com.injectmes.dto.req.PageRequest;
 import com.injectmes.dto.req.QcRecordRequest;
@@ -18,13 +19,20 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * 质检记录控制器
@@ -46,44 +54,16 @@ public class QcRecordController {
     @Autowired
     private ProductMapper productMapper;
 
-    /**
-     * 质检录入
-     */
     @PostMapping
     public R<QcRecordResponse> create(@Valid @RequestBody QcRecordRequest request) {
         return qcRecordService.create(request);
     }
 
-    /**
-     * 待质检工单（移动端兼容）
-     */
     @GetMapping("/pending-orders")
     public R<List<Map<String, Object>>> pendingOrders() {
-        List<ProdOrder> orders = prodOrderMapper.selectList(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ProdOrder>()
-                        .in(ProdOrder::getStatus,
-                                ProdOrderStatus.SCHEDULED.name(),
-                                ProdOrderStatus.RUNNING.name(),
-                                ProdOrderStatus.PAUSED.name())
-                        .orderByDesc(ProdOrder::getCreatedAt)
-        );
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (ProdOrder order : orders) {
-            Product product = order.getProductId() != null ? productMapper.selectById(order.getProductId()) : null;
-            Map<String, Object> row = new java.util.HashMap<>();
-            row.put("workOrderId", order.getId());
-            row.put("workOrderNo", order.getOrderNo());
-            row.put("productId", order.getProductId());
-            row.put("productName", product != null ? product.getName() : "");
-            row.put("status", order.getStatus());
-            result.add(row);
-        }
-        return R.ok(result);
+        return qcRecordService.pendingOrders();
     }
 
-    /**
-     * 上传质检照片（移动端兼容）
-     */
     @PostMapping("/upload")
     public R<Map<String, Object>> upload(@RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
         if (file == null || file.isEmpty()) {
@@ -102,51 +82,33 @@ public class QcRecordController {
         }
     }
 
-    /**
-     * 质检记录列表（支持prodOrderId/productId/checkType筛选）
-     */
     @GetMapping
     public R<PageResponse<QcRecordResponse>> list(PageRequest request,
-                                                    @RequestParam(required = false) Long prodOrderId,
-                                                    @RequestParam(required = false) Long productId,
-                                                    @RequestParam(required = false) String checkType,
-                                                    @RequestParam(required = false) String checkResult,
-                                                    @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-                                                    @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+                                                  @RequestParam(name = "prodOrderId", required = false) Long prodOrderId,
+                                                  @RequestParam(name = "productId", required = false) Long productId,
+                                                  @RequestParam(name = "checkType", required = false) String checkType,
+                                                  @RequestParam(name = "checkResult", required = false) String checkResult,
+                                                  @RequestParam(name = "startDate", required = false)
+                                                  @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+                                                  @RequestParam(name = "endDate", required = false)
+                                                  @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return qcRecordService.list(request, prodOrderId, productId, checkType, checkResult, startDate, endDate);
     }
 
-    /**
-     * 质量追溯查询（按批次/模次/产品）
-     */
     @GetMapping("/trace")
-    public R<List<QcRecordResponse>> trace(@RequestParam(required = false) Long productId,
-                                             @RequestParam(required = false) String batchNo,
-                                             @RequestParam(required = false) Long prodOrderId) {
+    public R<List<QcRecordResponse>> trace(@RequestParam(name = "productId", required = false) Long productId,
+                                           @RequestParam(name = "batchNo", required = false) String batchNo,
+                                           @RequestParam(name = "prodOrderId", required = false) Long prodOrderId) {
         return qcRecordService.trace(productId, batchNo, prodOrderId);
     }
 
-    /**
-     * 更新质检
-     */
     @PutMapping("/{id}")
-    public R<Void> update(@PathVariable Long id, @Valid @RequestBody QcRecordRequest request) {
-        QcRecord qcRecord = qcRecordMapper.selectById(id);
-        if (qcRecord == null) {
-            return R.fail("质检记录不存在");
-        }
-        BeanUtils.copyProperties(request, qcRecord);
-        qcRecord.setId(id);
-        qcRecordMapper.updateById(qcRecord);
-        return R.ok("更新成功", null);
+    public R<QcRecordResponse> update(@PathVariable(name = "id") Long id, @Valid @RequestBody QcRecordRequest request) {
+        return qcRecordService.update(id, request);
     }
 
-    /**
-     * 删除质检
-     */
     @DeleteMapping("/{id}")
-    public R<Void> delete(@PathVariable Long id) {
-        qcRecordMapper.deleteById(id);
-        return R.ok("删除成功", null);
+    public R<Void> delete(@PathVariable(name = "id") Long id) {
+        return qcRecordService.delete(id);
     }
 }

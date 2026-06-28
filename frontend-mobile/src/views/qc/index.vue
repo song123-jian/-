@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="qc-page">
     <van-nav-bar title="质检录入" left-arrow @click-left="router.back()" />
 

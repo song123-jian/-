@@ -2,7 +2,6 @@ package com.injectmes.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.injectmes.common.R;
-import com.injectmes.config.LocalTokenStore;
 import com.injectmes.dto.req.LoginRequest;
 import com.injectmes.dto.resp.LoginResponse;
 import com.injectmes.entity.SysUser;
@@ -16,8 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 认证服务
@@ -25,20 +22,8 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class AuthService {
 
-    /** 登录失败最大次数 */
     private static final int MAX_FAIL_COUNT = 5;
-
-    /** 锁定时长（分钟） */
     private static final int LOCK_DURATION_MINUTES = 15;
-
-    /** Token有效期（小时） */
-    private static final int TOKEN_EXPIRE_HOURS = 2;
-
-    /** RefreshToken有效期（天） */
-    private static final int REFRESH_TOKEN_EXPIRE_DAYS = 7;
-
-    /** Token存储key前缀 */
-    private static final String TOKEN_PREFIX = "inject:erp:";
 
     @Autowired
     private SysUserMapper userMapper;
@@ -48,9 +33,6 @@ public class AuthService {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
-
-    @Autowired
-    private LocalTokenStore tokenStore;
 
     /**
      * 用户登录
@@ -75,7 +57,6 @@ public class AuthService {
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             int failCount = (user.getLoginFailCount() == null ? 0 : user.getLoginFailCount()) + 1;
             user.setLoginFailCount(failCount);
-
             if (failCount >= MAX_FAIL_COUNT) {
                 user.setLockUntil(LocalDateTime.now().plusMinutes(LOCK_DURATION_MINUTES));
             }
@@ -89,15 +70,11 @@ public class AuthService {
         userMapper.updateById(user);
 
         String token = jwtUtils.generateToken(user.getUsername(), Map.of("userId", user.getId(), "role", user.getRole()));
-        String refreshToken = UUID.randomUUID().toString().replace("-", "");
-
-        String tokenKey = TOKEN_PREFIX + "refresh:" + refreshToken;
-        tokenStore.set(tokenKey, user.getId().toString(), REFRESH_TOKEN_EXPIRE_DAYS, TimeUnit.DAYS);
 
         LoginResponse response = new LoginResponse();
         response.setUserId(user.getId());
         response.setToken(token);
-        response.setRefreshToken(refreshToken);
+        response.setRefreshToken(token);
         response.setUsername(user.getUsername());
         response.setUserName(user.getUsername());
         response.setRealName(user.getRealName());
@@ -111,14 +88,18 @@ public class AuthService {
      * 刷新Token
      */
     public R<LoginResponse> refresh(String refreshToken) {
-        String tokenKey = TOKEN_PREFIX + "refresh:" + refreshToken;
-        String userIdStr = tokenStore.get(tokenKey);
-        if (userIdStr == null) {
+        if (refreshToken == null || refreshToken.trim().isEmpty()) {
+            throw new BusinessException(401, "刷新令牌无效，请重新登录");
+        }
+
+        if (!jwtUtils.validateToken(refreshToken)) {
             throw new BusinessException(401, "刷新令牌已过期，请重新登录");
         }
 
-        Long userId = Long.parseLong(userIdStr);
-        SysUser user = userMapper.selectById(userId);
+        String username = jwtUtils.getUsernameFromToken(refreshToken);
+        SysUser user = userMapper.selectOne(
+                new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username)
+        );
         if (user == null) {
             throw new BusinessException(401, "用户不存在");
         }
@@ -128,16 +109,11 @@ public class AuthService {
         }
 
         String newToken = jwtUtils.generateToken(user.getUsername(), Map.of("userId", user.getId(), "role", user.getRole()));
-        String newRefreshToken = UUID.randomUUID().toString().replace("-", "");
-
-        tokenStore.delete(tokenKey);
-        String newTokenKey = TOKEN_PREFIX + "refresh:" + newRefreshToken;
-        tokenStore.set(newTokenKey, user.getId().toString(), REFRESH_TOKEN_EXPIRE_DAYS, TimeUnit.DAYS);
 
         LoginResponse response = new LoginResponse();
         response.setUserId(user.getId());
         response.setToken(newToken);
-        response.setRefreshToken(newRefreshToken);
+        response.setRefreshToken(newToken);
         response.setUsername(user.getUsername());
         response.setUserName(user.getUsername());
         response.setRealName(user.getRealName());
@@ -151,24 +127,6 @@ public class AuthService {
      * 登出
      */
     public R<Void> logout(String token) {
-        try {
-            String username = jwtUtils.getUsernameFromToken(token);
-
-            var keys = tokenStore.keys(TOKEN_PREFIX + "refresh:*");
-            if (keys != null && !keys.isEmpty()) {
-                for (String key : keys) {
-                    String userIdStr = tokenStore.get(key);
-                    if (userIdStr != null) {
-                        SysUser user = userMapper.selectById(Long.parseLong(userIdStr));
-                        if (user != null && user.getUsername().equals(username)) {
-                            tokenStore.delete(key);
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            // token解析失败也允许登出
-        }
         return R.ok("登出成功", null);
     }
 }

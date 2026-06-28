@@ -5,20 +5,22 @@ import com.injectmes.dto.req.PageRequest;
 import com.injectmes.dto.req.ProdReportRequest;
 import com.injectmes.dto.resp.PageResponse;
 import com.injectmes.dto.resp.ProdReportResponse;
-import com.injectmes.entity.ProdReport;
-import com.injectmes.mapper.ProdReportMapper;
 import com.injectmes.security.LoginUserDetails;
 import com.injectmes.service.ProdReportService;
 import jakarta.validation.Valid;
-import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -33,9 +35,6 @@ public class ProdReportController {
     @Autowired
     private ProdReportService prodReportService;
 
-    @Autowired
-    private ProdReportMapper prodReportMapper;
-
     /**
      * 报工
      */
@@ -45,11 +44,15 @@ public class ProdReportController {
     }
 
     /**
-     * 报工记录列表（全部，分页）
+     * 报工记录列表
      */
     @GetMapping
-    public R<PageResponse<ProdReportResponse>> list(PageRequest request) {
-        return prodReportService.list(request);
+    public R<PageResponse<ProdReportResponse>> list(PageRequest request,
+                                                    @RequestParam(name = "reportType", required = false) String reportType,
+                                                    @RequestParam(name = "shift", required = false) String shift,
+                                                    @RequestParam(name = "startDate", required = false) String startDate,
+                                                    @RequestParam(name = "endDate", required = false) String endDate) {
+        return prodReportService.list(request, reportType, shift, startDate, endDate);
     }
 
     /**
@@ -65,12 +68,12 @@ public class ProdReportController {
      */
     @GetMapping("/my")
     public R<PageResponse<ProdReportResponse>> myReports(PageRequest request,
-                                                          @AuthenticationPrincipal LoginUserDetails loginUser) {
+                                                         @AuthenticationPrincipal LoginUserDetails loginUser) {
         return prodReportService.myReports(request, loginUser.getUserId());
     }
 
     /**
-     * 当前班次任务（移动端兼容）
+     * 当前班次任务
      */
     @GetMapping("/current-shift-tasks")
     public R<List<Map<String, Object>>> currentShiftTasks() {
@@ -78,24 +81,24 @@ public class ProdReportController {
     }
 
     /**
-     * 根据机台获取工单（移动端兼容）
+     * 根据机台获取工单
      */
     @GetMapping("/work-orders")
-    public R<List<Map<String, Object>>> workOrders(@RequestParam String machineCode) {
+    public R<List<Map<String, Object>>> workOrders(@RequestParam(name = "machineCode") String machineCode) {
         return prodReportService.workOrdersByMachineCode(machineCode);
     }
 
     /**
-     * 我的产量统计（移动端兼容）
+     * 我的产量统计
      */
     @GetMapping("/my-output-stats")
-    public R<Map<String, Object>> myOutputStats(@RequestParam(required = false) String type,
+    public R<Map<String, Object>> myOutputStats(@RequestParam(name = "type", required = false) String type,
                                                 @AuthenticationPrincipal LoginUserDetails loginUser) {
         return prodReportService.myOutputStats(loginUser.getUserId(), type);
     }
 
     /**
-     * 我的报工记录（移动端兼容）
+     * 我的报工记录（移动端）
      */
     @GetMapping("/my-reports")
     public R<PageResponse<ProdReportResponse>> myReportsForMobile(PageRequest request,
@@ -107,23 +110,15 @@ public class ProdReportController {
      * 更新报工
      */
     @PutMapping("/{id}")
-    public R<Void> update(@PathVariable Long id, @Valid @RequestBody ProdReportRequest request) {
-        ProdReport prodReport = prodReportMapper.selectById(id);
-        if (prodReport == null) {
-            return R.fail("报工记录不存在");
-        }
-        BeanUtils.copyProperties(request, prodReport);
-        prodReport.setId(id);
-        prodReportMapper.updateById(prodReport);
-        return R.ok("更新成功", null);
+    public R<ProdReportResponse> update(@PathVariable(name = "id") Long id, @Valid @RequestBody ProdReportRequest request) {
+        return prodReportService.update(id, request);
     }
 
     /**
      * 删除报工
      */
     @DeleteMapping("/{id}")
-    public R<Void> delete(@PathVariable Long id) {
-        prodReportMapper.deleteById(id);
-        return R.ok("删除成功", null);
+    public R<Void> delete(@PathVariable(name = "id") Long id) {
+        return prodReportService.delete(id);
     }
 }

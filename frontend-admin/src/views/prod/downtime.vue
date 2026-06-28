@@ -34,7 +34,7 @@
 
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading">
-        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column prop="id" label="编号" width="80" />
         <el-table-column prop="machineName" label="机台" width="120" />
         <el-table-column prop="orderNo" label="工单" width="150" />
         <el-table-column prop="reasonLabel" label="停机原因" width="120" />
@@ -88,7 +88,7 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="工单ID">
+            <el-form-item label="工单编号">
               <el-input-number v-model="form.prodOrderId" :min="1" style="width: 100%" />
             </el-form-item>
           </el-col>

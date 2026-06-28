@@ -1,18 +1,9 @@
-﻿spring:
-  # 生产环境数据源
+spring:
+  # 生产环境数据源（PostgreSQL / Supabase）
   datasource:
-    url: jdbc:mysql://prod-mysql:3306/inject_erp?useUnicode=true&characterEncoding=utf-8&useSSL=true&serverTimezone=Asia/Shanghai
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME:inject_erp}?sslmode=${DB_SSLMODE:require}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
-
-  # 生产环境Redis
-  data:
-    redis:
-      host: ${REDIS_HOST}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD}
-      database: 0
-
 # MyBatis-Plus生产环境关闭SQL日志
 mybatis-plus:
   configuration:

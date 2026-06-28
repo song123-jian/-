@@ -1,6 +1,7 @@
 package com.injectmes.controller;
 
 import com.injectmes.common.R;
+import com.injectmes.annotation.OperationLog;
 import com.injectmes.dto.req.PageRequest;
 import com.injectmes.dto.req.ProductCreateRequest;
 import com.injectmes.dto.req.ProductUpdateRequest;
@@ -27,6 +28,7 @@ public class ProductController {
      * 产品列表（分页）
      */
     @GetMapping
+    @OperationLog(module = "产品管理", action = "查询列表")
     public R<PageResponse<ProductResponse>> list(PageRequest request) {
         return productService.list(request);
     }
@@ -35,6 +37,7 @@ public class ProductController {
      * 产品详情
      */
     @GetMapping("/{id}")
+    @OperationLog(module = "产品管理", action = "查看详情")
     public R<ProductResponse> getById(@PathVariable Long id) {
         return productService.getById(id);
     }
@@ -43,6 +46,7 @@ public class ProductController {
      * 新增产品
      */
     @PostMapping
+    @OperationLog(module = "产品管理", action = "新增")
     public R<ProductResponse> create(@Valid @RequestBody ProductCreateRequest request) {
         return productService.create(request);
     }
@@ -51,6 +55,7 @@ public class ProductController {
      * 编辑产品
      */
     @PutMapping("/{id}")
+    @OperationLog(module = "产品管理", action = "编辑")
     public R<ProductResponse> update(@PathVariable Long id, @Valid @RequestBody ProductUpdateRequest request) {
         return productService.update(id, request);
     }
@@ -59,6 +64,7 @@ public class ProductController {
      * 删除产品
      */
     @DeleteMapping("/{id}")
+    @OperationLog(module = "产品管理", action = "删除")
     public R<Void> delete(@PathVariable Long id) {
         productService.delete(id);
         return R.ok();

@@ -1,11 +1,11 @@
 <template>
   <el-container class="layout-container">
-      <!-- 左侧菜单 -->
-      <el-aside :width="appStore.sidebarCollapsed ? '64px' : '220px'" class="layout-aside">
-        <div class="logo-wrap">
-          <div class="logo-mark">注</div>
-          <span v-show="!appStore.sidebarCollapsed" class="logo-text">注塑厂管理系统</span>
-        </div>
+    <el-aside :width="appStore.sidebarCollapsed ? '64px' : '220px'" class="layout-aside">
+      <div class="logo-wrap">
+        <div class="logo-mark">注</div>
+        <span v-show="!appStore.sidebarCollapsed" class="logo-text">注塑厂管理系统</span>
+      </div>
+
       <el-menu
         :default-active="activeMenu"
         :collapse="appStore.sidebarCollapsed"
@@ -16,147 +16,41 @@
         active-text-color="#409eff"
         class="side-menu"
       >
-        <!-- 首页 -->
         <el-menu-item index="/dashboard">
-          <el-icon><HomeFilled /></el-icon>
+          <el-icon><component :is="resolveIcon('HomeFilled')" /></el-icon>
           <template #title>工作台</template>
         </el-menu-item>
 
-        <!-- 基础资料 -->
-        <el-sub-menu index="/base">
+        <el-sub-menu v-for="group in routeGroups" :key="group.path" :index="group.path">
           <template #title>
-            <el-icon><FolderOpened /></el-icon>
-            <span>基础资料</span>
+            <el-icon><component :is="resolveIcon(group.icon)" /></el-icon>
+            <span>{{ group.title }}</span>
           </template>
-          <el-menu-item index="/base/users">用户管理</el-menu-item>
-          <el-menu-item index="/base/machines">机台管理</el-menu-item>
-          <el-menu-item index="/base/warehouses">仓库管理</el-menu-item>
-          <el-menu-item index="/base/molds">模具管理</el-menu-item>
-          <el-menu-item index="/base/products">产品管理</el-menu-item>
-          <el-menu-item index="/base/customers">客户管理</el-menu-item>
-          <el-menu-item index="/base/suppliers">供应商管理</el-menu-item>
-        </el-sub-menu>
-
-        <!-- 销售管理 -->
-        <el-sub-menu index="/sale">
-          <template #title>
-            <el-icon><ShoppingCart /></el-icon>
-            <span>销售管理</span>
-          </template>
-          <el-menu-item index="/sale/orders">销售订单</el-menu-item>
-          <el-menu-item index="/sale/deliveries">发货管理</el-menu-item>
-          <el-menu-item index="/sale/payments">回款登记</el-menu-item>
-        </el-sub-menu>
-
-        <!-- 生产管理 -->
-        <el-sub-menu index="/prod">
-          <template #title>
-            <el-icon><SetUp /></el-icon>
-            <span>生产管理</span>
-          </template>
-          <el-menu-item index="/prod/orders">生产订单</el-menu-item>
-          <el-menu-item index="/prod/reports">报工记录</el-menu-item>
-          <el-menu-item index="/prod/downtime">停机记录</el-menu-item>
-          <el-menu-item index="/prod/mount-records">上下模记录</el-menu-item>
-          <el-menu-item index="/prod/mold-maintenance-records">模具保养记录</el-menu-item>
-          <el-menu-item index="/prod/machine-inspection-records">设备点检记录</el-menu-item>
-          <el-menu-item index="/prod/warnings">预警中心</el-menu-item>
-        </el-sub-menu>
-        <!-- 品质管理 -->
-        <el-sub-menu index="/qc">
-          <template #title>
-            <el-icon><CircleCheck /></el-icon>
-            <span>品质管理</span>
-          </template>
-          <el-menu-item index="/qc/records">质检记录</el-menu-item>
-          <el-menu-item index="/qc/defect-analysis">不良分析</el-menu-item>
-        </el-sub-menu>
-
-        <!-- 仓库管理 -->
-        <el-sub-menu index="/stock">
-          <template #title>
-            <el-icon><House /></el-icon>
-            <span>仓库管理</span>
-          </template>
-          <el-menu-item index="/stock/query">库存查询</el-menu-item>
-          <el-menu-item index="/stock/ledger">库存台账</el-menu-item>
-          <el-menu-item index="/stock/in-purchase">采购入库</el-menu-item>
-          <el-menu-item index="/stock/out-picking">生产领料</el-menu-item>
-          <el-menu-item index="/stock/in-produce">成品入库</el-menu-item>
-          <el-menu-item index="/stock/out-sale">销售出库</el-menu-item>
-          <el-menu-item index="/stock/transfer">仓库调拨</el-menu-item>
-          <el-menu-item index="/stock/inventory">盘点单</el-menu-item>
-        </el-sub-menu>
-
-        <!-- 工资管理 -->
-        <el-sub-menu index="/salary">
-          <template #title>
-            <el-icon><Wallet /></el-icon>
-            <span>工资管理</span>
-          </template>
-          <el-menu-item index="/salary/prices">计件单价</el-menu-item>
-          <el-menu-item index="/salary/daily">日工资</el-menu-item>
-          <el-menu-item index="/salary/monthly">月工资汇总</el-menu-item>
-          <el-menu-item index="/salary/adjust">奖惩管理</el-menu-item>
-        </el-sub-menu>
-
-        <!-- 财务管理 -->
-        <el-sub-menu index="/finance">
-          <template #title>
-            <el-icon><Coin /></el-icon>
-            <span>财务管理</span>
-          </template>
-          <el-menu-item index="/finance/expenses">费用支出</el-menu-item>
-          <el-menu-item index="/finance/statements">对账单</el-menu-item>
-        </el-sub-menu>
-
-        <!-- 报表中心 -->
-        <el-sub-menu index="/report">
-          <template #title>
-            <el-icon><TrendCharts /></el-icon>
-            <span>报表中心</span>
-          </template>
-          <el-menu-item index="/report/boss-dashboard">老板驾驶舱</el-menu-item>
-          <el-menu-item index="/report/production-board">生产看板</el-menu-item>
-          <el-menu-item index="/report/quality-board">品质看板</el-menu-item>
-        </el-sub-menu>
-
-        <!-- 系统管理 -->
-        <el-sub-menu index="/system">
-          <template #title>
-            <el-icon><Setting /></el-icon>
-            <span>系统管理</span>
-          </template>
-          <el-menu-item index="/system/logs">操作日志</el-menu-item>
-          <el-menu-item index="/system/config">系统配置</el-menu-item>
-          <el-menu-item index="/system/integration">集成中心</el-menu-item>
-          <el-menu-item index="/system/backup">数据备份</el-menu-item>
-          <el-menu-item index="/system/notifications">消息中心</el-menu-item>
+          <el-menu-item v-for="item in group.children" :key="item.name" :index="fullPath(group.path, item.path)">
+            <el-icon><component :is="resolveIcon(item.icon)" /></el-icon>
+            <span>{{ item.title }}</span>
+          </el-menu-item>
         </el-sub-menu>
       </el-menu>
     </el-aside>
 
-    <!-- 右侧内容区 -->
     <el-container class="layout-main">
-      <!-- 顶部导航 -->
       <el-header class="layout-header">
         <div class="header-left">
           <el-icon class="collapse-btn" @click="appStore.toggleSidebar">
             <Fold v-if="!appStore.sidebarCollapsed" />
             <Expand v-else />
           </el-icon>
-          <!-- 面包屑导航 -->
           <el-breadcrumb separator="/">
-            <el-breadcrumb-item :to="{ path: '/dashboard' }">首页</el-breadcrumb-item>
+            <el-breadcrumb-item :to="{ path: '/dashboard' }">工作台</el-breadcrumb-item>
             <el-breadcrumb-item v-if="currentRoute?.meta?.title">{{ currentRoute.meta.title }}</el-breadcrumb-item>
           </el-breadcrumb>
         </div>
+
         <div class="header-right">
-          <!-- 消息铃铛 -->
           <el-badge :value="unreadCount" :hidden="!unreadCount" class="notice-badge">
             <el-icon :size="20" class="notice-icon" @click="goNotifications"><Bell /></el-icon>
           </el-badge>
-          <!-- 用户信息 -->
           <el-dropdown @command="handleCommand">
             <span class="user-info">
               <el-icon><UserFilled /></el-icon>
@@ -172,7 +66,6 @@
         </div>
       </el-header>
 
-      <!-- 主内容区 -->
       <el-main class="layout-content">
         <router-view />
       </el-main>
@@ -183,9 +76,59 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import type { Component } from 'vue'
+import {
+  Bell,
+  Bottom,
+  BottomLeft,
+  Box,
+  Calendar,
+  CircleCheck,
+  Checked,
+  Coin,
+  DataAnalysis,
+  DataBoard,
+  DataLine,
+  Document,
+  DocumentChecked,
+  DocumentCopy,
+  EditPen,
+  Expand,
+  Fold,
+  FolderChecked,
+  FolderOpened,
+  Goods,
+  HomeFilled,
+  House,
+  List,
+  Memo,
+  Medal,
+  Monitor,
+  Notebook,
+  Odometer,
+  PieChart,
+  PriceTag,
+  Promotion,
+  Money,
+  Search,
+  SetUp,
+  Setting,
+  ShoppingCart,
+  Sort,
+  Stamp,
+  Tickets,
+  Tools,
+  TrendCharts,
+  User,
+  UserFilled,
+  Van,
+  Wallet,
+  WarningFilled,
+} from '@element-plus/icons-vue'
+import { getUnreadNotificationCount } from '@/api/notification'
 import { useAppStore } from '@/store/app'
 import { useUserStore } from '@/store/user'
-import { getUnreadNotificationCount } from '@/api/notification'
+import { buildRoutePath, routeGroups } from '@/router/route-config'
 
 const route = useRoute()
 const router = useRouter()
@@ -193,12 +136,66 @@ const appStore = useAppStore()
 const userStore = useUserStore()
 const unreadCount = ref(0)
 
-// 当前激活的菜单
 const activeMenu = computed(() => route.path)
-// 当前路由信息
 const currentRoute = computed(() => route)
 
-// 下拉菜单命令处理
+const iconMap: Record<string, Component> = {
+  Bell,
+  Bottom,
+  BottomLeft,
+  Box,
+  Calendar,
+  CircleCheck,
+  Checked,
+  Coin,
+  DataAnalysis,
+  DataBoard,
+  DataLine,
+  Document,
+  DocumentChecked,
+  DocumentCopy,
+  EditPen,
+  Expand,
+  Fold,
+  FolderChecked,
+  FolderOpened,
+  Goods,
+  HomeFilled,
+  House,
+  List,
+  Memo,
+  Medal,
+  Monitor,
+  Notebook,
+  Odometer,
+  PieChart,
+  PriceTag,
+  Promotion,
+  Money,
+  Search,
+  SetUp,
+  Setting,
+  ShoppingCart,
+  Sort,
+  Stamp,
+  Tickets,
+  Tools,
+  TrendCharts,
+  User,
+  UserFilled,
+  Van,
+  Wallet,
+  WarningFilled,
+}
+
+function resolveIcon(name: string): Component {
+  return iconMap[name] || HomeFilled
+}
+
+function fullPath(groupPath: string, childPath: string) {
+  return buildRoutePath(groupPath, childPath)
+}
+
 function handleCommand(command: string) {
   if (command === 'logout') {
     userStore.logoutAction()
@@ -235,10 +232,11 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .layout-container {
   height: 100vh;
+  background: #f3f5f7;
 }
 
 .layout-aside {
-  background-color: #304156;
+  background: linear-gradient(180deg, #172033 0%, #1f2937 100%);
   transition: width 0.3s;
   overflow: hidden;
 }
@@ -251,6 +249,7 @@ onUnmounted(() => {
   background-color: #263445;
   padding: 0 16px;
   overflow: hidden;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 
   .logo-mark {
     width: 32px;
@@ -279,9 +278,30 @@ onUnmounted(() => {
   border-right: none;
   height: calc(100vh - 60px);
   overflow-y: auto;
+  background: transparent;
+  padding: 8px 8px 16px;
 
   &::-webkit-scrollbar {
     width: 0;
+  }
+
+  :deep(.el-menu-item),
+  :deep(.el-sub-menu__title) {
+    height: 42px;
+    line-height: 42px;
+    border-radius: 8px;
+    margin: 4px 6px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  :deep(.el-menu-item:hover),
+  :deep(.el-sub-menu__title:hover) {
+    background-color: rgba(255, 255, 255, 0.06);
+  }
+
+  :deep(.el-menu-item.is-active) {
+    background-color: rgba(64, 158, 255, 0.18);
+    color: #fff;
   }
 }
 
@@ -290,14 +310,15 @@ onUnmounted(() => {
 }
 
 .layout-header {
-  height: 60px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid #e6e6e6;
-  background: #fff;
-  padding: 0 20px;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  border-bottom: 1px solid #e8ebf0;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0 16px;
+  box-shadow: 0 1px 8px rgba(15, 23, 42, 0.05);
+  backdrop-filter: blur(10px);
 }
 
 .header-left {
@@ -347,8 +368,8 @@ onUnmounted(() => {
 }
 
 .layout-content {
-  background-color: #f0f2f5;
-  padding: 20px;
+  background-color: #f3f5f7;
+  padding: 16px;
   overflow-y: auto;
 }
 </style>

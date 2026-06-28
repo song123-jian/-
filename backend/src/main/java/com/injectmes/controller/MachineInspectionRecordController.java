@@ -27,12 +27,12 @@ public class MachineInspectionRecordController {
 
     @GetMapping
     public R<PageResponse<MachineInspectionRecordResponse>> list(PageRequest request,
-                                                                 @RequestParam(required = false) Long machineId,
-                                                                 @RequestParam(required = false) Long inspectorId,
-                                                                 @RequestParam(required = false) String result,
-                                                                 @RequestParam(required = false)
+                                                                 @RequestParam(name = "machineId", required = false) Long machineId,
+                                                                 @RequestParam(name = "inspectorId", required = false) Long inspectorId,
+                                                                 @RequestParam(name = "result", required = false) String result,
+                                                                 @RequestParam(name = "startDate", required = false)
                                                                  @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-                                                                 @RequestParam(required = false)
+                                                                 @RequestParam(name = "endDate", required = false)
                                                                  @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return machineInspectionRecordService.list(request, machineId, inspectorId, result, startDate, endDate);
     }

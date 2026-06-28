@@ -27,7 +27,7 @@ public class NotificationController {
      */
     @GetMapping
     public R<PageResponse<NotificationResponse>> list(PageRequest request,
-                                                     @RequestParam(required = false) Integer isRead,
+                                                     @RequestParam(name = "isRead", required = false) Integer isRead,
                                                      @AuthenticationPrincipal LoginUserDetails loginUser) {
         Long userId = loginUser != null ? loginUser.getUserId() : getCurrentUserId();
         if (userId == null) {
@@ -52,7 +52,7 @@ public class NotificationController {
      * 标记已读
      */
     @PutMapping("/{id}/read")
-    public R<Void> markRead(@PathVariable Long id,
+    public R<Void> markRead(@PathVariable(name = "id") Long id,
                             @AuthenticationPrincipal LoginUserDetails loginUser) {
         Long userId = loginUser != null ? loginUser.getUserId() : getCurrentUserId();
         if (userId == null) {
@@ -65,7 +65,7 @@ public class NotificationController {
      * 标记已读（兼容移动端 POST）
      */
     @PostMapping("/read/{id}")
-    public R<Void> markReadAlias(@PathVariable Long id,
+    public R<Void> markReadAlias(@PathVariable(name = "id") Long id,
                                  @AuthenticationPrincipal LoginUserDetails loginUser) {
         return markRead(id, loginUser);
     }
@@ -86,7 +86,7 @@ public class NotificationController {
      * 删除通知
      */
     @DeleteMapping("/{id}")
-    public R<Void> delete(@PathVariable Long id,
+    public R<Void> delete(@PathVariable(name = "id") Long id,
                           @AuthenticationPrincipal LoginUserDetails loginUser) {
         Long userId = loginUser != null ? loginUser.getUserId() : getCurrentUserId();
         if (userId == null) {

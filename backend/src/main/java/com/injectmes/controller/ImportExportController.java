@@ -1,6 +1,7 @@
 package com.injectmes.controller;
 
 import com.injectmes.common.R;
+import com.injectmes.annotation.OperationLog;
 import com.injectmes.service.ImportExportService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,7 +31,8 @@ public class ImportExportController {
      * @return 操作结果
      */
     @PostMapping("/import/{type}")
-    public R<Void> importData(@PathVariable String type, @RequestParam("file") MultipartFile file) {
+    @OperationLog(module = "数据导入导出", action = "导入")
+    public R<Void> importData(@PathVariable(name = "type") String type, @RequestParam("file") MultipartFile file) {
         return importExportService.importData(type, file);
     }
 
@@ -43,6 +45,7 @@ public class ImportExportController {
      * @param response HTTP响应
      */
     @GetMapping("/export/{type}")
+    @OperationLog(module = "数据导入导出", action = "导出")
     public void exportData(@PathVariable String type, HttpServletResponse response) {
         importExportService.exportData(type, response);
     }

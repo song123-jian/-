@@ -22,7 +22,7 @@
 
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading">
-        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column prop="id" label="编号" width="80" />
         <el-table-column prop="expenseType" label="费用类型" width="100">
           <template #default="{ row }">
             {{ ({ RENT: '房租', ELECTRICITY: '水电费', WATER: '水费', MATERIAL: '物料费', MAINTENANCE: '维修费', SALARY: '工资', OTHER: '其他' } as Record<string, string>)[row.expenseType as string] || row.expenseType }}

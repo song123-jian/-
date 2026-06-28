@@ -22,7 +22,7 @@ public class FinanceController {
     private FinanceService financeService;
 
     @GetMapping("/statements")
-    public R<FinanceSummaryResponse> statements(@RequestParam(required = false, defaultValue = "6") Integer months) {
+    public R<FinanceSummaryResponse> statements(@RequestParam(name = "months", required = false, defaultValue = "6") Integer months) {
         return financeService.statements(months);
     }
 }

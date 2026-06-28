@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="transfer-page">
     <van-nav-bar title="调拨扫码" left-arrow @click-left="router.back()" />
 

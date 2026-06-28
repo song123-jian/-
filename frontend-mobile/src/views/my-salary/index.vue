@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="my-salary-page">
     <van-nav-bar title="我的工资" left-arrow @click-left="router.back()" />
 

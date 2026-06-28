@@ -9,4 +9,4 @@ export const updateUser = (id: number, data: any) => request.put(`/users/${id}`,
 // 删除用户
 export const deleteUser = (id: number) => request.delete(`/users/${id}`)
 // 重置密码
-export const resetPassword = (id: number) => request.put(`/users/${id}/reset-password`)
+export const resetPassword = (id: number, data: { newPassword: string }) => request.put(`/users/${id}/reset-password`, data)

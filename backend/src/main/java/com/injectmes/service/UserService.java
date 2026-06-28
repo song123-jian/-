@@ -56,6 +56,9 @@ public class UserService {
                     .or().like(SysUser::getPhone, keyword)
             );
         }
+        if (request.getStatus() != null && !request.getStatus().trim().isEmpty()) {
+            wrapper.eq(SysUser::getStatus, Integer.valueOf(request.getStatus().trim()));
+        }
 
         // 按创建时间降序
         wrapper.orderByDesc(SysUser::getCreatedAt);

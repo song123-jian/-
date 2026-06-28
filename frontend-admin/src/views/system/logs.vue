@@ -7,16 +7,16 @@
       </el-button>
     </PageHeader>
 
-    <SearchBar @search="handleSearch" @reset="handleReset" />
+    <SearchBar :keyword="searchHint" @search="handleSearch" @reset="handleReset" />
 
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading">
-        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column prop="id" label="编号" width="80" />
         <el-table-column prop="username" label="操作人" width="120" />
         <el-table-column prop="module" label="模块" width="120" />
         <el-table-column prop="action" label="操作" width="120" />
         <el-table-column prop="targetType" label="目标类型" width="120" />
-        <el-table-column prop="targetId" label="目标ID" width="100" />
+        <el-table-column prop="targetId" label="目标编号" width="100" />
         <el-table-column prop="oldValue" label="变更前" min-width="200" show-overflow-tooltip />
         <el-table-column prop="newValue" label="变更后" min-width="200" show-overflow-tooltip />
         <el-table-column prop="ip" label="IP地址" width="140" />
@@ -37,11 +37,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import PageHeader from '@/components/PageHeader.vue'
 import SearchBar from '@/components/SearchBar.vue'
 import { getLogList } from '@/api/system'
 
+const route = useRoute()
 const loading = ref(false)
 const tableData = ref<any[]>([])
 const searchHint = ref('')
@@ -77,9 +79,17 @@ function handleReset() {
   fetchData()
 }
 
-onMounted(() => {
-  fetchData()
-})
+watch(
+  () => route.query.keyword,
+  (value) => {
+    if (typeof value === 'string') {
+      searchHint.value = value
+      pagination.page = 1
+      fetchData()
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <style scoped lang="scss">

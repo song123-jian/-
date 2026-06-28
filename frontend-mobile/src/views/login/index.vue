@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="login-page">
     <div class="login-header">
       <h1>注塑厂管理系统</h1>

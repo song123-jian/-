@@ -28,11 +28,11 @@ public class MoldMaintenanceRecordController {
 
     @GetMapping
     public R<PageResponse<MoldMaintenanceRecordResponse>> list(PageRequest request,
-                                                               @RequestParam(required = false) Long moldId,
-                                                               @RequestParam(required = false) Long operatorId,
-                                                               @RequestParam(required = false)
+                                                               @RequestParam(name = "moldId", required = false) Long moldId,
+                                                               @RequestParam(name = "operatorId", required = false) Long operatorId,
+                                                               @RequestParam(name = "startDate", required = false)
                                                                @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-                                                               @RequestParam(required = false)
+                                                               @RequestParam(name = "endDate", required = false)
                                                                @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return moldMaintenanceRecordService.list(request, moldId, operatorId, startDate, endDate);
     }

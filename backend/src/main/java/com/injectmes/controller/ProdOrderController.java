@@ -6,16 +6,20 @@ import com.injectmes.dto.req.ProdOrderCreateRequest;
 import com.injectmes.dto.req.ProdOrderScheduleRequest;
 import com.injectmes.dto.resp.PageResponse;
 import com.injectmes.dto.resp.ProdOrderResponse;
-import com.injectmes.entity.ProdOrder;
-import com.injectmes.enums.ProdOrderStatus;
-import com.injectmes.mapper.ProdOrderMapper;
 import com.injectmes.service.ProdOrderService;
 import jakarta.validation.Valid;
-import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 
@@ -30,18 +34,17 @@ public class ProdOrderController {
     @Autowired
     private ProdOrderService prodOrderService;
 
-    @Autowired
-    private ProdOrderMapper prodOrderMapper;
-
     /**
-     * 工单列表（分页，支持status筛选、productId筛选、日期范围）
+     * 工单列表
      */
     @GetMapping
     public R<PageResponse<ProdOrderResponse>> list(PageRequest request,
-                                                    @RequestParam(required = false) String status,
-                                                    @RequestParam(required = false) Long productId,
-                                                    @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-                                                    @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+                                                   @RequestParam(name = "status", required = false) String status,
+                                                   @RequestParam(name = "productId", required = false) Long productId,
+                                                   @RequestParam(name = "startDate", required = false)
+                                                   @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+                                                   @RequestParam(name = "endDate", required = false)
+                                                   @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return prodOrderService.list(request, status, productId, startDate, endDate);
     }
 
@@ -49,7 +52,7 @@ public class ProdOrderController {
      * 工单详情
      */
     @GetMapping("/{id}")
-    public R<ProdOrderResponse> getById(@PathVariable Long id) {
+    public R<ProdOrderResponse> getById(@PathVariable(name = "id") Long id) {
         return prodOrderService.getById(id);
     }
 
@@ -65,45 +68,31 @@ public class ProdOrderController {
      * 更新工单
      */
     @PutMapping("/{id}")
-    public R<Void> update(@PathVariable Long id, @Valid @RequestBody ProdOrderCreateRequest request) {
-        ProdOrder prodOrder = prodOrderMapper.selectById(id);
-        if (prodOrder == null) {
-            return R.fail("生产工单不存在");
-        }
-        BeanUtils.copyProperties(request, prodOrder);
-        prodOrder.setId(id);
-        prodOrderMapper.updateById(prodOrder);
-        return R.ok("更新成功", null);
+    public R<ProdOrderResponse> update(@PathVariable(name = "id") Long id, @Valid @RequestBody ProdOrderCreateRequest request) {
+        return prodOrderService.update(id, request);
     }
 
     /**
      * 删除工单
      */
     @DeleteMapping("/{id}")
-    public R<Void> delete(@PathVariable Long id) {
-        prodOrderMapper.deleteById(id);
-        return R.ok("删除成功", null);
+    public R<Void> delete(@PathVariable(name = "id") Long id) {
+        return prodOrderService.delete(id);
     }
 
     /**
-     * 下发工单（更新状态为SCHEDULED）
+     * 下发工单
      */
     @PutMapping("/{id}/dispatch")
-    public R<Void> dispatch(@PathVariable Long id) {
-        ProdOrder prodOrder = prodOrderMapper.selectById(id);
-        if (prodOrder == null) {
-            return R.fail("生产工单不存在");
-        }
-        prodOrder.setStatus(ProdOrderStatus.SCHEDULED.name());
-        prodOrderMapper.updateById(prodOrder);
-        return R.ok("下发成功", null);
+    public R<Void> dispatch(@PathVariable(name = "id") Long id) {
+        return prodOrderService.dispatch(id);
     }
 
     /**
      * 排程
      */
     @PutMapping("/{id}/schedule")
-    public R<ProdOrderResponse> schedule(@PathVariable Long id, @Valid @RequestBody ProdOrderScheduleRequest request) {
+    public R<ProdOrderResponse> schedule(@PathVariable(name = "id") Long id, @Valid @RequestBody ProdOrderScheduleRequest request) {
         return prodOrderService.schedule(id, request);
     }
 
@@ -111,7 +100,7 @@ public class ProdOrderController {
      * 开工
      */
     @PutMapping("/{id}/start")
-    public R<Void> start(@PathVariable Long id) {
+    public R<Void> start(@PathVariable(name = "id") Long id) {
         return prodOrderService.start(id);
     }
 
@@ -119,7 +108,7 @@ public class ProdOrderController {
      * 暂停
      */
     @PutMapping("/{id}/pause")
-    public R<Void> pause(@PathVariable Long id) {
+    public R<Void> pause(@PathVariable(name = "id") Long id) {
         return prodOrderService.pause(id);
     }
 
@@ -127,7 +116,7 @@ public class ProdOrderController {
      * 恢复
      */
     @PutMapping("/{id}/resume")
-    public R<Void> resume(@PathVariable Long id) {
+    public R<Void> resume(@PathVariable(name = "id") Long id) {
         return prodOrderService.resume(id);
     }
 
@@ -135,7 +124,7 @@ public class ProdOrderController {
      * 完工
      */
     @PutMapping("/{id}/finish")
-    public R<Void> finish(@PathVariable Long id) {
+    public R<Void> finish(@PathVariable(name = "id") Long id) {
         return prodOrderService.finish(id);
     }
 
@@ -143,7 +132,7 @@ public class ProdOrderController {
      * 关闭
      */
     @PutMapping("/{id}/close")
-    public R<Void> close(@PathVariable Long id) {
+    public R<Void> close(@PathVariable(name = "id") Long id) {
         return prodOrderService.close(id);
     }
 }

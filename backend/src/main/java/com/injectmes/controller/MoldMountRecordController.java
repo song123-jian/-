@@ -30,11 +30,11 @@ public class MoldMountRecordController {
      */
     @GetMapping
     public R<PageResponse<MoldMountRecordResponse>> list(PageRequest request,
-                                                         @RequestParam(required = false) Long moldId,
-                                                         @RequestParam(required = false) Long machineId,
-                                                         @RequestParam(required = false) String mountType,
-                                                         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-                                                         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+                                                         @RequestParam(name = "moldId", required = false) Long moldId,
+                                                         @RequestParam(name = "machineId", required = false) Long machineId,
+                                                         @RequestParam(name = "mountType", required = false) String mountType,
+                                                         @RequestParam(name = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+                                                         @RequestParam(name = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return moldMountRecordService.list(request, moldId, machineId, mountType, startDate, endDate);
     }
 
