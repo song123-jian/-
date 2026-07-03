@@ -1,0 +1,13 @@
+{
+  "name": "inject-erp-supabase",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev:admin": "npm --prefix frontend-admin run dev -- --host 127.0.0.1 --port 3000 --strictPort",
+    "dev:mobile": "npm --prefix frontend-mobile run dev -- --host 127.0.0.1 --port 3001 --strictPort",
+    "check-encoding": "node scripts/check-encoding.mjs",
+    "build": "npm --prefix frontend-admin run build && npm --prefix frontend-mobile run build",
+    "test": "node -e \"console.log('No unit test suite configured; build is the current regression gate.')\""
+  }
+}

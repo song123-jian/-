@@ -25,14 +25,9 @@ export default defineConfig({
     },
   },
   server: {
+    host: '127.0.0.1',
     port: 3000,
-    // 代理配置，将 /api 请求转发到后端
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8081',
-        changeOrigin: true,
-      },
-    },
+    strictPort: true,
   },
   resolve: {
     alias: {

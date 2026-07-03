@@ -1,4 +1,4 @@
-﻿import request from './index'
+import request from './index'
 
 /** 登录参数 */
 export interface LoginParams {

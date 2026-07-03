@@ -1,4 +1,4 @@
-﻿import request from './index'
+import request from './index'
 
 /** 工资汇总 */
 export interface SalarySummary {

@@ -1,4 +1,4 @@
-﻿import request from './index'
+import request from './index'
 
 /** 库存记录 */
 export interface StockItem {

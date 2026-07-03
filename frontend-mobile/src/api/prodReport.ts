@@ -1,4 +1,4 @@
-﻿import request from './index'
+import request from './index'
 
 /** 报工参数 */
 export interface ProdReportParams {

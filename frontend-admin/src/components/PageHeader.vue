@@ -19,12 +19,15 @@ defineProps<{
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 16px;
   min-height: 44px;
   padding-bottom: 8px;
   border-bottom: 1px solid #e8ebf0;
 
   .page-title {
+    flex: 1 1 180px;
+    min-width: 0;
     font-size: 18px;
     font-weight: 600;
     color: #303133;
@@ -35,6 +38,9 @@ defineProps<{
   .page-extra {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
+    flex: 1 1 320px;
+    flex-wrap: wrap;
     gap: 10px;
   }
 }

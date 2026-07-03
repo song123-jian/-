@@ -13,6 +13,17 @@ export const useUserStore = defineStore('user', () => {
   // 角色列表
   const roles = ref<string[]>([])
 
+  function resolveLoginRedirect() {
+    const redirect = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('redirect') : ''
+    if (!redirect || !redirect.startsWith('/')) {
+      return '/dashboard'
+    }
+    if (redirect.startsWith('/login')) {
+      return '/dashboard'
+    }
+    return redirect
+  }
+
   // 登录
   async function loginAction(loginForm: { username: string; password: string }) {
     const res: any = await loginApi(loginForm)
@@ -20,15 +31,27 @@ export const useUserStore = defineStore('user', () => {
       throw new Error('登录返回数据异常')
     }
     token.value = res.data.token
+    userInfo.value = res.data
+    roles.value = res.data.roles || []
     setStoredToken(res.data.token)
+    try {
+      localStorage.setItem('userId', String(res.data.userId || 0))
+      localStorage.setItem('userName', res.data.userName || '')
+      localStorage.setItem('realName', res.data.realName || res.data.userName || '')
+      localStorage.setItem('phone', res.data.phone || '')
+      localStorage.setItem('role', res.data.role || '')
+      localStorage.setItem('roles', JSON.stringify(res.data.roles || []))
+    } catch {
+      // ignore
+    }
     // 获取用户信息（容错：失败不阻断登录跳转）
     try {
       await getUserInfoAction()
     } catch {
       // 获取用户信息失败不影响登录
     }
-    // 跳转到首页
-    router.push('/dashboard')
+    // 优先回到登录前目标页，便于页面级验证和深链访问
+    router.push(resolveLoginRedirect())
   }
 
   // 获取用户信息
@@ -49,6 +72,16 @@ export const useUserStore = defineStore('user', () => {
     userInfo.value = {}
     roles.value = []
     clearStoredToken()
+    try {
+      localStorage.removeItem('userId')
+      localStorage.removeItem('userName')
+      localStorage.removeItem('realName')
+      localStorage.removeItem('phone')
+      localStorage.removeItem('role')
+      localStorage.removeItem('roles')
+    } catch {
+      // ignore
+    }
     router.push('/login')
   }
 

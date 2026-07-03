@@ -1,4 +1,4 @@
-﻿import request from './index'
+import request from './index'
 
 /** 质检录入参数 */
 export interface QcRecordParams {

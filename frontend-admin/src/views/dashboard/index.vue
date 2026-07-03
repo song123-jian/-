@@ -1,17 +1,77 @@
 <template>
   <div class="page-container workbench-page" v-loading="loading">
     <PageHeader title="工作台">
-      <el-tag effect="plain" type="info">最近刷新 {{ lastUpdated || '-' }}</el-tag>
-      <el-button plain @click="fetchData">
-        <el-icon><Refresh /></el-icon>
-        刷新
-      </el-button>
-      <el-button type="warning" plain @click="goTo('/prod/warnings')">
-        <el-icon><Bell /></el-icon>
-        预警中心
-      </el-button>
+      <template v-if="isSupabaseConfigured">
+        <el-tag effect="plain" type="info">最近刷新 {{ lastUpdated || '-' }}</el-tag>
+        <el-button plain @click="fetchData">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </el-button>
+        <el-button type="warning" plain @click="goTo('/prod/warnings')">
+          <el-icon><Bell /></el-icon>
+          预警中心
+        </el-button>
+      </template>
+      <el-tag v-else effect="plain" type="warning">Supabase 未连接</el-tag>
     </PageHeader>
 
+    <section v-if="!isSupabaseConfigured" class="setup-state">
+      <div class="setup-hero">
+        <div class="setup-copy">
+          <p class="setup-eyebrow">Supabase 云数据库未连接</p>
+          <h3 class="setup-title">完成云端配置后，工作台会自动切换到实时业务视图</h3>
+          <p class="setup-description">
+            当前页面只保留配置引导，避免把全量 0 值误判为真实业务数据。补齐环境变量、执行数据库初始化后，刷新即可恢复正常看板。
+          </p>
+        </div>
+        <div class="setup-actions">
+          <el-button type="primary" @click="fetchData">
+            <el-icon><Refresh /></el-icon>
+            重新检查配置
+          </el-button>
+          <el-button plain @click="goTo('/login')">返回登录页</el-button>
+        </div>
+      </div>
+
+      <div class="setup-grid">
+        <article class="setup-card">
+          <div class="setup-card-head">
+            <span class="setup-step">01</span>
+            <h4>补齐管理端环境变量</h4>
+          </div>
+          <p>在 `frontend-admin/.env.local` 中配置以下变量后重启前端。</p>
+          <div class="setup-tags">
+            <el-tag v-for="item in requiredEnvKeys" :key="item" effect="plain" type="info">{{ item }}</el-tag>
+          </div>
+        </article>
+
+        <article class="setup-card">
+          <div class="setup-card-head">
+            <span class="setup-step">02</span>
+            <h4>初始化 Supabase 云库</h4>
+          </div>
+          <p>在 Supabase SQL Editor 中执行业务初始化脚本，确保表结构、登录 RPC 和存储桶已经创建。</p>
+          <div class="setup-tags">
+            <el-tag effect="plain">database/supabase-cloud.sql</el-tag>
+            <el-tag effect="plain">database/init.sql</el-tag>
+          </div>
+        </article>
+
+        <article class="setup-card">
+          <div class="setup-card-head">
+            <span class="setup-step">03</span>
+            <h4>验证登录与数据权限</h4>
+          </div>
+          <p>确认 Supabase Auth 用户、`sys_user` 数据和基础 RLS 策略已准备完成，再重新登录进入工作台。</p>
+          <div class="setup-meta">
+            <span>当前状态：未检测到 Supabase 连接</span>
+            <span>最近检查：{{ lastUpdated || '-' }}</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <template v-else>
     <section class="kpi-strip">
       <article v-for="item in kpiCards" :key="item.title" class="kpi-card">
         <div class="kpi-head">
@@ -45,7 +105,7 @@
     </section>
 
     <el-row :gutter="16" class="band-row">
-      <el-col :span="14">
+      <el-col :xs="24" :lg="14">
         <el-card shadow="hover" class="panel-card">
           <template #header>
             <div class="panel-header">
@@ -67,7 +127,7 @@
         </el-card>
       </el-col>
 
-      <el-col :span="10">
+      <el-col :xs="24" :lg="10">
         <el-card shadow="hover" class="panel-card panel-card-tall">
           <template #header>
             <div class="panel-header">
@@ -93,7 +153,7 @@
     </el-row>
 
     <el-row :gutter="16" class="band-row">
-      <el-col :span="14">
+      <el-col :xs="24" :lg="14">
         <el-card shadow="hover" class="panel-card">
           <template #header>
             <div class="panel-header">
@@ -131,7 +191,7 @@
         </el-card>
       </el-col>
 
-      <el-col :span="10">
+      <el-col :xs="24" :lg="10">
         <el-card shadow="hover" class="panel-card">
           <template #header>
             <div class="panel-header">
@@ -141,13 +201,13 @@
           </template>
 
           <el-table :data="warningList.slice(0, 6)" stripe empty-text="暂无预警" class="compact-table warning-table">
-            <el-table-column prop="category" label="分类" width="86">
-              <template #default="{ row }">
-                <el-tag :type="row.category === '妯″叿' ? 'warning' : 'success'" effect="plain">
-                  {{ row.category || '-' }}
-                </el-tag>
-              </template>
-            </el-table-column>
+              <el-table-column prop="category" label="分类" width="86">
+                <template #default="{ row }">
+                  <el-tag :type="warningCategoryType(row.category)" effect="plain">
+                    {{ row.category || '-' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
             <el-table-column prop="level" label="级别" width="86">
               <template #default="{ row }">
                 <el-tag :type="warningLevelType(row.level)" effect="plain">
@@ -163,7 +223,7 @@
     </el-row>
 
     <el-row :gutter="16" class="band-row">
-      <el-col :span="12">
+      <el-col :xs="24" :lg="12">
         <el-card shadow="hover" class="panel-card">
           <template #header>
             <div class="panel-header">
@@ -185,7 +245,7 @@
         </el-card>
       </el-col>
 
-      <el-col :span="12">
+      <el-col :xs="24" :lg="12">
         <el-card shadow="hover" class="panel-card">
           <template #header>
             <div class="panel-header">
@@ -203,7 +263,7 @@
     </el-row>
 
     <el-row :gutter="16" class="band-row">
-      <el-col :span="12">
+      <el-col :xs="24" :lg="12">
         <el-card shadow="hover" class="panel-card">
           <template #header>
             <div class="panel-header">
@@ -230,7 +290,7 @@
         </el-card>
       </el-col>
 
-      <el-col :span="12">
+      <el-col :xs="24" :lg="12">
         <el-card shadow="hover" class="panel-card">
           <template #header>
             <div class="panel-header">
@@ -247,6 +307,7 @@
         </el-card>
       </el-col>
     </el-row>
+    </template>
   </div>
 </template>
 
@@ -259,6 +320,7 @@ import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import { getDashboardData, getProductionBoard } from '@/api/dashboard'
 import { getDowntimeRecordList } from '@/api/downtime'
+import { isSupabaseConfigured } from '@/api/supabaseClient'
 import { getOeeStats } from '@/api/report'
 import { getWarningList, getWarningSummary } from '@/api/warning'
 import { formatDate, formatDateTime } from '@/utils'
@@ -374,6 +436,7 @@ const actionItems = [
 ] as const
 
 const orderColors = ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#909399', '#8b5cf6']
+const requiredEnvKeys = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', 'VITE_SUPABASE_AUTH_EMAIL_DOMAIN', 'VITE_SUPABASE_STORAGE_BUCKET']
 
 function numberText(value?: number | string | null) {
   return Number(value || 0).toLocaleString('zh-CN')
@@ -434,6 +497,14 @@ function warningLevelText(level?: string) {
 function warningLevelType(level?: string) {
   if (level === 'ERROR') return 'danger'
   if (level === 'WARNING') return 'warning'
+  return 'info'
+}
+
+function warningCategoryType(category?: string) {
+  const normalized = String(category || '')
+  if (normalized.includes('模具')) return 'warning'
+  if (normalized.includes('库存')) return 'danger'
+  if (normalized.includes('设备') || normalized.includes('生产')) return 'info'
   return 'info'
 }
 
@@ -584,6 +655,18 @@ function handleResize() {
 async function fetchData() {
   loading.value = true
   try {
+    if (!isSupabaseConfigured) {
+      homeData.value = {}
+      productionData.value = {}
+      warningList.value = []
+      warningSummary.value = {}
+      oeeData.value = {}
+      downtimeMinutes.value = 0
+      lastUpdated.value = formatDateTime(new Date())
+      buildCharts()
+      return
+    }
+
     const today = formatDate(new Date())
     const results = await Promise.allSettled([
       getDashboardData(),
@@ -871,6 +954,122 @@ onUnmounted(() => {
   margin-bottom: 0;
 }
 
+.setup-state {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 0 4px;
+}
+
+.setup-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px;
+  border: 1px solid #f3e2bf;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #fff8eb 0%, #fffdf8 100%);
+}
+
+.setup-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.setup-eyebrow {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #b7791f;
+}
+
+.setup-title {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.3;
+  color: #1f2937;
+}
+
+.setup-description {
+  margin: 12px 0 0;
+  max-width: 720px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #6b7280;
+}
+
+.setup-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.setup-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.setup-card {
+  padding: 18px 18px 16px;
+  border: 1px solid #e6e8eb;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.04);
+}
+
+.setup-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.setup-card-head h4 {
+  margin: 0;
+  font-size: 16px;
+  color: #1f2937;
+}
+
+.setup-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #3159b7;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.setup-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #6b7280;
+}
+
+.setup-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.setup-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+  font-size: 12px;
+  color: #8b95a1;
+}
+
 .panel-card {
   min-height: 100%;
 }
@@ -996,11 +1195,34 @@ onUnmounted(() => {
   .action-strip {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
+
+  .setup-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 992px) {
   .band-row :deep(.el-col) {
     margin-bottom: 16px;
+  }
+
+  .setup-hero {
+    flex-direction: column;
+  }
+
+  .setup-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .setup-hero {
+    padding: 18px;
+  }
+
+  .setup-title {
+    font-size: 20px;
   }
 }
 </style>

@@ -14,7 +14,7 @@ router.beforeEach((to, _from, next) => {
   if (to.path === '/login') {
     next()
   } else if (!token) {
-    next('/login')
+    next(`/login?redirect=${encodeURIComponent(to.fullPath)}`)
   } else {
     next()
   }

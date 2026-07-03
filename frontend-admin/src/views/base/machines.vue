@@ -71,7 +71,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import MasterCrudPage from '@/components/MasterCrudPage.vue'
@@ -81,13 +81,35 @@ import BaseCrudForm from '@/components/BaseCrudForm.vue'
 import BaseCrudDetail from '@/components/BaseCrudDetail.vue'
 import { exportData, importData } from '@/api/importExport'
 import { createMachine, deleteMachine, getMachineList, getMachineQrCode, updateMachine } from '@/api/machine'
-import { machinePageConfig as config } from '@/views/base/base-data-schema'
+import { machinePageConfig as baseConfig } from '@/views/base/base-data-schema'
 import { useBaseCrudPage } from '@/composables/useBaseCrudPage'
 
 const router = useRouter()
 const fileInput = ref<HTMLInputElement | null>(null)
 const qrVisible = ref(false)
 const qrCode = ref('')
+
+const config = {
+  ...baseConfig,
+  toolbarActions: baseConfig.toolbarActions.map((action) => {
+    if (action.key === 'batch-enable') {
+      return { ...action, label: '批量开机' }
+    }
+    if (action.key === 'batch-stop') {
+      return { ...action, label: '批量停机' }
+    }
+    return action
+  }),
+  rowActions: baseConfig.rowActions.map((action) => {
+    if (action.key === 'toggle') {
+      return {
+        ...action,
+        label: (row: any) => (row.status === 'RUNNING' ? '停机' : '开机'),
+      }
+    }
+    return action
+  }),
+}
 
 const {
   loading,
@@ -134,8 +156,10 @@ async function handleToggle(row: any) {
   try {
     await updateMachine(row.id, { status: nextStatus })
     ElMessage.success('状态已更新')
-    fetchData()
-  } catch {}
+    await fetchData()
+  } catch {
+    ElMessage.error('状态更新失败')
+  }
 }
 
 async function handleQr(row: any) {
@@ -156,8 +180,10 @@ async function handleBatchStatus(status: string) {
     }
     ElMessage.success('批量更新成功')
     selectedRows.value = []
-    fetchData()
-  } catch {}
+    await fetchData()
+  } catch {
+    ElMessage.error('批量更新失败')
+  }
 }
 
 function handleImportClick() {
@@ -172,14 +198,18 @@ async function handleFileChange(event: Event) {
   try {
     await importData('machine', file)
     ElMessage.success('导入成功')
-    fetchData()
-  } catch {}
+    await fetchData()
+  } catch {
+    ElMessage.error('导入失败')
+  }
 }
 
 async function handleExport() {
   try {
     await exportData('machine', `机台导出_${Date.now()}.xlsx`)
-  } catch {}
+  } catch {
+    ElMessage.error('导出失败')
+  }
 }
 
 function goLogs() {

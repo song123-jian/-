@@ -142,7 +142,7 @@ export const routeGroups: AppRouteGroup[] = [
       { path: 'logs', name: 'SystemLogs', title: '操作日志', icon: 'Memo', view: 'system/logs.vue' },
       { path: 'config', name: 'SystemConfig', title: '系统配置', icon: 'Tools', view: 'system/config.vue' },
       { path: 'integration', name: 'SystemIntegration', title: '集成中心', icon: 'Link', view: 'system/integration.vue' },
-      { path: 'backup', name: 'SystemBackup', title: '数据备份', icon: 'FolderChecked', view: 'system/backup.vue' },
+      { path: 'backup', name: 'SystemBackup', title: '云库运维', icon: 'FolderChecked', view: 'system/backup.vue' },
       { path: 'notifications', name: 'Notifications', title: '消息中心', icon: 'Bell', view: 'system/notifications.vue' },
     ],
   },
