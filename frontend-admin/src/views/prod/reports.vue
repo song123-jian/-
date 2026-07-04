@@ -17,6 +17,9 @@
           />
         </el-select>
       </el-form-item>
+      <el-form-item label="工序">
+        <el-input v-model.trim="searchProcessName" clearable placeholder="工序名称" style="width: 140px" />
+      </el-form-item>
       <el-form-item label="班次">
         <el-select v-model="searchShift" placeholder="全部" clearable style="width: 140px">
           <el-option
@@ -53,6 +56,7 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="processName" label="工序" width="120" show-overflow-tooltip />
         <el-table-column prop="shift" label="班次" width="100">
           <template #default="{ row }">
             {{ shiftLabel(row.shift) }}
@@ -158,6 +162,11 @@
               </el-select>
             </el-form-item>
           </el-col>
+          <el-col :span="12">
+            <el-form-item label="工序" prop="processName">
+              <el-input v-model.trim="form.processName" maxlength="50" show-word-limit placeholder="请输入工序名称" />
+            </el-form-item>
+          </el-col>
         </el-row>
 
         <el-row :gutter="16">
@@ -228,7 +237,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -238,6 +247,11 @@ import { getMachineList } from '@/api/machine'
 import { getMoldList } from '@/api/mold'
 import { getProdOrderList } from '@/api/prodOrder'
 import { createProdReport, deleteProdReport, getProdReportList, updateProdReport } from '@/api/prodReport'
+import {
+  normalizeProdReportProcessFilter,
+  normalizeProdReportProcessName,
+  validateProdReportProcessName,
+} from '@/utils/production-report'
 
 type OptionItem = {
   id: number
@@ -254,6 +268,7 @@ const loading = ref(false)
 const tableData = ref<any[]>([])
 const searchKeyword = ref('')
 const searchReportType = ref('')
+const searchProcessName = ref('')
 const searchShift = ref('')
 const searchDate = ref<string[]>([])
 const dialogVisible = ref(false)
@@ -281,6 +296,7 @@ const form = reactive({
   machineId: null as number | null,
   moldId: null as number | null,
   reportType: 'OUTPUT',
+  processName: '注塑',
   shift: 'DAY',
   qty: 0,
   badQty: 0,
@@ -293,8 +309,110 @@ const formRules: FormRules = {
   prodOrderId: [{ required: true, message: '请选择工单', trigger: 'change' }],
   machineId: [{ required: true, message: '请选择机台', trigger: 'change' }],
   reportType: [{ required: true, message: '请选择报工类型', trigger: 'change' }],
+  processName: [
+    {
+      validator: (_rule, value, callback) => {
+        const message = validateProdReportProcessName(value)
+        if (message) {
+          callback(new Error(message))
+          return
+        }
+        callback()
+      },
+      trigger: 'blur',
+    },
+  ],
   shift: [{ required: true, message: '请选择班次', trigger: 'change' }],
-  qty: [{ required: true, message: '请输入产量', trigger: 'blur' }],
+  qty: [
+    { required: true, message: '请输入产量', trigger: 'blur' },
+    {
+      validator: (_rule, value, callback) => {
+        const qty = Number(value)
+        if (!Number.isFinite(qty) || qty < 0) {
+          callback(new Error('产量不能小于 0'))
+          return
+        }
+        callback()
+      },
+      trigger: 'change',
+    },
+  ],
+  badQty: [
+    {
+      validator: (_rule, value, callback) => {
+        const badQty = Number(value || 0)
+        const qty = Number(form.qty || 0)
+        if (!Number.isFinite(badQty) || badQty < 0) {
+          callback(new Error('不良数量不能小于 0'))
+          return
+        }
+        if (badQty > qty) {
+          callback(new Error('不良数量不能超过产量'))
+          return
+        }
+        callback()
+      },
+      trigger: 'change',
+    },
+  ],
+  shots: [
+    {
+      validator: (_rule, value, callback) => {
+        const shots = Number(value || 0)
+        if (!Number.isFinite(shots) || shots < 0 || !Number.isInteger(shots)) {
+          callback(new Error('模次必须是非负整数'))
+          return
+        }
+        callback()
+      },
+      trigger: 'change',
+    },
+  ],
+  startTime: [
+    {
+      validator: (_rule, value, callback) => {
+        if (!value || !form.endTime) {
+          callback()
+          return
+        }
+        const start = parseDateTime(value)
+        const end = parseDateTime(form.endTime)
+        if (start && end && end < start) {
+          callback(new Error('结束时间不能早于开始时间'))
+          return
+        }
+        callback()
+      },
+      trigger: 'change',
+    },
+  ],
+  endTime: [
+    {
+      validator: (_rule, value, callback) => {
+        if (!value || !form.startTime) {
+          callback()
+          return
+        }
+        const start = parseDateTime(form.startTime)
+        const end = parseDateTime(value)
+        if (start && end && end < start) {
+          callback(new Error('结束时间不能早于开始时间'))
+          return
+        }
+        callback()
+      },
+      trigger: 'change',
+    },
+  ],
+}
+
+function parseDateTime(value?: string) {
+  const text = String(value || '').trim()
+  if (!text) {
+    return null
+  }
+  const date = new Date(text.replace(' ', 'T'))
+  return Number.isNaN(date.getTime()) ? null : date
 }
 
 function reportTypeLabel(value?: string) {
@@ -349,6 +467,7 @@ async function fetchData() {
       pageSize: pagination.pageSize,
       keyword: searchKeyword.value || undefined,
       reportType: searchReportType.value || undefined,
+      processName: normalizeProdReportProcessFilter(searchProcessName.value) || undefined,
       shift: searchShift.value || undefined,
     }
     if (searchDate.value.length === 2) {
@@ -375,6 +494,7 @@ function handleSearch(formData: { keyword: string }) {
 function handleReset() {
   searchKeyword.value = ''
   searchReportType.value = ''
+  searchProcessName.value = ''
   searchShift.value = ''
   searchDate.value = []
   pagination.page = 1
@@ -388,6 +508,7 @@ function resetForm() {
     machineId: null,
     moldId: null,
     reportType: 'OUTPUT',
+    processName: '注塑',
     shift: 'DAY',
     qty: 0,
     badQty: 0,
@@ -424,6 +545,7 @@ function handleEdit(row: any) {
     machineId: row.machineId ?? null,
     moldId: row.moldId ?? null,
     reportType: row.reportType || 'OUTPUT',
+    processName: normalizeProdReportProcessName(row.processName),
     shift: row.shift || 'DAY',
     qty: row.qty ?? 0,
     badQty: row.badQty ?? 0,
@@ -445,6 +567,7 @@ async function handleSubmit() {
     machineId: form.machineId,
     moldId: form.moldId || undefined,
     reportType: form.reportType,
+    processName: normalizeProdReportProcessName(form.processName),
     shift: form.shift,
     qty: form.qty,
     badQty: form.badQty,
@@ -469,7 +592,11 @@ async function handleSubmit() {
 }
 
 async function handleDelete(row: any) {
-  await ElMessageBox.confirm('确定删除这条报工记录吗？', '提示', { type: 'warning' })
+  try {
+    await ElMessageBox.confirm('确定删除这条报工记录吗？', '提示', { type: 'warning' })
+  } catch {
+    return
+  }
   try {
     await deleteProdReport(row.id)
     ElMessage.success('删除成功')
@@ -478,6 +605,23 @@ async function handleDelete(row: any) {
     // 交给全局拦截器提示
   }
 }
+
+watch(
+  () => form.qty,
+  () => {
+    if (form.badQty > form.qty) {
+      formRef.value?.validateField('badQty').catch(() => undefined)
+    }
+  }
+)
+
+watch(
+  () => [form.startTime, form.endTime],
+  () => {
+    formRef.value?.validateField('startTime').catch(() => undefined)
+    formRef.value?.validateField('endTime').catch(() => undefined)
+  }
+)
 
 onMounted(async () => {
   await loadOptions()

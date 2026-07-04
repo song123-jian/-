@@ -18,6 +18,7 @@ export interface OfflineReport {
   id?: number
   workOrderId: number
   machineId: number
+  processName: string
   shift: string
   quantity: number
   defectCount: number
@@ -179,6 +180,7 @@ export async function syncOfflineReports(): Promise<{
       await submitReport({
         workOrderId: report.workOrderId,
         machineId: report.machineId,
+        processName: report.processName,
         shift: report.shift,
         quantity: report.quantity,
         defectCount: report.defectCount,

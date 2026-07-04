@@ -11,6 +11,31 @@ import {
   Upload,
 } from '@element-plus/icons-vue'
 import { formatDateTime, formatMoney } from '@/utils'
+import {
+  buildCustomerMasterSummary,
+  buildCustomerPayload,
+  buildCustomerQuery,
+  getCustomerCreditLabel,
+  normalizeCustomerMaster,
+  validateCustomerMaster,
+} from '@/utils/customer-master'
+import {
+  buildSupplierMasterSummary,
+  buildSupplierPayload,
+  buildSupplierQuery,
+  getSupplierDataRisk,
+  normalizeSupplierMaster,
+  validateSupplierMaster,
+} from '@/utils/supplier-master'
+import {
+  buildProductMasterSummary,
+  buildProductPayload,
+  buildProductQuery,
+  isProductImageUrlAllowed,
+  normalizeProductMaster,
+  productImageAlt,
+  validateProductMaster,
+} from '@/utils/product-master'
 
 export type TagType = 'success' | 'info' | 'warning' | 'danger' | 'primary'
 
@@ -55,10 +80,11 @@ export type TableColumn = {
   label: string
   width?: number | string
   minWidth?: number | string
-  kind?: 'text' | 'tag' | 'progress'
+  kind?: 'text' | 'tag' | 'progress' | 'image'
   tagMap?: Record<string, TagMeta>
   formatter?: (value: any, row: any) => string
   progress?: (row: any) => number
+  imageAlt?: (row: any) => string
 }
 
 export type DetailItem = {
@@ -115,7 +141,7 @@ export type BasePageConfig<TSearch extends Record<string, any>, TForm extends Re
     search: TSearch
   }) => Record<string, any>
   buildPayload: (form: TForm) => Record<string, any>
-  formRules: FormRules
+  formRules: FormRules | ((context: { isEditing: boolean; model: TForm }) => FormRules)
 }
 
 export const baseStatusOptions: SelectOption[] = [
@@ -208,6 +234,22 @@ export const productTypeMap: Record<string, TagMeta> = {
   FINISH: { label: '成品', type: 'success' },
 }
 
+export const customerCreditOptions: SelectOption[] = [
+  { label: 'A级', value: 'A' },
+  { label: 'B级', value: 'B' },
+  { label: 'C级', value: 'C' },
+  { label: 'D级', value: 'D' },
+  { label: '现结', value: 'CASH' },
+]
+
+export const customerCreditMap: Record<string, TagMeta> = {
+  A: { label: 'A级', type: 'success' },
+  B: { label: 'B级', type: 'primary' },
+  C: { label: 'C级', type: 'warning' },
+  D: { label: 'D级', type: 'danger' },
+  CASH: { label: '现结', type: 'info' },
+}
+
 export const machineStatusMap: Record<string, TagMeta> = {
   RUNNING: { label: '运行中', type: 'success' },
   IDLE: { label: '空闲', type: 'info' },
@@ -247,6 +289,11 @@ export const productPageConfig: BasePageConfig<
     safeStock: number
     weightG: number
     rawMaterialUsage: number
+    rawMaterialId: number | null
+    cavityYield: number
+    cycleTimeSec: number
+    customerId: number | null
+    imageUrl: string
     color: string
     status: string
   }
@@ -279,6 +326,14 @@ export const productPageConfig: BasePageConfig<
     { key: 'delete', label: '删除', type: 'danger', link: true },
   ],
   tableColumns: [
+    {
+      prop: 'imageUrl',
+      label: '图片',
+      width: 86,
+      kind: 'image',
+      formatter: (value) => isProductImageUrlAllowed(value) ? String(value || '').trim() : '-',
+      imageAlt: (row) => productImageAlt(normalizeProductMaster(row)),
+    },
     { prop: 'code', label: '编码', width: 120 },
     { prop: 'name', label: '名称', minWidth: 140 },
     { prop: 'type', label: '类型', width: 100, kind: 'tag', tagMap: productTypeMap },
@@ -286,6 +341,9 @@ export const productPageConfig: BasePageConfig<
     { prop: 'unit', label: '单位', width: 90 },
     { prop: 'piecePrice', label: '单价', width: 110, formatter: (_value, row) => formatMoneyText(row.piecePrice) },
     { prop: 'safeStock', label: '安全库存', width: 100 },
+    { prop: 'rawMaterialUsage', label: '原料用量', width: 110 },
+    { prop: 'cavityYield', label: '单模产出', width: 100 },
+    { prop: 'cycleTimeSec', label: '周期(s)', width: 100 },
     { prop: 'status', label: '状态', width: 90, kind: 'tag', tagMap: baseStatusMap },
   ],
   detailItems: [
@@ -297,7 +355,12 @@ export const productPageConfig: BasePageConfig<
     { prop: 'piecePrice', label: '单价', formatter: (_value, row) => formatMoneyText(row.piecePrice) },
     { prop: 'safeStock', label: '安全库存' },
     { prop: 'weightG', label: '重量(g)' },
+    { prop: 'rawMaterialId', label: '原料产品ID' },
     { prop: 'rawMaterialUsage', label: '原料用量' },
+    { prop: 'cavityYield', label: '单模产出' },
+    { prop: 'cycleTimeSec', label: '周期(s)' },
+    { prop: 'customerId', label: '客户ID' },
+    { prop: 'imageUrl', label: '图片地址' },
     { prop: 'color', label: '颜色' },
     baseCreateStatusDetailItem(),
     { prop: 'updatedAt', label: '更新时间', formatter: (_value, row) => formatDateTime(row.updatedAt || row.createdAt) },
@@ -312,6 +375,9 @@ export const productPageConfig: BasePageConfig<
       { prop: 'unit', label: '单位', type: 'input', span: 12, placeholder: '单位' },
     ],
     [
+      { prop: 'spec', label: '规格', type: 'input', span: 24, placeholder: '规格、型号或包装信息' },
+    ],
+    [
       { prop: 'piecePrice', label: '单价', type: 'number', span: 12, min: 0, precision: 2 },
       { prop: 'safeStock', label: '安全库存', type: 'number', span: 12, min: 0 },
     ],
@@ -320,16 +386,31 @@ export const productPageConfig: BasePageConfig<
       { prop: 'rawMaterialUsage', label: '原料用量', type: 'number', span: 12, min: 0, precision: 2 },
     ],
     [
-      { prop: 'color', label: '颜色', type: 'input', span: 24, placeholder: '例如：红色' },
+      { prop: 'rawMaterialId', label: '原料ID', type: 'number', span: 12, min: 0 },
+      { prop: 'cavityYield', label: '单模产出', type: 'number', span: 12, min: 0 },
+    ],
+    [
+      { prop: 'cycleTimeSec', label: '周期(s)', type: 'number', span: 12, min: 0 },
+      { prop: 'customerId', label: '客户ID', type: 'number', span: 12, min: 0 },
+    ],
+    [
+      { prop: 'imageUrl', label: '图片地址', type: 'input', span: 24, placeholder: 'https://... 或 /assets/...' },
+    ],
+    [
+      { prop: 'color', label: '颜色', type: 'input', span: 12, placeholder: '例如：红色' },
       baseCreateStatusFormField(),
     ],
   ],
   metrics: [
     { label: '产品总数', resolve: (_rows, total) => total },
-    { label: '原料', resolve: (rows) => rows.filter((item) => item.type === 'RAW').length },
-    { label: '半成品', resolve: (rows) => rows.filter((item) => item.type === 'SEMI').length },
-    { label: '成品', resolve: (rows) => rows.filter((item) => item.type === 'FINISH').length },
-    { label: '已设安全库存', resolve: (rows) => rows.filter((item) => Number(item.safeStock || 0) > 0).length },
+    { label: '原料', resolve: (rows) => buildProductMasterSummary(rows.map(normalizeProductMaster)).raw },
+    { label: '半成品/成品', resolve: (rows) => {
+      const summary = buildProductMasterSummary(rows.map(normalizeProductMaster))
+      return summary.semi + summary.finish
+    } },
+    { label: '图片完整', resolve: (rows) => buildProductMasterSummary(rows.map(normalizeProductMaster)).withImage },
+    { label: '工艺参数', resolve: (rows) => buildProductMasterSummary(rows.map(normalizeProductMaster)).withProcessParams },
+    { label: '数据风险', resolve: (rows) => buildProductMasterSummary(rows.map(normalizeProductMaster)).dataRisks },
   ],
   createSearchState: () => ({ type: '', status: '' }),
   createFormState: () => ({
@@ -342,7 +423,12 @@ export const productPageConfig: BasePageConfig<
     piecePrice: 0,
     safeStock: 0,
     weightG: 0,
+    rawMaterialId: null,
     rawMaterialUsage: 0,
+    cavityYield: 0,
+    cycleTimeSec: 0,
+    customerId: null,
+    imageUrl: '',
     color: '',
     status: '1',
   }),
@@ -356,33 +442,82 @@ export const productPageConfig: BasePageConfig<
     piecePrice: Number(row.piecePrice || 0),
     safeStock: Number(row.safeStock || 0),
     weightG: Number(row.weightG || 0),
+    rawMaterialId: row.rawMaterialId ? Number(row.rawMaterialId) : null,
     rawMaterialUsage: Number(row.rawMaterialUsage || 0),
+    cavityYield: Number(row.cavityYield || 0),
+    cycleTimeSec: Number(row.cycleTimeSec || 0),
+    customerId: row.customerId ? Number(row.customerId) : null,
+    imageUrl: row.imageUrl || '',
     color: row.color || '',
     status: String(row.status ?? '1'),
   }),
-  buildQuery: ({ page, pageSize, keyword, search }) => ({
+  buildQuery: ({ page, pageSize, keyword, search }) => buildProductQuery({
     page,
     pageSize,
-    keyword: keyword || undefined,
-    type: search.type || undefined,
-    status: search.status || undefined,
+    keyword,
+    type: search.type,
+    status: search.status,
   }),
-  buildPayload: (form) => ({
-    code: form.code,
-    name: form.name,
-    type: form.type,
-    spec: form.spec,
-    unit: form.unit,
-    piecePrice: form.piecePrice,
-    safeStock: form.safeStock,
-    weightG: form.weightG,
-    rawMaterialUsage: form.rawMaterialUsage,
-    color: form.color,
-    status: form.status,
-  }),
-  formRules: {
-    code: [{ required: true, message: '请输入产品编码', trigger: 'blur' }],
-    name: [{ required: true, message: '请输入产品名称', trigger: 'blur' }],
+  buildPayload: (form) => buildProductPayload(form),
+  formRules: ({ isEditing, model }) => {
+    const fieldRule = (prop: string, trigger: 'blur' | 'change' = 'blur') => ({
+      validator: (_rule: unknown, value: unknown, callback: (error?: Error) => void) => {
+        const message = validateProductMaster({ [prop]: value }, { isEditing: true })
+        callback(message ? new Error(message) : undefined)
+      },
+      trigger,
+    })
+    const relationRule = {
+      validator: (_rule: unknown, _value: unknown, callback: (error?: Error) => void) => {
+        const message = validateProductMaster({
+          id: model.id,
+          rawMaterialId: model.rawMaterialId,
+          rawMaterialUsage: model.rawMaterialUsage,
+        }, { isEditing: true })
+        callback(message ? new Error(message) : undefined)
+      },
+      trigger: 'blur',
+    }
+    return {
+      code: [
+        { required: true, message: '请输入产品编码', trigger: 'blur' },
+        fieldRule('code'),
+      ],
+      name: [
+        { required: true, message: '请输入产品名称', trigger: 'blur' },
+        fieldRule('name'),
+      ],
+      type: [
+        { required: true, message: '请选择产品类型', trigger: 'change' },
+        fieldRule('type', 'change'),
+      ],
+      spec: [fieldRule('spec')],
+      unit: [
+        { required: true, message: '请输入产品单位', trigger: 'blur' },
+        fieldRule('unit'),
+      ],
+      piecePrice: [fieldRule('piecePrice')],
+      safeStock: [fieldRule('safeStock')],
+      weightG: [fieldRule('weightG')],
+      rawMaterialId: [relationRule],
+      rawMaterialUsage: [relationRule],
+      cavityYield: [fieldRule('cavityYield')],
+      cycleTimeSec: [fieldRule('cycleTimeSec')],
+      customerId: [fieldRule('customerId')],
+      imageUrl: [
+        {
+          validator: (_rule: unknown, value: unknown, callback: (error?: Error) => void) => {
+            const message = isProductImageUrlAllowed(value)
+              ? ''
+              : '产品图片地址必须是 HTTPS 地址或站内路径，且不超过 500 个字符'
+            callback(message ? new Error(message) : undefined)
+          },
+          trigger: 'blur',
+        },
+      ],
+      color: [fieldRule('color')],
+      status: [fieldRule('status', 'change')],
+    }
   },
 }
 
@@ -680,7 +815,7 @@ export const moldPageConfig: BasePageConfig<
 }
 
 export const customerPageConfig: BasePageConfig<
-  { status: string },
+  { status: string; creditLevel: string },
   {
     id: number
     code: string
@@ -693,7 +828,7 @@ export const customerPageConfig: BasePageConfig<
     invoiceTitle: string
     creditLevel: string
     paymentDays: number
-    salesUserId: number
+    salesUserId: number | null
     status: string
   }
 > = {
@@ -706,7 +841,10 @@ export const customerPageConfig: BasePageConfig<
   formLabelWidth: '96px',
   actionWidth: 160,
   logKeyword: '客户管理',
-  searchFields: [baseStatusSearchField],
+  searchFields: [
+    baseStatusSearchField,
+    { prop: 'creditLevel', label: '信用', type: 'select', width: '140px', options: customerCreditOptions },
+  ],
   toolbarActions: [toolbar.add, toolbar.refresh],
   rowActions: [
     { key: 'inspect', label: '详情', type: 'primary', link: true },
@@ -719,8 +857,8 @@ export const customerPageConfig: BasePageConfig<
     { prop: 'shortName', label: '简称', width: 120 },
     { prop: 'contact', label: '联系人', width: 100 },
     { prop: 'phone', label: '电话', width: 130 },
-    { prop: 'creditLevel', label: '信用', width: 90 },
-    { prop: 'paymentDays', label: '账期', width: 90 },
+    { prop: 'creditLevel', label: '信用', width: 90, kind: 'tag', tagMap: customerCreditMap },
+    { prop: 'paymentDays', label: '账期', width: 90, formatter: (value) => `${Number(value || 0)}天` },
     { prop: 'status', label: '状态', width: 90, kind: 'tag', tagMap: baseStatusMap },
   ],
   detailItems: [
@@ -732,8 +870,9 @@ export const customerPageConfig: BasePageConfig<
     { prop: 'address', label: '地址' },
     { prop: 'taxNo', label: '税号' },
     { prop: 'invoiceTitle', label: '发票抬头' },
-    { prop: 'creditLevel', label: '信用等级' },
-    { prop: 'paymentDays', label: '账期' },
+    { prop: 'creditLevel', label: '信用等级', formatter: (value) => getCustomerCreditLabel(value) },
+    { prop: 'paymentDays', label: '账期', formatter: (value) => `${Number(value || 0)}天` },
+    { prop: 'salesUserId', label: '销售员ID' },
     baseCreateStatusDetailItem(),
     { prop: 'updatedAt', label: '更新时间', formatter: (_value, row) => formatDateTime(row.updatedAt || row.createdAt) },
   ],
@@ -748,7 +887,7 @@ export const customerPageConfig: BasePageConfig<
     ],
     [
       { prop: 'phone', label: '电话', type: 'input', span: 12, placeholder: '联系电话' },
-      { prop: 'creditLevel', label: '信用', type: 'input', span: 12, placeholder: '信用等级' },
+      { prop: 'creditLevel', label: '信用', type: 'select', span: 12, options: customerCreditOptions },
     ],
     [
       { prop: 'paymentDays', label: '账期', type: 'number', span: 12, min: 0 },
@@ -765,12 +904,13 @@ export const customerPageConfig: BasePageConfig<
   ],
   metrics: [
     { label: '客户总数', resolve: (_rows, total) => total },
-    { label: '启用', resolve: (rows) => rows.filter((item) => String(item.status) === '1').length },
-    { label: '禁用', resolve: (rows) => rows.filter((item) => String(item.status) === '0').length },
-    { label: '含税信息', resolve: (rows) => rows.filter((item) => item.taxNo || item.invoiceTitle).length },
-    { label: '有账期', resolve: (rows) => rows.filter((item) => Number(item.paymentDays || 0) > 0).length },
+    { label: '启用', resolve: (rows) => buildCustomerMasterSummary(rows.map(normalizeCustomerMaster)).enabled },
+    { label: '含税信息', resolve: (rows) => buildCustomerMasterSummary(rows.map(normalizeCustomerMaster)).withTaxInfo },
+    { label: '现结客户', resolve: (rows) => buildCustomerMasterSummary(rows.map(normalizeCustomerMaster)).cashCustomers },
+    { label: '销售归属', resolve: (rows) => buildCustomerMasterSummary(rows.map(normalizeCustomerMaster)).assignedSales },
+    { label: '数据风险', resolve: (rows) => buildCustomerMasterSummary(rows.map(normalizeCustomerMaster)).dataRisks },
   ],
-  createSearchState: () => ({ status: '' }),
+  createSearchState: () => ({ status: '', creditLevel: '' }),
   createFormState: () => ({
     id: 0,
     code: '',
@@ -781,9 +921,9 @@ export const customerPageConfig: BasePageConfig<
     address: '',
     taxNo: '',
     invoiceTitle: '',
-    creditLevel: '',
-    paymentDays: 0,
-    salesUserId: 0,
+    creditLevel: 'B',
+    paymentDays: 30,
+    salesUserId: null,
     status: '1',
   }),
   mapFormFromRow: (row: any) => ({
@@ -796,34 +936,67 @@ export const customerPageConfig: BasePageConfig<
     address: row.address || '',
     taxNo: row.taxNo || '',
     invoiceTitle: row.invoiceTitle || '',
-    creditLevel: row.creditLevel || '',
-    paymentDays: Number(row.paymentDays || 0),
-    salesUserId: Number(row.salesUserId || 0),
+    creditLevel: row.creditLevel || 'B',
+    paymentDays: Number(row.paymentDays ?? 30),
+    salesUserId: row.salesUserId ? Number(row.salesUserId) : null,
     status: String(row.status ?? '1'),
   }),
-  buildQuery: ({ page, pageSize, keyword, search }) => ({
+  buildQuery: ({ page, pageSize, keyword, search }) => buildCustomerQuery({
     page,
     pageSize,
-    keyword: keyword || undefined,
-    status: search.status || undefined,
+    keyword,
+    status: search.status,
+    creditLevel: search.creditLevel,
   }),
-  buildPayload: (form) => ({
-    code: form.code,
-    name: form.name,
-    shortName: form.shortName,
-    contact: form.contact,
-    phone: form.phone,
-    address: form.address,
-    taxNo: form.taxNo,
-    invoiceTitle: form.invoiceTitle,
-    creditLevel: form.creditLevel,
-    paymentDays: form.paymentDays || undefined,
-    salesUserId: form.salesUserId || undefined,
-    status: form.status,
-  }),
-  formRules: {
-    code: [{ required: true, message: '请输入客户编号', trigger: 'blur' }],
-    name: [{ required: true, message: '请输入客户名称', trigger: 'blur' }],
+  buildPayload: (form) => buildCustomerPayload(form),
+  formRules: ({ isEditing, model }) => {
+    const fieldRule = (prop: string, trigger: 'blur' | 'change' = 'blur') => ({
+      validator: (_rule: unknown, value: unknown, callback: (error?: Error) => void) => {
+        const message = validateCustomerMaster({ [prop]: value }, { isEditing: true })
+        callback(message ? new Error(message) : undefined)
+      },
+      trigger,
+    })
+    const invoiceRule = {
+      validator: (_rule: unknown, _value: unknown, callback: (error?: Error) => void) => {
+        const message = validateCustomerMaster({
+          taxNo: model.taxNo,
+          invoiceTitle: model.invoiceTitle,
+        }, { isEditing: true })
+        callback(message ? new Error(message) : undefined)
+      },
+      trigger: 'blur',
+    }
+    const creditRule = {
+      validator: (_rule: unknown, _value: unknown, callback: (error?: Error) => void) => {
+        const message = validateCustomerMaster({
+          creditLevel: model.creditLevel,
+          paymentDays: model.paymentDays,
+        }, { isEditing: true })
+        callback(message ? new Error(message) : undefined)
+      },
+      trigger: 'change',
+    }
+    return {
+      code: [
+        { required: true, message: '请输入客户编号', trigger: 'blur' },
+        fieldRule('code'),
+      ],
+      name: [
+        { required: true, message: '请输入客户名称', trigger: 'blur' },
+        fieldRule('name'),
+      ],
+      shortName: [fieldRule('shortName')],
+      contact: [fieldRule('contact')],
+      phone: [fieldRule('phone')],
+      creditLevel: [creditRule],
+      paymentDays: [creditRule],
+      salesUserId: [fieldRule('salesUserId')],
+      taxNo: [invoiceRule],
+      invoiceTitle: [invoiceRule],
+      address: [fieldRule('address')],
+      status: [fieldRule('status', 'change')],
+    }
   },
 }
 
@@ -862,6 +1035,7 @@ export const supplierPageConfig: BasePageConfig<
     { prop: 'contact', label: '联系人', width: 100 },
     { prop: 'phone', label: '电话', width: 130 },
     { prop: 'mainMaterial', label: '主营材料', minWidth: 150 },
+    { prop: 'dataRisk', label: '数据风险', minWidth: 120, formatter: (_value, row) => getSupplierDataRisk(normalizeSupplierMaster(row)) || '-' },
     { prop: 'status', label: '状态', width: 90, kind: 'tag', tagMap: baseStatusMap },
   ],
   detailItems: [
@@ -871,6 +1045,7 @@ export const supplierPageConfig: BasePageConfig<
     { prop: 'phone', label: '电话' },
     { prop: 'address', label: '地址' },
     { prop: 'mainMaterial', label: '主营材料' },
+    { prop: 'dataRisk', label: '数据风险', formatter: (_value, row) => getSupplierDataRisk(normalizeSupplierMaster(row)) || '-' },
     baseCreateStatusDetailItem(),
     { prop: 'updatedAt', label: '更新时间', formatter: (_value, row) => formatDateTime(row.updatedAt || row.createdAt) },
   ],
@@ -893,10 +1068,11 @@ export const supplierPageConfig: BasePageConfig<
   ],
   metrics: [
     { label: '供应商总数', resolve: (_rows, total) => total },
-    { label: '启用', resolve: (rows) => rows.filter((item) => String(item.status) === '1').length },
-    { label: '禁用', resolve: (rows) => rows.filter((item) => String(item.status) === '0').length },
-    { label: '主营材料', resolve: (rows) => rows.filter((item) => item.mainMaterial).length },
-    { label: '有联系人', resolve: (rows) => rows.filter((item) => item.contact || item.phone).length },
+    { label: '启用', resolve: (rows) => buildSupplierMasterSummary(rows.map(normalizeSupplierMaster)).enabled },
+    { label: '禁用', resolve: (rows) => buildSupplierMasterSummary(rows.map(normalizeSupplierMaster)).disabled },
+    { label: '主营材料', resolve: (rows) => buildSupplierMasterSummary(rows.map(normalizeSupplierMaster)).withMainMaterial },
+    { label: '有联系人', resolve: (rows) => buildSupplierMasterSummary(rows.map(normalizeSupplierMaster)).withContact },
+    { label: '数据风险', resolve: (rows) => buildSupplierMasterSummary(rows.map(normalizeSupplierMaster)).dataRisks },
   ],
   createSearchState: () => ({ status: '' }),
   createFormState: () => ({
@@ -919,29 +1095,41 @@ export const supplierPageConfig: BasePageConfig<
     mainMaterial: row.mainMaterial || '',
     status: String(row.status ?? '1'),
   }),
-  buildQuery: ({ page, pageSize, keyword, search }) => ({
+  buildQuery: ({ page, pageSize, keyword, search }) => buildSupplierQuery({
     page,
     pageSize,
-    keyword: keyword || undefined,
-    status: search.status || undefined,
+    keyword,
+    status: search.status,
   }),
-  buildPayload: (form) => ({
-    code: form.code,
-    name: form.name,
-    contact: form.contact,
-    phone: form.phone,
-    address: form.address,
-    mainMaterial: form.mainMaterial,
-    status: form.status,
-  }),
-  formRules: {
-    code: [{ required: true, message: '请输入供应商编号', trigger: 'blur' }],
-    name: [{ required: true, message: '请输入供应商名称', trigger: 'blur' }],
+  buildPayload: (form) => buildSupplierPayload(form),
+  formRules: () => {
+    const fieldRule = (prop: string, trigger: 'blur' | 'change' = 'blur') => ({
+      validator: (_rule: unknown, value: unknown, callback: (error?: Error) => void) => {
+        const message = validateSupplierMaster({ [prop]: value }, { isEditing: true })
+        callback(message ? new Error(message) : undefined)
+      },
+      trigger,
+    })
+    return {
+      code: [
+        { required: true, message: '请输入供应商编号', trigger: 'blur' },
+        fieldRule('code'),
+      ],
+      name: [
+        { required: true, message: '请输入供应商名称', trigger: 'blur' },
+        fieldRule('name'),
+      ],
+      contact: [fieldRule('contact')],
+      phone: [fieldRule('phone')],
+      mainMaterial: [fieldRule('mainMaterial')],
+      address: [fieldRule('address')],
+      status: [fieldRule('status', 'change')],
+    }
   },
 }
 
 export const userPageConfig: BasePageConfig<
-  { status: string },
+  { status: string; role: string },
   {
     id: number
     username: string
@@ -961,7 +1149,14 @@ export const userPageConfig: BasePageConfig<
   formLabelWidth: '96px',
   actionWidth: 220,
   logKeyword: '用户管理',
-  searchFields: [baseStatusSearchField],
+  searchFields: [
+    baseStatusSearchField,
+    { prop: 'role', label: '角色', type: 'select', width: '160px', options: [
+      { label: '管理员', value: 'admin' },
+      { label: '操作员', value: 'operator' },
+      { label: '老板', value: 'boss' },
+    ] },
+  ],
   toolbarActions: [toolbar.add, toolbar.refresh],
   rowActions: [
     { key: 'inspect', label: '详情', type: 'primary', link: true },
@@ -1001,7 +1196,7 @@ export const userPageConfig: BasePageConfig<
       ] },
     ],
     [
-      { prop: 'password', label: '密码', type: 'input', span: 24, placeholder: '初始密码' },
+      { prop: 'password', label: '密码', type: 'input', span: 24, placeholder: '新建必填，编辑留空不修改' },
       { prop: 'status', label: '状态', type: 'select', span: 12, options: [
         { label: '启用', value: 1 },
         { label: '禁用', value: 0 },
@@ -1015,7 +1210,7 @@ export const userPageConfig: BasePageConfig<
     { label: '管理员', resolve: (rows) => rows.filter((item) => item.role === 'admin').length },
     { label: '操作员', resolve: (rows) => rows.filter((item) => item.role === 'operator').length },
   ],
-  createSearchState: () => ({ status: '' }),
+  createSearchState: () => ({ status: '', role: '' }),
   createFormState: () => ({
     id: 0,
     username: '',
@@ -1039,6 +1234,7 @@ export const userPageConfig: BasePageConfig<
     pageSize,
     keyword: keyword || undefined,
     status: search.status || undefined,
+    role: search.role || undefined,
   }),
   buildPayload: (form) => ({
     username: form.username,
@@ -1048,12 +1244,32 @@ export const userPageConfig: BasePageConfig<
     password: form.password,
     status: String(form.status),
   }),
-  formRules: {
+  formRules: ({ isEditing }) => ({
     username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
     realName: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
     role: [{ required: true, message: '请选择角色', trigger: 'change' }],
-    password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
-  },
+    password: [
+      {
+        validator: (_rule, value, callback) => {
+          const text = String(value ?? '').trim()
+          if (!text) {
+            if (isEditing) {
+              callback()
+              return
+            }
+            callback(new Error('请输入密码'))
+            return
+          }
+          if (text.length < 6) {
+            callback(new Error('密码至少 6 位'))
+            return
+          }
+          callback()
+        },
+        trigger: 'blur',
+      },
+    ],
+  }),
 }
 
 export const warehousePageConfig: BasePageConfig<

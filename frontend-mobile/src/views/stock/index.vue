@@ -2,23 +2,22 @@
   <div class="stock-page">
     <van-nav-bar title="库存查询" left-arrow @click-left="router.back()" />
 
-    <!-- 搜索栏 -->
     <van-search
       v-model="keyword"
-      placeholder="搜索产品名称或编码"
+      placeholder="搜索产品名称、编码、仓库、库位、批次或供应商"
       show-action
       @search="onSearch"
-      @cancel="onSearch"
+      @cancel="onCancelSearch"
     />
 
-    <!-- 筛选条件 -->
     <van-cell-group inset class="filter-group">
       <van-field
         v-model="warehouseName"
         is-link
         readonly
         label="仓库"
-        placeholder="选择仓库"
+        placeholder="全部仓库"
+        :disabled="warehouseLoading"
         @click="showWarehousePicker = true"
       />
       <van-field
@@ -26,27 +25,34 @@
         is-link
         readonly
         label="库位"
-        placeholder="选择库位"
+        placeholder="全部库位"
+        :disabled="locationLoading"
         @click="showLocationPicker = true"
       />
+      <div class="filter-actions">
+        <van-button size="small" plain type="default" @click="resetFilters">清除筛选</van-button>
+        <van-button size="small" type="primary" :loading="loading" @click="onSearch">刷新</van-button>
+      </div>
     </van-cell-group>
 
-    <!-- 库存列表 -->
-    <van-empty v-if="stockList.length === 0" description="暂无库存数据" />
+    <van-loading v-if="loading" class="page-loading" type="spinner">加载中...</van-loading>
+    <van-empty v-else-if="stockList.length === 0" description="暂无库存数据" />
     <van-cell-group v-else inset>
       <van-cell
         v-for="item in stockList"
         :key="item.id"
-        :title="item.productName"
-        :label="`${item.batchNo || '-'} · ${item.warehouseName} - ${item.locationCode || '-'}`"
+        :title="`${item.productName || '-'} · ${item.productCode || '-'}`"
+        :label="stockLabel(item)"
       >
         <template #value>
-          <span class="stock-qty">{{ item.qty }}{{ item.availableQty ? ` / ${item.availableQty}` : '' }}</span>
+          <div class="stock-value">
+            <span class="stock-qty">{{ formatStockQtyPair(item) }}</span>
+            <van-tag :type="riskTagType(item.riskLevel)" plain>{{ item.riskText || '正常' }}</van-tag>
+          </div>
         </template>
       </van-cell>
     </van-cell-group>
 
-    <!-- 仓库选择器 -->
     <van-popup v-model:show="showWarehousePicker" round position="bottom">
       <van-picker
         :columns="warehouseColumns"
@@ -55,7 +61,6 @@
       />
     </van-popup>
 
-    <!-- 库位选择器 -->
     <van-popup v-model:show="showLocationPicker" round position="bottom">
       <van-picker
         :columns="locationColumns"
@@ -67,9 +72,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getStockList, getWarehouses, getLocations } from '../../api/stock'
+import { showToast } from 'vant'
+import { getLocations, getStockList, getWarehouses } from '../../api/stock'
+import { formatStockQty, formatStockQtyPair, stockTraceLabel } from '../../utils/stock-query'
 
 const router = useRouter()
 const keyword = ref('')
@@ -79,86 +86,127 @@ const warehouseId = ref<number | undefined>()
 const locationId = ref<number | undefined>()
 const showWarehousePicker = ref(false)
 const showLocationPicker = ref(false)
+const loading = ref(false)
+const warehouseLoading = ref(false)
+const locationLoading = ref(false)
 
 const stockList = ref<any[]>([])
-const warehouses = ref<any[]>([])
-const locations = ref<any[]>([])
-const warehousePage = ref({ records: [] as any[] })
-const locationPage = ref({ records: [] as any[] })
+const warehouseColumns = ref<any[]>([{ text: '全部仓库', value: 0 }])
+const locationColumns = ref<any[]>([{ text: '全部库位', value: 0 }])
 
-/** 仓库选择列 */
-const warehouseColumns = ref<any[]>([])
-/** 库位选择列 */
-const locationColumns = ref<any[]>([])
+function unwrapRecords(res: any) {
+  const data = res?.data?.records || res?.data?.list || res?.data || res?.records || res || []
+  return Array.isArray(data) ? data : [data].filter(Boolean)
+}
 
-/** 加载仓库列表 */
+function riskTagType(level?: string) {
+  if (level === 'danger') return 'danger'
+  if (level === 'warning') return 'warning'
+  return 'success'
+}
+
+function stockLabel(item: any) {
+  const trace = stockTraceLabel(item)
+  const location = `${item.warehouseName || '-'} / ${item.locationCode || '-'}`
+  const locked = Number(item.lockedQty || 0) > 0 ? ` · 锁定 ${formatStockQty(item.lockedQty, item.unit)}` : ''
+  const safe = Number(item.safeStock || 0) > 0 ? ` · 安全 ${formatStockQty(item.safeStock, item.unit)}` : ''
+  return `${trace} · ${location}${locked}${safe}`
+}
+
 async function loadWarehouses() {
+  warehouseLoading.value = true
   try {
     const res = await getWarehouses() as any
-    warehousePage.value = res.data || res || { records: [] }
-    warehouses.value = warehousePage.value.records || []
-    warehouseColumns.value = warehouses.value.map((w: any) => ({
-      text: w.name,
-      value: w.id,
-    }))
-  } catch {
-    // 静默处理
+    const records = unwrapRecords(res)
+    warehouseColumns.value = [
+      { text: '全部仓库', value: 0 },
+      ...records.map((item: any) => ({
+        text: item.name || item.code || `仓库${item.id}`,
+        value: Number(item.id),
+      })),
+    ]
+  } catch (error: any) {
+    warehouseColumns.value = [{ text: '全部仓库', value: 0 }]
+    showToast(error?.message || '仓库列表加载失败')
+  } finally {
+    warehouseLoading.value = false
   }
 }
 
-/** 加载库位列表 */
 async function loadLocations(wId?: number) {
+  locationLoading.value = true
   try {
     const res = await getLocations(wId) as any
-    locationPage.value = res.data || res || { records: [] }
-    locations.value = locationPage.value.records || []
-    locationColumns.value = locations.value.map((l: any) => ({
-      text: l.code,
-      value: l.id,
-    }))
-  } catch {
-    // 静默处理
+    const records = unwrapRecords(res)
+    locationColumns.value = [
+      { text: '全部库位', value: 0 },
+      ...records.map((item: any) => ({
+        text: item.code || item.name || `库位${item.id}`,
+        value: Number(item.id),
+      })),
+    ]
+  } catch (error: any) {
+    locationColumns.value = [{ text: '全部库位', value: 0 }]
+    showToast(error?.message || '库位列表加载失败')
+  } finally {
+    locationLoading.value = false
   }
 }
 
-/** 搜索库存 */
 async function onSearch() {
+  loading.value = true
   try {
     const res = await getStockList({
-      keyword: keyword.value || undefined,
+      keyword: keyword.value.trim() || undefined,
       warehouseId: warehouseId.value,
       locationId: locationId.value,
     }) as any
-    stockList.value = res.data?.records || res.data || res?.records || res || []
-  } catch {
+    stockList.value = unwrapRecords(res)
+  } catch (error: any) {
     stockList.value = []
+    showToast(error?.message || '库存查询失败')
+  } finally {
+    loading.value = false
   }
 }
 
-/** 仓库确认 */
-function onWarehouseConfirm({ selectedOptions }: any) {
+function onCancelSearch() {
+  keyword.value = ''
+  onSearch()
+}
+
+async function onWarehouseConfirm({ selectedOptions }: any) {
   const option = selectedOptions[0]
-  warehouseName.value = option?.text || ''
-  warehouseId.value = option?.value
+  warehouseId.value = Number(option?.value || 0) || undefined
+  warehouseName.value = warehouseId.value ? option?.text || '' : ''
+  locationId.value = undefined
+  locationName.value = ''
   showWarehousePicker.value = false
-  // 重新加载库位
-  loadLocations(warehouseId.value)
-  onSearch()
+  await loadLocations(warehouseId.value)
+  await onSearch()
 }
 
-/** 库位确认 */
-function onLocationConfirm({ selectedOptions }: any) {
+async function onLocationConfirm({ selectedOptions }: any) {
   const option = selectedOptions[0]
-  locationName.value = option?.text || ''
-  locationId.value = option?.value
+  locationId.value = Number(option?.value || 0) || undefined
+  locationName.value = locationId.value ? option?.text || '' : ''
   showLocationPicker.value = false
-  onSearch()
+  await onSearch()
 }
 
-onMounted(() => {
-  loadWarehouses()
-  loadLocations()
-  onSearch()
+async function resetFilters() {
+  keyword.value = ''
+  warehouseId.value = undefined
+  warehouseName.value = ''
+  locationId.value = undefined
+  locationName.value = ''
+  await loadLocations()
+  await onSearch()
+}
+
+onMounted(async () => {
+  await Promise.all([loadWarehouses(), loadLocations()])
+  await onSearch()
 })
 </script>
 
@@ -172,9 +220,30 @@ onMounted(() => {
   margin: 8px 0;
 }
 
+.filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 16px 12px;
+}
+
+.page-loading {
+  display: flex;
+  justify-content: center;
+  padding: 32px 0;
+}
+
+.stock-value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
 .stock-qty {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: bold;
   color: #07c160;
+  white-space: nowrap;
 }
 </style>

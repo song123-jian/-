@@ -4,6 +4,7 @@ import request from './index'
 export interface ProdReportParams {
   workOrderId: number
   machineId: number
+  processName: string
   shift: string
   quantity: number
   defectCount: number
@@ -18,6 +19,7 @@ export interface ProdReportRecord {
   productName: string
   machineId: number
   machineCode: string
+  processName: string
   shift: string
   quantity: number
   defectCount: number
@@ -32,6 +34,7 @@ export function submitReport(data: ProdReportParams) {
     prodOrderId: data.workOrderId,
     machineId: data.machineId,
     reportType: 'OUTPUT',
+    processName: data.processName,
     shift: data.shift,
     qty: data.quantity,
     badQty: data.defectCount,

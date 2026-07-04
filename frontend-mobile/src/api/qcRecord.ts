@@ -1,4 +1,5 @@
 import request from './index'
+import { normalizeQcImageUrls, normalizeQcResult, validateMobileQcRecordInput } from '../utils/qc-record'
 
 /** 质检录入参数 */
 export interface QcRecordParams {
@@ -30,18 +31,18 @@ export interface QcRecord {
 
 /** 提交质检记录 */
 export function submitQcRecord(data: QcRecordParams) {
-  if (!data.productId) {
-    throw new Error('请选择有效的产品')
-  }
+  const validationMessage = validateMobileQcRecordInput(data)
+  if (validationMessage) throw new Error(validationMessage)
+  const images = normalizeQcImageUrls(data.images)
   return request.post('/qc-records', {
     prodOrderId: data.workOrderId,
     productId: data.productId,
     checkType: data.inspectionType,
-    checkResult: data.result === '合格' ? 'PASS' : 'FAIL',
+    checkResult: normalizeQcResult(data.result),
     defectType: data.defectType,
     defectDesc: data.defectDesc,
-    sampleQty: data.sampleCount,
-    imageUrls: (data.images || []).join(','),
+    sampleQty: Number(data.sampleCount),
+    imageUrls: images.join(','),
   })
 }
 

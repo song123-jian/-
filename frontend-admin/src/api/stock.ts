@@ -15,7 +15,7 @@ export const stockInProduce = (data: any) => request.post('/stock/in-produce', d
 // 销售出库
 export const stockOutSale = (data: any) => request.post('/stock/out-sale', data)
 // 仓库调拨
-export const stockTransfer = (data: any) => request.post('/stock-transfers', data)
+export const stockTransfer = (data: any) => request.post('/stock/transfer', data)
 // 盘点单
 export const createStockInventory = (data: any) => request.post('/stock-inventories', data)
 // 盘点单列表

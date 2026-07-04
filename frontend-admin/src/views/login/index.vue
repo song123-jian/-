@@ -95,13 +95,14 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { Lock, User } from '@element-plus/icons-vue'
 import { isSupabaseConfigured } from '@/api/supabaseClient'
 import { useUserStore } from '@/store/user'
+import { resolvePostLoginPath } from '@/utils/auth-route'
 
 const userStore = useUserStore()
 const loginFormRef = ref<FormInstance>()
 const loading = ref(false)
 const authError = ref('')
-const redirectPath =
-  typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('redirect') || '' : ''
+const redirectQuery = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('redirect') : null
+const redirectPath = redirectQuery ? resolvePostLoginPath(redirectQuery) : ''
 
 const loginForm = reactive({
   username: '',

@@ -1,4 +1,27 @@
-import { getSupabaseClient, supabaseAuthEmailDomain, supabaseStorageBucket } from './supabaseClient'
+import { getSupabaseClient, supabaseAuthEmailDomain, supabaseStorageBucket } from './supabaseClient.ts'
+import {
+  assertMobileReportPiecePrice,
+  chooseMobileReportPiecePrice,
+  normalizeMobileReportProcessName,
+  validateMobileReportProcessName,
+} from '../utils/production-report.ts'
+import { buildBusinessWarnings, summarizeBusinessWarnings } from '../utils/business-warning.ts'
+import {
+  getStockTransferStatusText,
+  getTransferReceivedQty,
+  getTransferRemainingQty,
+  getTransferTotalQty,
+  validateStockTransferReceive,
+} from '../utils/stock-transfer.ts'
+import { normalizeQcImageUrls, normalizeQcResult, validateMobileQcRecordInput } from '../utils/qc-record.ts'
+import { getStockAvailableQty, getStockRisk, stockSearchText } from '../utils/stock-query.ts'
+import {
+  buildMobileInventoryCheckPayload,
+  getInventoryBookQty,
+  getInventoryDiffQty,
+  getInventoryProductId,
+  validateMobileInventoryCheckInput,
+} from '../utils/inventory-check.ts'
 
 type RequestConfig = {
   params?: Record<string, any>
@@ -72,7 +95,7 @@ const tableColumns: Record<string, string[]> = {
   payment_record: ['id', 'payment_no', 'customer_id', 'sale_order_id', 'pay_amount', 'pay_date', 'pay_method', 'invoice_no', 'remark', 'created_by', 'created_at'],
   piece_price: ['id', 'product_id', 'process_name', 'price', 'effective_date', 'expire_date', 'created_by', 'created_at'],
   prod_order: ['id', 'order_no', 'sale_order_id', 'sale_order_item_id', 'product_id', 'machine_id', 'mold_id', 'plan_qty', 'completed_qty', 'qualified_qty', 'bad_qty', 'raw_material_qty', 'plan_start', 'plan_end', 'actual_start', 'actual_end', 'status', 'priority', 'remark', 'created_by', 'created_at', 'updated_at'],
-  prod_report: ['id', 'prod_order_id', 'user_id', 'machine_id', 'mold_id', 'report_type', 'shift', 'qty', 'bad_qty', 'shots', 'start_time', 'end_time', 'work_minutes', 'sync_status', 'created_at'],
+  prod_report: ['id', 'prod_order_id', 'user_id', 'machine_id', 'mold_id', 'report_type', 'process_name', 'shift', 'qty', 'bad_qty', 'shots', 'start_time', 'end_time', 'work_minutes', 'sync_status', 'created_at'],
   product: ['id', 'code', 'name', 'spec', 'type', 'unit', 'piece_price', 'cavity_yield', 'cycle_time_sec', 'safe_stock', 'weight_g', 'raw_material_id', 'raw_material_usage', 'color', 'customer_id', 'image_url', 'status', 'created_at'],
   qc_record: ['id', 'prod_order_id', 'product_id', 'check_type', 'check_result', 'defect_type', 'defect_desc', 'defect_qty', 'sample_qty', 'checker_id', 'check_time', 'image_urls', 'remark', 'created_at'],
   salary_adjust: ['id', 'user_id', 'adjust_type', 'amount', 'adjust_date', 'reason', 'created_by', 'created_at'],
@@ -230,21 +253,27 @@ async function loadRowsByColumn(table: string, column: string, values: Array<str
   return toCamelDeep(data || [])
 }
 
-function choosePiecePrice(rows: any[], productId?: number, reportType?: string, date?: string) {
-  if (!productId) return undefined
-  const normalizedDate = date ? new Date(date).toISOString().slice(0, 10) : ''
-  return rows
-    .filter((row) => Number(row.product_id || row.productId) === Number(productId))
-    .filter((row) => !reportType || !row.process_name || String(row.process_name) === String(reportType))
-    .filter((row) => {
-      if (!normalizedDate) return true
-      const effectiveDate = String(row.effective_date || row.effectiveDate || '').slice(0, 10)
-      const expireDate = String(row.expire_date || row.expireDate || '').slice(0, 10)
-      const afterStart = !effectiveDate || effectiveDate <= normalizedDate
-      const beforeEnd = !expireDate || expireDate >= normalizedDate
-      return afterStart && beforeEnd
-    })
-    .sort((a, b) => String(b.effective_date || b.effectiveDate || '').localeCompare(String(a.effective_date || a.effectiveDate || '')))[0]
+function choosePiecePrice(rows: any[], productId?: number, processName?: string, date?: string) {
+  return chooseMobileReportPiecePrice(rows, productId, processName, date)
+}
+
+function normalizeBusinessStatus(value?: string | null) {
+  return String(value || '').toUpperCase()
+}
+
+async function assertDailySalaryEditable(userId: number, workDate: string) {
+  if (!userId || !workDate) throw new Error('报工人员或归属日期无效')
+  const { data, error } = await getSupabaseClient()
+    .from('salary_daily')
+    .select('id, status')
+    .eq('user_id', userId)
+    .eq('work_date', workDate)
+    .maybeSingle()
+  if (error) throw error
+  if (String(data?.status || '').toUpperCase() === 'SETTLED') {
+    throw new Error(`${workDate} 日工资已结算，不能新增报工`)
+  }
+  return data
 }
 
 function formatCurrentUserPayload(context: StoredUserContext, fallbackToken = '') {
@@ -366,24 +395,24 @@ async function buildMobileProdReportRows(params?: Record<string, any>, onlyMine 
     query = query.eq('user_id', currentUserId)
   }
   if (params?.startDate) {
-    query = query.gte('created_at', `${params.startDate} 00:00:00`)
+    query = query.gte('start_time', `${params.startDate} 00:00:00`)
   }
   if (params?.endDate) {
-    query = query.lte('created_at', `${params.endDate} 23:59:59`)
+    query = query.lte('start_time', `${params.endDate} 23:59:59`)
   }
   if (params?.type === 'day') {
     const day = params.date || dayBounds().day
     const bounds = dayBounds(day)
-    query = query.gte('created_at', bounds.startTime).lte('created_at', bounds.endTime)
+    query = query.gte('start_time', bounds.startTime).lte('start_time', bounds.endTime)
   }
   if (params?.type === 'month') {
     const now = new Date()
     const year = Number(params.year || now.getFullYear())
     const month = Number(params.month || now.getMonth() + 1)
     const bounds = monthBounds(year, month)
-    query = query.gte('created_at', `${bounds.startDate} 00:00:00`).lte('created_at', `${bounds.endDate} 23:59:59`)
+    query = query.gte('start_time', `${bounds.startDate} 00:00:00`).lte('start_time', `${bounds.endDate} 23:59:59`)
   }
-  query = query.order('created_at', { ascending: false }).range(from, to)
+  query = query.order('start_time', { ascending: false }).range(from, to)
   const { data, error, count } = await query
   if (error) throw error
   const reports = toCamelDeep(data || [])
@@ -404,7 +433,8 @@ async function buildMobileProdReportRows(params?: Record<string, any>, onlyMine 
     const product = order ? productMap.get(order.productId) : undefined
     const machine = machineMap.get(item.machineId)
     const user = userMap.get(item.userId)
-    const price = choosePiecePrice(priceRows, order?.productId, item.reportType, item.createdAt || item.startTime)
+    const reportTime = item.startTime || item.createdAt || ''
+    const price = choosePiecePrice(priceRows, order?.productId, item.processName, reportTime)
     const unitPrice = toNumber(price?.price)
     const quantity = toNumber(item.qty)
     const defectCount = toNumber(item.badQty)
@@ -421,10 +451,10 @@ async function buildMobileProdReportRows(params?: Record<string, any>, onlyMine 
       quantity,
       defectCount,
       moldCount: toNumber(item.shots),
-      createdAt: item.createdAt || item.startTime || '',
-      reportTime: item.createdAt || item.startTime || '',
+      createdAt: reportTime,
+      reportTime,
       reporterName: user?.realName || user?.username || '-',
-      processName: price?.processName || item.reportType || '注塑',
+      processName: item.processName || price?.processName || '注塑',
       unitPrice,
       amount: Number((goodQty * unitPrice).toFixed(2)),
     }
@@ -437,16 +467,16 @@ async function buildMobileOutputStats(params?: Record<string, any>) {
   const now = new Date()
   const type = params?.type || 'day'
   const supabase = getSupabaseClient()
-  let query = supabase.from('prod_report').select('qty, bad_qty, created_at, user_id')
+  let query = supabase.from('prod_report').select('qty, bad_qty, start_time, user_id')
   if (currentUserId) {
     query = query.eq('user_id', currentUserId)
   }
   if (type === 'month') {
     const bounds = monthBounds(Number(now.getFullYear()), Number(now.getMonth() + 1))
-    query = query.gte('created_at', `${bounds.startDate} 00:00:00`).lte('created_at', `${bounds.endDate} 23:59:59`)
+    query = query.gte('start_time', `${bounds.startDate} 00:00:00`).lte('start_time', `${bounds.endDate} 23:59:59`)
   } else {
     const bounds = dayBounds(params?.date || undefined)
-    query = query.gte('created_at', bounds.startTime).lte('created_at', bounds.endTime)
+    query = query.gte('start_time', bounds.startTime).lte('start_time', bounds.endTime)
   }
   const { data, error } = await query
   if (error) throw error
@@ -477,11 +507,26 @@ async function submitProdReport(data: any) {
   const badQty = toNumber(data?.badQty || data?.defectCount)
   const shots = toNumber(data?.shots || data?.moldCount)
   const reportTime = data?.startTime || new Date().toISOString()
+  const workDate = formatLocalDate(new Date(reportTime))
   const productId = Number(order.productId || data?.productId || 0)
+  const processName = normalizeMobileReportProcessName(data?.processName || data?.process_name)
+  const processError = validateMobileReportProcessName(processName)
+  if (processError) throw new Error(processError)
+  if (!order?.id) throw new Error('未找到生产工单')
+  if (!['SCHEDULED', 'RUNNING', 'PAUSED'].includes(normalizeBusinessStatus(order.status))) {
+    throw new Error('仅已派工、生产中或暂停工单允许报工')
+  }
+  if (!Number.isInteger(quantity) || quantity < 0) throw new Error('产量必须是非负整数')
+  if (!Number.isInteger(badQty) || badQty < 0) throw new Error('不良数量必须是非负整数')
+  if (badQty > quantity) throw new Error('不良数量不能超过产量')
+  if (!Number.isInteger(shots) || shots < 0) throw new Error('模次必须是非负整数')
+  if (!Number(data?.machineId || order.machineId || 0)) throw new Error('请选择机台')
+  await assertDailySalaryEditable(currentUserId, workDate)
   const piecePrices = await loadRowsByColumn('piece_price', 'product_id', [productId])
-  const price = choosePiecePrice(piecePrices, productId, data?.reportType, reportTime)
-  const unitPrice = toNumber(price?.price)
   const goodQty = Math.max(quantity - badQty, 0)
+  const price = choosePiecePrice(piecePrices, productId, processName, reportTime)
+  assertMobileReportPiecePrice(price, goodQty, order.productName || order.orderNo || '', processName, workDate)
+  const unitPrice = toNumber(price?.price)
   const totalAmount = Number((goodQty * unitPrice).toFixed(2))
   const insertPayload = {
     user_id: currentUserId,
@@ -489,6 +534,7 @@ async function submitProdReport(data: any) {
     machine_id: Number(data?.machineId || order.machineId || 0),
     mold_id: Number(data?.moldId || order.moldId || 0) || null,
     report_type: data?.reportType || 'OUTPUT',
+    process_name: processName,
     shift: data?.shift || 'DAY',
     qty: quantity,
     bad_qty: badQty,
@@ -519,7 +565,6 @@ async function submitProdReport(data: any) {
     .eq('id', prodOrderId)
   if (orderUpdateError) throw orderUpdateError
 
-  const workDate = formatLocalDate(new Date(reportTime))
   await upsertDailySalarySummary(currentUserId, workDate, goodQty, totalAmount)
   return ok(toCamelDeep(created), 'created')
 }
@@ -540,18 +585,35 @@ async function submitQcRecord(data: any) {
   if (!productId) {
     throw new Error('请选择有效的产品')
   }
+  const checkType = data?.checkType || data?.inspectionType || 'IPQC'
+  const checkResult = normalizeQcResult(data?.checkResult || data?.result || 'PASS')
+  const defectType = data?.defectType || ''
+  const defectDesc = data?.defectDesc || ''
+  const sampleQty = toNumber(data?.sampleQty || data?.sampleCount || 0)
+  const imageUrls = normalizeQcImageUrls(data?.imageUrls ?? data?.images)
+  const validationMessage = validateMobileQcRecordInput({
+    workOrderId: prodOrderId,
+    productId,
+    inspectionType: checkType,
+    result: checkResult,
+    defectType,
+    defectDesc,
+    sampleCount: sampleQty,
+    images: imageUrls,
+  })
+  if (validationMessage) throw new Error(validationMessage)
   const payload = {
     prod_order_id: prodOrderId,
     product_id: productId,
-    check_type: data?.checkType || data?.inspectionType || 'IPQC',
-    check_result: data?.checkResult || (data?.result === '合格' ? 'PASS' : data?.result === '不合格' ? 'FAIL' : data?.result) || 'PASS',
-    defect_type: data?.defectType || '',
-    defect_desc: data?.defectDesc || '',
+    check_type: checkType,
+    check_result: checkResult,
+    defect_type: defectType,
+    defect_desc: defectDesc,
     defect_qty: toNumber(data?.defectQty || 0),
-    sample_qty: toNumber(data?.sampleQty || data?.sampleCount || 0),
+    sample_qty: sampleQty,
     checker_id: checkerId,
     check_time: data?.checkTime || new Date().toISOString(),
-    image_urls: Array.isArray(data?.imageUrls) ? data.imageUrls.join(',') : String(data?.imageUrls || data?.images || ''),
+    image_urls: imageUrls.join(','),
     remark: data?.remark || '',
   }
   const { data: created, error } = await supabase.from('qc_record').insert(payload).select().single()
@@ -606,9 +668,9 @@ async function buildMobileDailySalaryDetails(params: { year?: number; month?: nu
     .from('prod_report')
     .select('*')
     .eq('user_id', currentUserId)
-    .gte('created_at', `${bounds.startDate} 00:00:00`)
-    .lte('created_at', `${bounds.endDate} 23:59:59`)
-    .order('created_at', { ascending: false })
+    .gte('start_time', `${bounds.startDate} 00:00:00`)
+    .lte('start_time', `${bounds.endDate} 23:59:59`)
+    .order('start_time', { ascending: false })
   if (error) throw error
   const reports = toCamelDeep(data || [])
   const orderMap = await loadRowsByIds('prod_order', reports.map((item: any) => item.prodOrderId))
@@ -624,11 +686,12 @@ async function buildMobileDailySalaryDetails(params: { year?: number; month?: nu
   const records = reports.map((item: any) => {
     const order = orderMap.get(item.prodOrderId)
     const product = order ? productMap.get(order.productId) : undefined
-    const price = choosePiecePrice(piecePriceRows, order?.productId, item.reportType, item.createdAt || item.startTime)
+    const reportTime = item.startTime || item.createdAt || ''
+    const price = choosePiecePrice(piecePriceRows, order?.productId, item.processName, reportTime)
     const unitPrice = toNumber(price?.price)
     const goodQty = Math.max(toNumber(item.qty) - toNumber(item.badQty), 0)
     return {
-      date: (item.createdAt || item.startTime || '').slice(0, 10),
+      date: reportTime.slice(0, 10),
       workHours: Number(((toNumber(item.workMinutes) || 0) / 60).toFixed(2)),
       pieceCount: goodQty,
       pieceAmount: Number((goodQty * unitPrice).toFixed(2)),
@@ -636,6 +699,7 @@ async function buildMobileDailySalaryDetails(params: { year?: number; month?: nu
       overtimeAmount: 0,
       dailyTotal: Number((goodQty * unitPrice).toFixed(2)),
       productName: product?.name || '-',
+      processName: item.processName || price?.processName || '注塑',
       workOrderNo: order?.orderNo || '-',
     }
   })
@@ -645,43 +709,60 @@ async function buildMobileDailySalaryDetails(params: { year?: number; month?: nu
 async function submitInventoryCheck(data: any) {
   const supabase = getSupabaseClient()
   const currentUserId = Number(getCurrentUserId() || 0)
-  const inventoryPayload = {
-    inventory_no: `MC-${Date.now()}`,
-    warehouse_id: Number(data?.warehouseId || 0),
-    inventory_type: 'MOBILE_CHECK',
-    status: 'SUBMITTED',
-    freeze_stock: 0,
-    operator_id: currentUserId || null,
-    remark: data?.reason || '',
-  }
-  const { data: inventoryRow, error: inventoryError } = await supabase.from('stock_inventory').insert(inventoryPayload).select().single()
-  if (inventoryError) throw inventoryError
-  const { data: stockRow, error: stockError } = await supabase
+  const inputValidation = validateMobileInventoryCheckInput(data)
+  if (inputValidation) throw new Error(inputValidation)
+
+  const { data: stockRowsRaw, error: stockError } = await supabase
     .from('stock')
     .select('*')
     .eq('warehouse_id', Number(data?.warehouseId || 0))
     .eq('location_id', Number(data?.locationId || 0))
     .eq('product_id', Number(data?.productId || 0))
-    .maybeSingle()
+    .limit(2)
   if (stockError) throw stockError
-  const stock = toCamelDeep(stockRow || {})
-  const bookQty = toNumber(stock.qty)
-  const actualQty = toNumber(data?.actualQuantity || 0)
-  const diffQty = actualQty - bookQty
+  const stockRows = toCamelDeep(stockRowsRaw || [])
+  if (!stockRows.length) throw new Error('未查询到账面库存，不能提交盘点')
+  if (stockRows.length > 1) throw new Error('当前产品库位存在多个批次，请在管理端按批次盘点')
+  const stock = stockRows[0]
+  const normalizedPayload = buildMobileInventoryCheckPayload(data, stock)
+  const inventoryPayload = {
+    inventory_no: `MC-${Date.now()}`,
+    warehouse_id: normalizedPayload.warehouseId,
+    inventory_type: 'MOBILE_CHECK',
+    status: 'PENDING_APPROVE',
+    freeze_stock: 1,
+    operator_id: currentUserId || null,
+    remark: normalizedPayload.reason || '',
+  }
+  const { data: inventoryRow, error: inventoryError } = await supabase.from('stock_inventory').insert(inventoryPayload).select().single()
+  if (inventoryError) throw inventoryError
   const itemPayload = {
     inventory_id: inventoryRow.id,
-    product_id: Number(data?.productId || 0),
-    location_id: Number(data?.locationId || 0),
-    batch_id: stock.batchId || null,
-    book_qty: bookQty,
-    actual_qty: actualQty,
-    diff_qty: diffQty,
+    product_id: getInventoryProductId(stock),
+    location_id: normalizedPayload.locationId,
+    batch_id: normalizedPayload.batchId || null,
+    book_qty: getInventoryBookQty(stock),
+    actual_qty: normalizedPayload.actualQuantity,
+    diff_qty: getInventoryDiffQty(normalizedPayload, stock),
     diff_amount: 0,
-    reason: data?.reason || '',
+    reason: normalizedPayload.reason || '',
   }
   const { error: itemError } = await supabase.from('stock_inventory_item').insert(itemPayload)
-  if (itemError) throw itemError
-  return ok(true, 'created')
+  if (itemError) {
+    await supabase.from('stock_inventory').delete().eq('id', inventoryRow.id)
+    throw itemError
+  }
+  return ok(
+    {
+      inventoryId: inventoryRow.id,
+      inventoryNo: inventoryRow.inventory_no,
+      status: inventoryPayload.status,
+      bookQty: itemPayload.book_qty,
+      actualQty: itemPayload.actual_qty,
+      diffQty: itemPayload.diff_qty,
+    },
+    'created'
+  )
 }
 
 async function buildMobileStockRows(params?: Record<string, any>) {
@@ -694,6 +775,11 @@ async function buildMobileStockRows(params?: Record<string, any>) {
   const warehouseMap = await loadRowsByIds('warehouse', rows.map((item: any) => item.warehouseId))
   const locationMap = await loadRowsByIds('warehouse_location', rows.map((item: any) => item.locationId))
   const batchMap = await loadRowsByIds('material_batch', rows.map((item: any) => item.batchId))
+  const supplierMap = await loadRowsByIds(
+    'supplier',
+    Array.from(batchMap.values()).map((item: any) => item.supplierId),
+    'id, code, name'
+  )
   const keyword = String(params?.keyword || '').trim().toLowerCase()
   const filtered = rows
     .map((item: any) => {
@@ -701,35 +787,44 @@ async function buildMobileStockRows(params?: Record<string, any>) {
       const warehouse = warehouseMap.get(item.warehouseId)
       const location = locationMap.get(item.locationId)
       const batch = batchMap.get(item.batchId)
-      return {
+      const supplier = supplierMap.get(batch?.supplierId)
+      const qty = toNumber(item.qty)
+      const lockedQty = toNumber(item.lockedQty)
+      const batchStatus = resolveMobileBatchStatus(batch, qty)
+      const row = {
         id: item.id,
         productId: item.productId,
         productCode: product?.code || '-',
         productName: product?.name || '-',
+        unit: product?.unit || '',
+        safeStock: toNumber(product?.safeStock),
         warehouseId: item.warehouseId,
         warehouseName: warehouse?.name || '-',
         locationId: item.locationId,
         locationCode: location?.code || '-',
         batchId: item.batchId,
         batchNo: batch?.batchNo || '-',
-        qty: toNumber(item.qty),
-        lockedQty: toNumber(item.lockedQty),
-        availableQty: Math.max(toNumber(item.qty) - toNumber(item.lockedQty), 0),
+        supplierId: batch?.supplierId || null,
+        supplierCode: supplier?.code || '',
+        supplierName: supplier?.name || '',
+        batchStatus,
+        batchProductionDate: normalizeMobileDateOnly(batch?.productionDate),
+        batchExpiryDate: normalizeMobileDateOnly(batch?.expiryDate),
+        qty,
+        lockedQty,
+        availableQty: getStockAvailableQty({ qty, lockedQty }),
         updateTime: item.updatedAt || item.updated_at || '',
+      }
+      const risk = getStockRisk(row)
+      return {
+        ...row,
+        riskLevel: risk.level,
+        riskText: risk.text,
       }
     })
     .filter((item: any) => {
       if (!keyword) return true
-      return [
-        item.productCode,
-        item.productName,
-        item.warehouseName,
-        item.locationCode,
-        item.batchNo,
-      ]
-        .join(' ')
-        .toLowerCase()
-        .includes(keyword)
+      return stockSearchText(item).includes(keyword)
     })
 
   const keywordWarehouseId = Number(params?.warehouseId || 0)
@@ -743,6 +838,184 @@ async function buildMobileStockRows(params?: Record<string, any>) {
   })
   const records = scoped.slice(from, to + 1)
   return ok({ records, list: records, total: scoped.length })
+}
+
+function groupRowsByKey(rows: any[], key: string) {
+  const map = new Map<number, any[]>()
+  for (const row of rows) {
+    const id = Number(row[key] || 0)
+    if (!id) continue
+    const list = map.get(id) || []
+    list.push(row)
+    map.set(id, list)
+  }
+  return map
+}
+
+async function buildMobileTransferItems(transferIds: number[]) {
+  const ids = Array.from(new Set(transferIds.filter((id) => Number.isFinite(id) && id > 0)))
+  if (!ids.length) return new Map<number, any[]>()
+  const { data, error } = await getSupabaseClient()
+    .from('stock_transfer_item')
+    .select('*')
+    .in('transfer_id', ids)
+    .order('id', { ascending: true })
+  if (error) throw error
+
+  const rows = toCamelDeep(data || [])
+  const productMap = await loadRowsByIds('product', rows.map((item: any) => item.productId), 'id, code, name, unit')
+  const locationMap = await loadRowsByIds(
+    'warehouse_location',
+    rows.flatMap((item: any) => [item.fromLocationId, item.toLocationId]),
+    'id, code, name'
+  )
+  const batchMap = await loadRowsByIds(
+    'material_batch',
+    rows.map((item: any) => item.fromBatchId),
+    'id, batch_no, supplier_id'
+  )
+  const supplierMap = await loadRowsByIds(
+    'supplier',
+    Array.from(batchMap.values()).map((item: any) => item.supplierId),
+    'id, code, name'
+  )
+
+  const items = rows.map((item: any) => {
+    const product = productMap.get(Number(item.productId || 0))
+    const fromLocation = locationMap.get(Number(item.fromLocationId || 0))
+    const toLocation = locationMap.get(Number(item.toLocationId || 0))
+    const batch = batchMap.get(Number(item.fromBatchId || 0))
+    const supplier = supplierMap.get(Number(batch?.supplierId || 0))
+    const qty = toNumber(item.qty)
+    const receivedQty = toNumber(item.receivedQty)
+    return {
+      ...item,
+      productCode: product?.code || '-',
+      productName: product?.name || '-',
+      unit: product?.unit || '',
+      fromLocationCode: fromLocation?.code || '-',
+      toLocationCode: toLocation?.code || '-',
+      batchNo: batch?.batchNo || '-',
+      supplierId: batch?.supplierId || null,
+      supplierCode: supplier?.code || '',
+      supplierName: supplier?.name || '',
+      qty,
+      receivedQty,
+      remainingQty: Math.max(qty - receivedQty, 0),
+    }
+  })
+  return groupRowsByKey(items, 'transferId')
+}
+
+async function enrichMobileTransferRows(rows: any[]) {
+  const transferIds = rows.map((item: any) => Number(item.id || 0)).filter(Boolean)
+  const warehouseIds = rows.flatMap((item: any) => [item.fromWarehouseId, item.toWarehouseId])
+  const warehouseMap = await loadRowsByIds('warehouse', warehouseIds, 'id, code, name')
+  const itemMap = await buildMobileTransferItems(transferIds)
+
+  return rows.map((item: any) => {
+    const items = itemMap.get(Number(item.id || 0)) || []
+    const fromWarehouse = warehouseMap.get(Number(item.fromWarehouseId || 0))
+    const toWarehouse = warehouseMap.get(Number(item.toWarehouseId || 0))
+    return {
+      ...item,
+      transferNo: item.transferNo || item.transfer_no || '-',
+      fromWarehouseName: fromWarehouse?.name || '-',
+      toWarehouseName: toWarehouse?.name || '-',
+      statusText: getStockTransferStatusText(item.status),
+      totalQty: getTransferTotalQty(items),
+      receivedQty: getTransferReceivedQty(items),
+      remainingQty: getTransferRemainingQty(items),
+      items,
+    }
+  })
+}
+
+async function buildMobileTransferRows(params?: Record<string, any>) {
+  const supabase = getSupabaseClient()
+  const { from, to } = pageParams(params)
+  const keyword = String(params?.keyword || '').trim()
+  const status = String(params?.status || '').trim().toUpperCase()
+  let query: any = supabase.from('stock_transfer').select('*', { count: 'exact' })
+  if (keyword) {
+    const escapedKeyword = keyword.replace(/[%_]/g, '\\$&')
+    query = query.or(`transfer_no.ilike.%${escapedKeyword}%,remark.ilike.%${escapedKeyword}%`)
+  }
+  if (status) query = query.eq('status', status)
+  const { data, error, count } = await query.order('created_at', { ascending: false }).range(from, to)
+  if (error) throw error
+  const records = await enrichMobileTransferRows(toCamelDeep(data || []))
+  return ok({ records, list: records, total: count || records.length })
+}
+
+async function loadMobileTransferDetail(id: number) {
+  const { data, error } = await getSupabaseClient().from('stock_transfer').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  const rows = await enrichMobileTransferRows([toCamelDeep(data)])
+  return rows[0] || null
+}
+
+async function receiveMobileTransfer(id: number) {
+  const supabase = getSupabaseClient()
+  const transfer = await loadMobileTransferDetail(id)
+  const validationMessage = validateStockTransferReceive(transfer)
+  if (validationMessage) throw new Error(validationMessage)
+
+  const now = new Date().toISOString()
+  const previousStatus = transfer?.status || 'SHIPPED'
+  const previousReceiveTime = transfer?.receiveTime || null
+  const itemSnapshots = (transfer?.items || []).map((item: any) => ({
+    id: Number(item.id || 0),
+    receivedQty: toNumber(item.receivedQty),
+  }))
+  let transferUpdated = false
+
+  try {
+    const { data: updatedTransfer, error: transferError } = await supabase
+      .from('stock_transfer')
+      .update({
+        status: 'RECEIVED',
+        receive_time: now,
+        operator_id: Number(getCurrentUserId() || 0) || null,
+      })
+      .eq('id', id)
+      .eq('status', 'SHIPPED')
+      .select('id')
+      .maybeSingle()
+    if (transferError) throw transferError
+    if (!updatedTransfer?.id) throw new Error('调拨单状态已变化，请刷新后重试')
+    transferUpdated = true
+
+    for (const item of transfer?.items || []) {
+      const { error: itemError } = await supabase
+        .from('stock_transfer_item')
+        .update({ received_qty: toNumber(item.qty) })
+        .eq('id', Number(item.id))
+      if (itemError) throw itemError
+    }
+  } catch (error) {
+    if (transferUpdated) {
+      try {
+        await supabase
+          .from('stock_transfer')
+          .update({ status: previousStatus, receive_time: previousReceiveTime })
+          .eq('id', id)
+      } catch {
+        // best effort rollback; surface the original receive failure
+      }
+    }
+    for (const item of itemSnapshots) {
+      try {
+        await supabase.from('stock_transfer_item').update({ received_qty: item.receivedQty }).eq('id', item.id)
+      } catch {
+        // best effort rollback; surface the original receive failure
+      }
+    }
+    throw error
+  }
+
+  return ok(await loadMobileTransferDetail(id), 'updated')
 }
 
 async function settleMonthlySalary(data: any) {
@@ -1089,12 +1362,106 @@ async function productionBoard() {
   })
 }
 
+function configRowsToObject(rows: any[]) {
+  return rows.reduce((config: Record<string, any>, row: any) => {
+    const key = row.configKey || row.config_key
+    if (key) config[key] = row.configValue ?? row.config_value ?? ''
+    return config
+  }, {})
+}
+
+function normalizeMobileDateOnly(value?: any) {
+  const text = String(value || '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return ''
+  return Number.isNaN(new Date(`${text}T00:00:00`).getTime()) ? '' : text
+}
+
+function resolveMobileBatchStatus(batch?: any, qty?: any) {
+  if (!batch) return ''
+  const remainingQty = toNumber(qty ?? batch.remainingQty)
+  if (remainingQty <= 0) return 'DEPLETED'
+  const expiryDate = normalizeMobileDateOnly(batch.expiryDate)
+  if (!expiryDate) return normalizeBusinessStatus(batch.status) || 'NORMAL'
+  const today = formatLocalDate(new Date())
+  if (expiryDate < today) return 'EXPIRED'
+  const expiryTime = new Date(`${expiryDate}T00:00:00`).getTime()
+  const todayTime = new Date(`${today}T00:00:00`).getTime()
+  const daysToExpiry = Math.ceil((expiryTime - todayTime) / 86400000)
+  return daysToExpiry <= 30 ? 'EXPIRING' : normalizeBusinessStatus(batch.status) || 'NORMAL'
+}
+
+async function loadBusinessWarningRows() {
+  const supabase = getSupabaseClient()
+  const [stockResult, moldResult, configResult] = await Promise.all([
+    supabase.from('stock').select('*').order('updated_at', { ascending: false }).limit(1000),
+    supabase.from('mold').select('id, code, name, status, used_shots, lifetime, shots_since_maintenance, maintenance_cycle').limit(1000),
+    supabase.from('sys_config').select('config_key, config_value').in('config_key', [
+      'stock_warning_enabled',
+      'stock_expiry_warning_days',
+      'mold_maintenance_warning_ratio',
+      'mold_lifetime_warning_ratio',
+    ]),
+  ])
+  const queryError = [stockResult, moldResult, configResult].find((item: any) => item.error)?.error
+  if (queryError) throw queryError
+
+  const stockRows = toCamelDeep(stockResult.data || [])
+  const moldRows = toCamelDeep(moldResult.data || [])
+  const productMap = await loadRowsByIds(
+    'product',
+    stockRows.map((item: any) => item.productId),
+    'id, code, name, unit, safe_stock, status'
+  )
+  const warehouseMap = await loadRowsByIds('warehouse', stockRows.map((item: any) => item.warehouseId), 'id, name')
+  const locationMap = await loadRowsByIds('warehouse_location', stockRows.map((item: any) => item.locationId), 'id, code')
+  const batchMap = await loadRowsByIds(
+    'material_batch',
+    stockRows.map((item: any) => item.batchId),
+    'id, batch_no, expiry_date, production_date, remaining_qty, status'
+  )
+
+  return buildBusinessWarnings({
+    config: configRowsToObject(toCamelDeep(configResult.data || [])),
+    stockRows: stockRows.map((item: any) => {
+      const product = productMap.get(Number(item.productId || 0))
+      const warehouse = warehouseMap.get(Number(item.warehouseId || 0))
+      const location = locationMap.get(Number(item.locationId || 0))
+      const batch = batchMap.get(Number(item.batchId || 0))
+      const qty = toNumber(item.qty)
+      const lockedQty = toNumber(item.lockedQty)
+      return {
+        id: item.id,
+        productId: item.productId,
+        productCode: product?.code,
+        productName: product?.name,
+        productUnit: product?.unit,
+        warehouseName: warehouse?.name,
+        locationCode: location?.code,
+        batchId: item.batchId,
+        batchNo: batch?.batchNo,
+        batchStatus: resolveMobileBatchStatus(batch, qty),
+        batchExpiryDate: normalizeMobileDateOnly(batch?.expiryDate),
+        qty,
+        lockedQty,
+        availableQty: qty - lockedQty,
+        safeStock: toNumber(product?.safeStock),
+      }
+    }),
+    moldRows,
+  })
+}
+
 async function warningList() {
-  return ok([])
+  return ok(await loadBusinessWarningRows())
 }
 
 async function warningSummary() {
-  return ok({ total: 0, warning: 0, error: 0, stock: 0, mold: 0 })
+  return ok(summarizeBusinessWarnings(await loadBusinessWarningRows()))
+}
+
+async function stockWarningList() {
+  const warnings = await loadBusinessWarningRows()
+  return ok(warnings.filter((item) => item.category === '库存'))
 }
 
 async function oeeStats() {
@@ -1169,7 +1536,11 @@ async function get(url: string, config?: RequestConfig) {
   if (path === 'salary/daily-details') return buildMobileDailySalaryDetails(config?.params || {})
   if (path === 'stock') return buildMobileStockRows(config?.params)
   if (path === 'stock/ledger') return buildMobileStockRows(config?.params)
-  if (path === 'stock/warnings') return ok([])
+  if (path === 'stock/warnings') return stockWarningList()
+  if (route?.table === 'stock_transfer') {
+    if (id) return ok(await loadMobileTransferDetail(id))
+    return buildMobileTransferRows(config?.params)
+  }
   if (!route) throw new Error(`未配置 Supabase 路由：/${path}`)
   if (id) return getTableDetail(route, id)
   return listTable(route, config?.params)
@@ -1208,6 +1579,7 @@ async function put(url: string, data?: any) {
   const { path, route, id, action } = parseRoute(url)
   if (path === 'system/config') return updateConfig(data || {})
   if (path === 'salary/monthly/settle') return settleMonthlySalary(data || {})
+  if (route?.table === 'stock_transfer' && id && action === 'receive') return receiveMobileTransfer(id)
   if (!route || !id) throw new Error(`未配置 Supabase 路由：/${path}`)
   if (action) return actionUpdate(route, id, action)
   return updateTable(route, id, data || {})

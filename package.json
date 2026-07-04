@@ -8,6 +8,6 @@
     "dev:mobile": "npm --prefix frontend-mobile run dev -- --host 127.0.0.1 --port 3001 --strictPort",
     "check-encoding": "node scripts/check-encoding.mjs",
     "build": "npm --prefix frontend-admin run build && npm --prefix frontend-mobile run build",
-    "test": "node -e \"console.log('No unit test suite configured; build is the current regression gate.')\""
+    "test": "node --test --experimental-test-coverage tests/customer-master.test.mjs tests/supplier-master.test.mjs tests/product-master.test.mjs tests/production-picking.test.mjs tests/production-inbound.test.mjs tests/production-report.test.mjs tests/production-board.test.mjs tests/quality-board.test.mjs tests/integration-center.test.mjs tests/system-config.test.mjs tests/cloud-ops.test.mjs tests/notification-center.test.mjs tests/system-logs.test.mjs tests/mobile-production-report.test.mjs tests/mobile-stock-transfer.test.mjs tests/mobile-qc-record.test.mjs tests/mobile-stock-query.test.mjs tests/mobile-inventory-check.test.mjs tests/stock-inventory.test.mjs tests/stock-ledger.test.mjs tests/stock-transfer.test.mjs tests/boss-dashboard.test.mjs tests/business-warning.test.mjs tests/purchase-inbound.test.mjs tests/sale-order.test.mjs tests/sale-shipment.test.mjs tests/sale-payment.test.mjs tests/sale-delivery.test.mjs tests/finance-expense.test.mjs tests/finance-receivable.test.mjs tests/finance-statement.test.mjs tests/salary-monthly.test.mjs tests/salary-price.test.mjs"
   }
 }

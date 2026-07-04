@@ -1,6 +1,6 @@
 <template>
   <el-dialog v-model="visible" :title="title" :width="config.dialogWidth">
-    <el-form ref="formRef" :model="model" :rules="config.formRules" :label-width="config.formLabelWidth">
+    <el-form ref="formRef" :model="model" :rules="resolvedFormRules" :label-width="config.formLabelWidth">
       <template v-for="(row, rowIndex) in config.formRows" :key="rowIndex">
         <el-row :gutter="16">
           <el-col v-for="field in row" :key="field.prop" :span="field.span || 24">
@@ -84,6 +84,12 @@ const visible = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
 })
+
+const resolvedFormRules = computed(() =>
+  typeof props.config.formRules === 'function'
+    ? props.config.formRules({ isEditing: props.isEditing, model: props.model })
+    : props.config.formRules
+)
 
 async function handleConfirm() {
   const valid = await formRef.value?.validate().catch(() => false)

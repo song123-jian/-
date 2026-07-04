@@ -21,6 +21,17 @@
             <template v-else-if="column.kind === 'progress'">
               <el-progress :percentage="column.progress ? column.progress(row) : 0" :stroke-width="10" />
             </template>
+            <template v-else-if="column.kind === 'image'">
+              <el-image
+                v-if="resolveCell(column, row) !== '-'"
+                class="table-image"
+                :src="resolveCell(column, row)"
+                :alt="column.imageAlt ? column.imageAlt(row) : column.label"
+                fit="cover"
+                lazy
+              />
+              <span v-else>-</span>
+            </template>
             <template v-else>
               {{ resolveCell(column, row) }}
             </template>
@@ -92,5 +103,14 @@ function resolveCell(column: TableColumn, row: any) {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.table-image {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  border: 1px solid #e6e8eb;
+  background: #f8fafc;
+  vertical-align: middle;
 }
 </style>

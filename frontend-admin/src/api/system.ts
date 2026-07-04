@@ -1,4 +1,5 @@
 import request from './index'
+import type { SystemConfigPayload } from '@/utils/system-config'
 
 // 获取操作日志列表
 export const getLogList = (params: any) => request.get('/system/logs', { params })
@@ -7,4 +8,4 @@ export const getLogList = (params: any) => request.get('/system/logs', { params 
 export const getSystemConfig = () => request.get('/system/config')
 
 // 更新系统配置
-export const updateSystemConfig = (data: any) => request.put('/system/config', data)
+export const updateSystemConfig = (data: SystemConfigPayload) => request.put('/system/config', data)

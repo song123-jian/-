@@ -261,6 +261,21 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import { convertScale, previewLabel, pushTelemetry, pushTest, scanIntegration } from '@/api/integration'
+import {
+  buildIntegrationResult,
+  convertIntegrationScale,
+  normalizeIntegrationLabel,
+  normalizeIntegrationPush,
+  normalizeIntegrationScan,
+  normalizeIntegrationTelemetry,
+  validateIntegrationLabel,
+  validateIntegrationPush,
+  validateIntegrationScale,
+  validateIntegrationScan,
+  validateIntegrationTelemetry,
+  type IntegrationResult,
+  type IntegrationResultState,
+} from '@/utils/integration-center'
 
 const activeTab = ref('telemetry')
 
@@ -354,12 +369,27 @@ const resultTagType = computed(() => {
 
 const resultText = computed(() => JSON.stringify(result.payload, null, 2))
 
-function updateResult(title: string, summary: string, state: string, payload: Record<string, unknown>) {
+function updateResult(title: string, summary: string, state: IntegrationResultState, payload: Record<string, unknown>) {
   result.title = title
   result.summary = summary
   result.state = state
-  result.stateText = state === 'success' ? '成功' : state === 'warning' ? '提示' : state === 'error' ? '失败' : ''
+  result.stateText = state === 'success' ? '成功' : state === 'warning' ? '提示' : state === 'error' ? '失败' : '信息'
   result.payload = payload
+}
+
+function updateIntegrationResult(title: string, data?: Partial<IntegrationResult>) {
+  updateResult(
+    title,
+    data?.summary || '操作完成',
+    data?.state || 'info',
+    (data?.payload || data || {}) as Record<string, unknown>,
+  )
+}
+
+function updateValidationResult(title: string, message: string, payload: Record<string, unknown>) {
+  const data = buildIntegrationResult('warning', message, payload)
+  updateIntegrationResult(title, data)
+  ElMessage.warning(message)
 }
 
 function resetAll() {
@@ -434,34 +464,19 @@ function fillPushSample() {
 }
 
 async function submitTelemetry() {
-  if (!telemetryForm.machineId && !telemetryForm.machineCode.trim()) {
-    ElMessage.warning('机台编号或机台编码至少填写一个')
+  const validationMessage = validateIntegrationTelemetry(telemetryForm)
+  if (validationMessage) {
+    updateValidationResult('PLC遥测', validationMessage, normalizeIntegrationTelemetry(telemetryForm) as unknown as Record<string, unknown>)
     return
   }
   loading.telemetry = true
   try {
-    const payload = {
-      machineId: telemetryForm.machineId ?? undefined,
-      machineCode: telemetryForm.machineCode || undefined,
-      status: telemetryForm.status || undefined,
-      prodOrderId: telemetryForm.prodOrderId ?? undefined,
-      orderNo: telemetryForm.orderNo || undefined,
-      moldId: telemetryForm.moldId ?? undefined,
-      qty: telemetryForm.qty ?? undefined,
-      badQty: telemetryForm.badQty ?? undefined,
-      shots: telemetryForm.shots ?? undefined,
-      reportType: telemetryForm.reportType || undefined,
-      shift: telemetryForm.shift || undefined,
-      startTime: telemetryForm.startTime || undefined,
-      endTime: telemetryForm.endTime || undefined,
-      source: telemetryForm.source || undefined,
-      remark: telemetryForm.remark || undefined,
-    }
+    const payload = normalizeIntegrationTelemetry(telemetryForm)
     const res: any = await pushTelemetry(payload)
-    updateResult('PLC遥测', res.message || '遥测已发送', 'success', res.data || {})
+    updateIntegrationResult('PLC遥测', res.data)
     ElMessage.success('遥测已发送')
-  } catch {
-    updateResult('PLC遥测', '发送失败', 'error', {})
+  } catch (error: any) {
+    updateResult('PLC遥测', error?.message || '发送失败', 'error', normalizeIntegrationTelemetry(telemetryForm) as unknown as Record<string, unknown>)
   } finally {
     loading.telemetry = false
   }
@@ -470,12 +485,18 @@ async function submitTelemetry() {
 async function submitScan() {
   const valid = await scanFormRef.value?.validate().catch(() => false)
   if (!valid) return
+  const validationMessage = validateIntegrationScan(scanForm)
+  if (validationMessage) {
+    updateValidationResult('扫码识别', validationMessage, normalizeIntegrationScan(scanForm) as unknown as Record<string, unknown>)
+    return
+  }
   loading.scan = true
   try {
-    const res: any = await scanIntegration({ code: scanForm.code, codeType: scanForm.codeType || undefined })
-    updateResult('扫码识别', res.message || '识别完成', 'success', res.data || {})
-  } catch {
-    updateResult('扫码识别', '识别失败', 'error', {})
+    const payload = normalizeIntegrationScan(scanForm)
+    const res: any = await scanIntegration(payload)
+    updateIntegrationResult('扫码识别', res.data)
+  } catch (error: any) {
+    updateResult('扫码识别', error?.message || '识别失败', 'error', normalizeIntegrationScan(scanForm) as unknown as Record<string, unknown>)
   } finally {
     loading.scan = false
   }
@@ -484,12 +505,18 @@ async function submitScan() {
 async function submitLabel() {
   const valid = await labelFormRef.value?.validate().catch(() => false)
   if (!valid) return
+  const validationMessage = validateIntegrationLabel(labelForm)
+  if (validationMessage) {
+    updateValidationResult('标签预览', validationMessage, normalizeIntegrationLabel(labelForm) as unknown as Record<string, unknown>)
+    return
+  }
   loading.label = true
   try {
-    const res: any = await previewLabel({ targetType: labelForm.targetType, targetId: labelForm.targetId as number })
-    updateResult('标签预览', res.message || '预览完成', 'success', res.data || {})
-  } catch {
-    updateResult('标签预览', '预览失败', 'error', {})
+    const payload = normalizeIntegrationLabel(labelForm)
+    const res: any = await previewLabel(payload)
+    updateIntegrationResult('标签预览', res.data)
+  } catch (error: any) {
+    updateResult('标签预览', error?.message || '预览失败', 'error', normalizeIntegrationLabel(labelForm) as unknown as Record<string, unknown>)
   } finally {
     loading.label = false
   }
@@ -498,18 +525,18 @@ async function submitLabel() {
 async function submitScale() {
   const valid = await scaleFormRef.value?.validate().catch(() => false)
   if (!valid) return
+  const validationMessage = validateIntegrationScale(scaleForm)
+  if (validationMessage) {
+    updateValidationResult('称重换算', validationMessage, convertIntegrationScale(scaleForm) as unknown as Record<string, unknown>)
+    return
+  }
+  const payload = convertIntegrationScale(scaleForm)
   loading.scale = true
   try {
-    const payload = {
-      productId: scaleForm.productId ?? undefined,
-      grossWeight: scaleForm.grossWeight,
-      tareWeight: scaleForm.tareWeight || undefined,
-      unitWeight: scaleForm.unitWeight || undefined,
-    }
     const res: any = await convertScale(payload)
-    updateResult('称重换算', res.message || '换算完成', 'success', res.data || {})
-  } catch {
-    updateResult('称重换算', '换算失败', 'error', {})
+    updateIntegrationResult('称重换算', res.data)
+  } catch (error: any) {
+    updateResult('称重换算', error?.message || '换算失败', 'error', payload as unknown as Record<string, unknown>)
   } finally {
     loading.scale = false
   }
@@ -518,12 +545,18 @@ async function submitScale() {
 async function submitPush() {
   const valid = await pushFormRef.value?.validate().catch(() => false)
   if (!valid) return
+  const validationMessage = validateIntegrationPush(pushForm)
+  if (validationMessage) {
+    updateValidationResult('推送测试', validationMessage, normalizeIntegrationPush(pushForm) as unknown as Record<string, unknown>)
+    return
+  }
   loading.push = true
   try {
-    const res: any = await pushTest({ title: pushForm.title, content: pushForm.content, type: pushForm.type || undefined })
-    updateResult('推送测试', res.message || '推送完成', 'success', res.data || {})
-  } catch {
-    updateResult('推送测试', '推送失败', 'error', {})
+    const payload = normalizeIntegrationPush(pushForm)
+    const res: any = await pushTest(payload)
+    updateIntegrationResult('推送测试', res.data)
+  } catch (error: any) {
+    updateResult('推送测试', error?.message || '推送失败', 'error', normalizeIntegrationPush(pushForm) as unknown as Record<string, unknown>)
   } finally {
     loading.push = false
   }

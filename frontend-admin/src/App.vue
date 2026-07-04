@@ -125,4 +125,47 @@ select {
 .el-textarea__inner {
   border-radius: 8px;
 }
+
+@media (max-width: 768px) {
+  .page-container {
+    gap: 12px;
+  }
+
+  .page-container > .el-card,
+  .page-container > .search-bar,
+  .page-container > .el-descriptions,
+  .page-container > .el-alert,
+  .page-container > .el-empty {
+    border-radius: 10px;
+  }
+
+  .page-container > .el-card .el-card__body {
+    padding: 12px;
+    overflow-x: auto;
+  }
+
+  .page-container .el-pagination {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .el-overlay-dialog .el-dialog {
+    max-width: calc(100vw - 24px);
+    margin-top: 6vh;
+  }
+
+  .el-dialog__body {
+    padding: 14px;
+  }
+
+  .el-dialog .el-row {
+    display: block;
+  }
+
+  .el-dialog .el-col-8,
+  .el-dialog .el-col-12 {
+    max-width: 100%;
+    flex: 0 0 100%;
+  }
+}
 </style>

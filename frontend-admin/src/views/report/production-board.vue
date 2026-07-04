@@ -2,214 +2,378 @@
   <div class="page-container">
     <PageHeader title="生产看板" />
 
-    <el-row :gutter="20" class="stat-row" v-loading="loading">
-      <el-col :span="6" v-for="item in statCards" :key="item.title">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-card-content">
-            <div class="stat-info">
-              <div class="stat-title">{{ item.title }}</div>
-              <div class="stat-value">{{ item.value }}</div>
-            </div>
-            <el-icon :size="48" :style="{ color: item.color }">
-              <component :is="item.icon" />
-            </el-icon>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <div class="dashboard-filter">
+      <el-form :inline="true" class="dashboard-filter__form">
+        <el-form-item label="生产期间">
+          <el-date-picker
+            v-model="monthRange"
+            type="monthrange"
+            range-separator="至"
+            start-placeholder="开始月份"
+            end-placeholder="结束月份"
+            value-format="YYYY-MM"
+            style="width: 280px"
+            clearable
+          />
+        </el-form-item>
+        <el-form-item label="快捷月数">
+          <el-input-number v-model="months" :min="1" :max="24" style="width: 140px" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="handleSearch">
+            <el-icon><Search /></el-icon>
+            查询
+          </el-button>
+          <el-button @click="handleRecentMonths">
+            <el-icon><Calendar /></el-icon>
+            最近月数
+          </el-button>
+          <el-button @click="handleReset">
+            <el-icon><Refresh /></el-icon>
+            重置
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </div>
 
-    <el-row :gutter="20">
-      <el-col :span="12">
+    <el-alert
+      v-if="errorMessage"
+      class="section-alert"
+      type="warning"
+      :title="errorMessage"
+      show-icon
+      :closable="false"
+    />
+
+    <div class="scope-line">
+      <span>周期：{{ scopeText }}</span>
+      <span>口径：生产报工按 start_time 归集，质检按 check_time 归集，工单、机台、产品与不良类型统一联动。</span>
+    </div>
+
+    <div v-loading="loading" class="kpi-grid">
+      <div v-for="item in statCards" :key="item.label" class="kpi-card" :class="`kpi-card--${item.tone}`">
+        <div class="kpi-card__main">
+          <div>
+            <div class="kpi-card__label">{{ item.label }}</div>
+            <div class="kpi-card__value">{{ cardValueText(item) }}</div>
+          </div>
+          <el-icon :size="30">
+            <component :is="cardIcon(item.icon)" />
+          </el-icon>
+        </div>
+        <div class="kpi-card__meta">{{ item.meta }}</div>
+      </div>
+    </div>
+
+    <div v-if="riskItems.length" class="risk-list">
+      <el-alert
+        v-for="item in riskItems"
+        :key="`${item.type}-${item.title}`"
+        :type="riskAlertType(item.level)"
+        :title="item.title"
+        :description="item.description"
+        show-icon
+        :closable="false"
+      />
+    </div>
+
+    <el-row :gutter="16" class="chart-row">
+      <el-col :xs="24" :lg="12">
         <el-card shadow="hover" v-loading="loading">
-          <template #header><span>班次产量</span></template>
+          <template #header>
+            <div class="section-header">
+              <span>班次产量</span>
+              <el-tag type="info" effect="plain">{{ normalizedSummary.shiftCount }} 个班次</el-tag>
+            </div>
+          </template>
           <div ref="shiftChartRef" class="chart-container"></div>
         </el-card>
       </el-col>
-      <el-col :span="12">
+      <el-col :xs="24" :lg="12">
         <el-card shadow="hover" v-loading="loading">
-          <template #header><span>机台状态分布</span></template>
+          <template #header>
+            <div class="section-header">
+              <span>机台状态</span>
+              <el-tag :type="normalizedSummary.runningMachineCount > 0 ? 'success' : 'warning'" effect="plain">
+                {{ normalizedSummary.runningMachineCount }}/{{ normalizedSummary.machineCount }} 运行
+              </el-tag>
+            </div>
+          </template>
           <div ref="machineChartRef" class="chart-container"></div>
         </el-card>
       </el-col>
     </el-row>
 
-    <el-row :gutter="20" style="margin-top: 20px">
-      <el-col :span="12">
-        <el-card shadow="hover" v-loading="loading">
-          <template #header><span>机台实时状态</span></template>
-          <el-table :data="machineStatus" stripe empty-text="暂无机台数据">
-            <el-table-column prop="machineName" label="机台" width="120" />
-            <el-table-column prop="productName" label="当前产品" width="150" />
-            <el-table-column prop="status" label="状态" width="100">
+    <el-row :gutter="16" class="table-row">
+      <el-col :xs="24" :xl="12">
+        <el-card shadow="hover">
+          <template #header>
+            <div class="section-header">
+              <span>机台实时状态</span>
+              <el-tag type="info" effect="plain">{{ machineStatus.length }} 台</el-tag>
+            </div>
+          </template>
+          <el-table :data="machineStatus" stripe v-loading="loading" empty-text="暂无机台数据">
+            <el-table-column prop="machineName" label="机台" min-width="130" />
+            <el-table-column prop="productName" label="当前产品" min-width="150" />
+            <el-table-column label="状态" width="105" align="center">
               <template #default="{ row }">
-                <el-tag :type="statusTagType(row.status)">
+                <el-tag :type="statusTagType(row.status)" effect="plain">
                   {{ statusText(row.status) }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="orderNo" label="当前工单" width="150" />
+            <el-table-column prop="orderNo" label="当前工单" min-width="150" />
           </el-table>
         </el-card>
       </el-col>
-      <el-col :span="12">
-        <el-card shadow="hover" v-loading="loading">
-          <template #header><span>工单进度</span></template>
-          <el-table :data="orderProgress" stripe empty-text="暂无工单数据">
-            <el-table-column prop="orderNo" label="工单编号" width="150" />
-            <el-table-column prop="productName" label="产品" width="150" />
-            <el-table-column prop="planQty" label="计划数量" width="100" />
-            <el-table-column prop="completedQty" label="完成数量" width="100" />
-            <el-table-column prop="completionRate" label="完成率" width="120">
+      <el-col :xs="24" :xl="12">
+        <el-card shadow="hover">
+          <template #header>
+            <div class="section-header">
+              <span>工单进度</span>
+              <el-tag :type="normalizedSummary.overdueOrderCount > 0 ? 'warning' : 'success'" effect="plain">
+                逾期 {{ normalizedSummary.overdueOrderCount }}
+              </el-tag>
+            </div>
+          </template>
+          <el-table :data="orderProgress" stripe v-loading="loading" empty-text="暂无工单数据">
+            <el-table-column prop="orderNo" label="工单编号" min-width="150" />
+            <el-table-column prop="productName" label="产品" min-width="150" />
+            <el-table-column label="计划数量" width="105" align="right">
+              <template #default="{ row }">{{ numberText(row.planQty) }}</template>
+            </el-table-column>
+            <el-table-column label="完成数量" width="105" align="right">
+              <template #default="{ row }">{{ numberText(row.completedQty) }}</template>
+            </el-table-column>
+            <el-table-column label="完成率" width="140">
               <template #default="{ row }">
-                <el-progress :percentage="row.completionRate" :color="row.completionRate >= 80 ? '#67c23a' : '#e6a23c'" />
+                <el-progress :percentage="progressPercent(row.completionRate)" :color="progressColor(row.completionRate)" />
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="100" align="center">
+              <template #default="{ row }">
+                <el-tag :type="statusTagType(row.status)" effect="plain">{{ statusText(row.status) }}</el-tag>
               </template>
             </el-table-column>
           </el-table>
         </el-card>
       </el-col>
     </el-row>
+
+    <el-card shadow="hover">
+      <template #header>
+        <div class="section-header">
+          <span>不良类型排行</span>
+          <el-tag type="info" effect="plain">{{ topDefects.length }} 类</el-tag>
+        </div>
+      </template>
+      <el-table :data="topDefects" stripe v-loading="loading" empty-text="暂无不良数据">
+        <el-table-column prop="defectType" label="不良类型" min-width="160" />
+        <el-table-column label="不良数量" width="140" align="right">
+          <template #default="{ row }">{{ numberText(row.qty) }}</template>
+        </el-table-column>
+        <el-table-column label="占比" min-width="180">
+          <template #default="{ row }">
+            <el-progress :percentage="defectPercent(row.qty)" :color="defectPercent(row.qty) > 50 ? '#f56c6c' : '#e6a23c'" />
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import * as echarts from 'echarts'
+import {
+  Calendar,
+  CircleCheck,
+  DataAnalysis,
+  Goods,
+  Monitor,
+  Odometer,
+  Operation,
+  Refresh,
+  Search,
+  Timer,
+  WarningFilled,
+} from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { getProductionBoard } from '@/api/dashboard'
+import {
+  createFinanceStatementScope,
+  getFinanceStatementMonthKey,
+  validateFinanceStatementRange,
+} from '@/utils/finance-statement'
+import {
+  buildProductionBoardCards,
+  buildProductionBoardRiskItems,
+  buildProductionMachineChartRows,
+  buildProductionShiftChartRows,
+  clampProductionPercent,
+  getProductionStatusTagType,
+  getProductionStatusText,
+  normalizeProductionBoardSummary,
+  productionRatioPercent,
+  type ProductionBoardCard,
+  type ProductionBoardRiskItem,
+  type ProductionBoardSummary,
+} from '@/utils/production-board'
 
-type MachineStatusItem = {
-  machineId?: number
-  machineName?: string
-  status?: string
-  orderNo?: string
-  productName?: string
+const iconMap = {
+  CircleCheck,
+  DataAnalysis,
+  Goods,
+  Monitor,
+  Odometer,
+  Operation,
+  Timer,
+  WarningFilled,
 }
 
-type OrderProgressItem = {
-  orderId?: number
-  orderNo?: string
-  productName?: string
-  planQty?: number
-  completedQty?: number
-  completionRate?: number
-  status?: string
-}
-
-type ShiftOutputItem = {
-  shift?: string
-  qty?: number
-  badQty?: number
-}
-
-const statCards = ref([
-  { title: '今日总产量', value: '0', icon: 'Goods', color: '#409eff' },
-  { title: '运行机台', value: '0', icon: 'Monitor', color: '#67c23a' },
-  { title: '工单总数', value: '0', icon: 'CircleCheck', color: '#e6a23c' },
-  { title: '平均完成率', value: '0.0%', icon: 'Odometer', color: '#f56c6c' },
-])
 const loading = ref(false)
-
-const machineStatus = ref<MachineStatusItem[]>([])
-const orderProgress = ref<OrderProgressItem[]>([])
+const months = ref(3)
+const monthRange = ref<string[]>([])
+const errorMessage = ref('')
+const summary = ref<ProductionBoardSummary>({ machineStatuses: [], orderProgresses: [], shiftOutputs: [], topDefects: [] })
 const shiftChartRef = ref<HTMLElement>()
 const machineChartRef = ref<HTMLElement>()
 let shiftChart: echarts.ECharts | null = null
 let machineChart: echarts.ECharts | null = null
 
-function statusText(value?: string) {
-  const map: Record<string, string> = {
-    RUNNING: '运行中',
-    IDLE: '空闲',
-    MAINTENANCE: '维护中',
-    STOPPED: '停机',
+const normalizedSummary = computed(() => normalizeProductionBoardSummary(summary.value))
+const statCards = computed(() => buildProductionBoardCards(summary.value))
+const riskItems = computed(() => buildProductionBoardRiskItems(summary.value))
+const machineStatus = computed(() => normalizedSummary.value.machineStatuses)
+const orderProgress = computed(() => normalizedSummary.value.orderProgresses)
+const topDefects = computed(() => normalizedSummary.value.topDefects)
+const scopeText = computed(() => {
+  if (normalizedSummary.value.startDate && normalizedSummary.value.endDate) {
+    return `${normalizedSummary.value.startDate} 至 ${normalizedSummary.value.endDate}`
   }
-  return map[value || ''] || value || '-'
+  if (monthRange.value?.length === 2) return `${monthRange.value[0]} 至 ${monthRange.value[1]}`
+  return `近 ${months.value} 个月`
+})
+
+function cardIcon(name: string) {
+  return iconMap[name as keyof typeof iconMap] || DataAnalysis
 }
 
-function statusTagType(value?: string) {
-  if (value === 'RUNNING') return 'success'
-  if (value === 'IDLE') return 'warning'
-  if (value === 'MAINTENANCE') return 'danger'
+function numberText(value: any) {
+  return Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+}
+
+function percentText(value: any) {
+  return `${Number(value || 0).toFixed(1)}%`
+}
+
+function cardValueText(item: ProductionBoardCard) {
+  if (item.valueType === 'percent') return percentText(item.value)
+  return numberText(item.value)
+}
+
+function riskAlertType(level: ProductionBoardRiskItem['level']) {
+  if (level === 'error') return 'error'
+  if (level === 'warning') return 'warning'
   return 'info'
 }
 
-function initCharts() {
-  if (shiftChartRef.value && !shiftChart) {
-    shiftChart = echarts.init(shiftChartRef.value)
-  }
-  if (machineChartRef.value && !machineChart) {
-    machineChart = echarts.init(machineChartRef.value)
-  }
+function statusText(value?: string | null) {
+  return getProductionStatusText(value)
 }
 
-function buildCharts(shifts: ShiftOutputItem[], machines: MachineStatusItem[]) {
-  const shiftLabels = shifts.map((item) => item.shift || '-')
-  const shiftQty = shifts.map((item) => item.qty || 0)
-  const shiftBadQty = shifts.map((item) => item.badQty || 0)
+function statusTagType(value?: string | null) {
+  return getProductionStatusTagType(value)
+}
+
+function progressPercent(value: any) {
+  return clampProductionPercent(value)
+}
+
+function progressColor(value: any) {
+  const percent = Number(value || 0)
+  if (percent >= 95) return '#67c23a'
+  if (percent >= 80) return '#409eff'
+  return '#e6a23c'
+}
+
+function defectPercent(value: any) {
+  return clampProductionPercent(productionRatioPercent(value, normalizedSummary.value.defectQty))
+}
+
+function chartColor(tone?: string) {
+  const colors: Record<string, string> = {
+    primary: '#409eff',
+    success: '#67c23a',
+    warning: '#e6a23c',
+    danger: '#f56c6c',
+    neutral: '#909399',
+  }
+  return colors[tone || 'neutral'] || colors.neutral
+}
+
+function initCharts() {
+  if (shiftChartRef.value && !shiftChart) shiftChart = echarts.init(shiftChartRef.value)
+  if (machineChartRef.value && !machineChart) machineChart = echarts.init(machineChartRef.value)
+}
+
+function renderCharts() {
+  const shiftRows = buildProductionShiftChartRows(summary.value)
+  const machineRows = buildProductionMachineChartRows(summary.value)
+  const hasShiftRows = shiftRows.length > 0
+  const hasMachineRows = machineRows.length > 0
 
   shiftChart?.setOption({
     tooltip: { trigger: 'axis' },
     legend: { bottom: 0 },
-    xAxis: { type: 'category', data: shiftLabels },
-    yAxis: { type: 'value', name: '数量' },
+    grid: { top: 28, left: 52, right: 42, bottom: 56 },
+    xAxis: { type: 'category', data: hasShiftRows ? shiftRows.map((item) => item.label) : ['暂无数据'] },
+    yAxis: [
+      { type: 'value', name: '数量' },
+      { type: 'value', name: '不良率(%)', min: 0, max: 100 },
+    ],
     series: [
-      { name: '良品数量', type: 'bar', data: shiftQty, itemStyle: { color: '#409eff' } },
-      { name: '不良数量', type: 'bar', data: shiftBadQty, itemStyle: { color: '#f56c6c' } },
+      {
+        name: '良品数量',
+        type: 'bar',
+        data: hasShiftRows ? shiftRows.map((item) => item.goodQty) : [0],
+        itemStyle: { color: '#67c23a' },
+        barMaxWidth: 36,
+      },
+      {
+        name: '不良数量',
+        type: 'bar',
+        data: hasShiftRows ? shiftRows.map((item) => item.badQty) : [0],
+        itemStyle: { color: '#f56c6c' },
+        barMaxWidth: 36,
+      },
+      {
+        name: '不良率',
+        type: 'line',
+        yAxisIndex: 1,
+        data: hasShiftRows ? shiftRows.map((item) => item.badRate) : [0],
+        smooth: true,
+        itemStyle: { color: '#e6a23c' },
+      },
     ],
   })
-
-  const statusMap = new Map<string, number>()
-  for (const item of machines) {
-    const key = statusText(item.status)
-    statusMap.set(key, (statusMap.get(key) || 0) + 1)
-  }
 
   machineChart?.setOption({
     tooltip: { trigger: 'item' },
     legend: { bottom: 0 },
+    title: hasMachineRows ? undefined : { text: '暂无机台数据', left: 'center', top: '42%', textStyle: { color: '#909399', fontSize: 14 } },
     series: [
       {
         type: 'pie',
-        radius: ['35%', '65%'],
-        data: Array.from(statusMap.entries()).map(([name, value]) => ({ name, value })),
+        radius: ['38%', '66%'],
+        center: ['50%', '45%'],
+        data: hasMachineRows
+          ? machineRows.map((item) => ({ name: item.label, value: item.value, itemStyle: { color: chartColor(item.tone) } }))
+          : [{ name: '暂无数据', value: 0, itemStyle: { color: '#dcdfe6' } }],
       },
     ],
   })
-}
-
-async function fetchData() {
-  loading.value = true
-  try {
-    const res: any = await getProductionBoard()
-    const data = res.data || {}
-    const machines: MachineStatusItem[] = data.machineStatuses || []
-    const orders: OrderProgressItem[] = data.orderProgresses || []
-    const shifts: ShiftOutputItem[] = data.shiftOutputs || []
-
-    machineStatus.value = machines
-    orderProgress.value = orders
-
-    const totalQty = shifts.reduce((sum, item) => sum + (item.qty || 0), 0)
-    const runningMachines = machines.filter((item) => item.status === 'RUNNING').length
-    const avgCompletion = orders.length
-      ? Number((orders.reduce((sum, item) => sum + (item.completionRate || 0), 0) / orders.length).toFixed(1))
-      : 0
-
-    statCards.value = [
-      { title: '今日总产量', value: String(totalQty), icon: 'Goods', color: '#409eff' },
-      { title: '运行机台', value: String(runningMachines), icon: 'Monitor', color: '#67c23a' },
-      { title: '工单总数', value: String(orders.length), icon: 'CircleCheck', color: '#e6a23c' },
-      { title: '平均完成率', value: `${avgCompletion}%`, icon: 'Odometer', color: '#f56c6c' },
-    ]
-
-    buildCharts(shifts, machines)
-  } catch {
-    machineStatus.value = []
-    orderProgress.value = []
-    buildCharts([], [])
-  } finally {
-    loading.value = false
-  }
 }
 
 function handleResize() {
@@ -217,10 +381,72 @@ function handleResize() {
   machineChart?.resize()
 }
 
-onMounted(async () => {
+function buildDashboardParams() {
+  if (monthRange.value?.length === 2 && monthRange.value[0] && monthRange.value[1]) {
+    return {
+      startMonth: monthRange.value[0],
+      endMonth: monthRange.value[1],
+    }
+  }
+  return { months: months.value }
+}
+
+function applyRecentMonths() {
+  const scope = createFinanceStatementScope({ months: months.value })
+  monthRange.value = [
+    getFinanceStatementMonthKey(scope.startDate),
+    getFinanceStatementMonthKey(scope.endDate),
+  ]
+}
+
+async function fetchData() {
+  const params = buildDashboardParams()
+  const rangeError = validateFinanceStatementRange(params)
+  if (rangeError) {
+    summary.value = { machineStatuses: [], orderProgresses: [], shiftOutputs: [], topDefects: [] }
+    errorMessage.value = rangeError
+    await nextTick()
+    initCharts()
+    renderCharts()
+    return
+  }
+
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    const res: any = await getProductionBoard(params)
+    summary.value = { machineStatuses: [], orderProgresses: [], shiftOutputs: [], topDefects: [], ...(res.data || {}) }
+  } catch {
+    summary.value = { machineStatuses: [], orderProgresses: [], shiftOutputs: [], topDefects: [] }
+    errorMessage.value = '生产看板加载失败，请检查 Supabase 连接、生产报工、质检记录与表结构迁移。'
+  } finally {
+    loading.value = false
+    await nextTick()
+    initCharts()
+    renderCharts()
+  }
+}
+
+function handleSearch() {
+  fetchData()
+}
+
+function handleRecentMonths() {
+  applyRecentMonths()
+  fetchData()
+}
+
+function handleReset() {
+  months.value = 3
+  applyRecentMonths()
+  fetchData()
+}
+
+onMounted(() => {
   initCharts()
   window.addEventListener('resize', handleResize)
-  await fetchData()
+  applyRecentMonths()
+  fetchData()
 })
 
 onUnmounted(() => {
@@ -231,33 +457,135 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
-.stat-row {
-  margin-bottom: 20px;
+.dashboard-filter {
+  margin-bottom: 12px;
+  padding: 16px 16px 4px;
+  border: 1px solid #e6e8eb;
+  border-radius: 4px;
+  background: #fff;
 }
 
-.stat-card {
-  .stat-card-content {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
+.dashboard-filter__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: flex-start;
+}
 
-  .stat-info {
-    .stat-title {
-      font-size: 14px;
-      color: #909399;
-      margin-bottom: 8px;
-    }
+.section-alert {
+  margin-bottom: 12px;
+}
 
-    .stat-value {
-      font-size: 28px;
-      font-weight: bold;
-      color: #303133;
-    }
-  }
+.scope-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-bottom: 12px;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.kpi-card {
+  min-width: 0;
+  min-height: 112px;
+  padding: 14px;
+  border: 1px solid #e4e7ed;
+  border-left: 4px solid #909399;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.kpi-card--primary {
+  border-left-color: #409eff;
+}
+
+.kpi-card--success {
+  border-left-color: #67c23a;
+}
+
+.kpi-card--warning {
+  border-left-color: #e6a23c;
+}
+
+.kpi-card--danger {
+  border-left-color: #f56c6c;
+}
+
+.kpi-card__main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.kpi-card__label {
+  color: #909399;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.kpi-card__value {
+  margin-top: 8px;
+  color: #303133;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.kpi-card__meta {
+  margin-top: 10px;
+  color: #606266;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.risk-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.chart-row,
+.table-row {
+  margin-bottom: 16px;
+}
+
+.chart-row :deep(.el-card),
+.table-row :deep(.el-card) {
+  margin-bottom: 16px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .chart-container {
   height: 320px;
+}
+
+@media (max-width: 768px) {
+  .dashboard-filter {
+    padding: 12px 12px 0;
+  }
+
+  .kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+
+  .kpi-card__value {
+    font-size: 20px;
+  }
 }
 </style>

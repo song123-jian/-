@@ -12,7 +12,7 @@
     </PageHeader>
 
     <el-card shadow="hover">
-      <el-form ref="formRef" :model="form" :rules="formRules" label-width="140px" class="config-form">
+      <el-form ref="formRef" :model="form" :rules="formRules" label-width="160px" class="config-form">
         <el-divider content-position="left">基础配置</el-divider>
         <el-form-item label="工厂名称" prop="factory_name">
           <el-input v-model="form.factory_name" placeholder="请输入工厂名称" />
@@ -41,10 +41,19 @@
           <el-input-number v-model="form.bad_rate_warning" :min="0" :max="100" />
         </el-form-item>
         <el-form-item label="交期预警天数" prop="delivery_warning_days">
-          <el-input-number v-model="form.delivery_warning_days" :min="1" :max="30" />
+          <el-input-number v-model="form.delivery_warning_days" :min="1" :max="365" />
+        </el-form-item>
+        <el-form-item label="批次临期预警天数" prop="stock_expiry_warning_days">
+          <el-input-number v-model="form.stock_expiry_warning_days" :min="1" :max="365" />
         </el-form-item>
         <el-form-item label="计件容差(%)" prop="piece_price_tolerance">
           <el-input-number v-model="form.piece_price_tolerance" :min="0" :max="100" />
+        </el-form-item>
+        <el-form-item label="模具保养预警(%)" prop="mold_maintenance_warning_ratio">
+          <el-input-number v-model="form.mold_maintenance_warning_ratio" :min="1" :max="100" />
+        </el-form-item>
+        <el-form-item label="模具寿命预警(%)" prop="mold_lifetime_warning_ratio">
+          <el-input-number v-model="form.mold_lifetime_warning_ratio" :min="1" :max="100" />
         </el-form-item>
         <el-form-item label="库存预警启用" prop="stock_warning_enabled">
           <el-switch v-model="form.stock_warning_enabled" />
@@ -92,80 +101,27 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import { getSystemConfig, updateSystemConfig } from '@/api/system'
+import {
+  DEFAULT_SYSTEM_CONFIG,
+  buildSystemConfigPayload,
+  normalizeSystemConfig,
+  validateSystemConfig,
+  type SystemConfigForm,
+} from '@/utils/system-config'
 
 const formRef = ref<FormInstance>()
-const form = reactive({
-  factory_name: '',
-  system_title: '',
-  default_raw_warehouse: '',
-  default_finish_warehouse: '',
-  shift_day_start: '08:00',
-  shift_night_start: '20:00',
-  overtime_threshold_min: 480,
-  bad_rate_warning: 5,
-  delivery_warning_days: 3,
-  piece_price_tolerance: 5,
-  stock_warning_enabled: true,
-  fifo_enabled: true,
-  inventory_freeze_on_count: true,
-  location_capacity_check: false,
-  auto_daily_settle: true,
-  auto_backup: true,
-  backup_time: '02:00',
-  backup_keep_days: 30,
-  external_push_enabled: false,
-  wecom_webhook_url: '',
-  dingtalk_webhook_url: '',
-})
+const form = reactive<SystemConfigForm>({ ...DEFAULT_SYSTEM_CONFIG })
 
 const formRules: FormRules = {
   factory_name: [{ required: true, message: '请输入工厂名称', trigger: 'blur' }],
   system_title: [{ required: true, message: '请输入系统标题', trigger: 'blur' }],
 }
 
-function toBoolean(value: unknown, fallback: boolean) {
-  if (value === undefined || value === null || value === '') {
-    return fallback
-  }
-  return ['true', '1', 1, true, 'yes', 'on'].includes(value as never)
-}
-
-function toNumber(value: unknown, fallback: number) {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : fallback
-}
-
-function normalizeConfig(data: Record<string, any>) {
-  return {
-    factory_name: data.factory_name ?? form.factory_name,
-    system_title: data.system_title ?? form.system_title,
-    default_raw_warehouse: data.default_raw_warehouse ?? form.default_raw_warehouse,
-    default_finish_warehouse: data.default_finish_warehouse ?? form.default_finish_warehouse,
-    shift_day_start: data.shift_day_start ?? form.shift_day_start,
-    shift_night_start: data.shift_night_start ?? form.shift_night_start,
-    overtime_threshold_min: toNumber(data.overtime_threshold_min, form.overtime_threshold_min),
-    bad_rate_warning: toNumber(data.bad_rate_warning, form.bad_rate_warning),
-    delivery_warning_days: toNumber(data.delivery_warning_days, form.delivery_warning_days),
-    piece_price_tolerance: toNumber(data.piece_price_tolerance, form.piece_price_tolerance),
-    stock_warning_enabled: toBoolean(data.stock_warning_enabled, form.stock_warning_enabled),
-    fifo_enabled: toBoolean(data.fifo_enabled, form.fifo_enabled),
-    inventory_freeze_on_count: toBoolean(data.inventory_freeze_on_count, form.inventory_freeze_on_count),
-    location_capacity_check: toBoolean(data.location_capacity_check, form.location_capacity_check),
-    auto_daily_settle: toBoolean(data.auto_daily_settle, form.auto_daily_settle),
-    auto_backup: toBoolean(data.auto_backup, form.auto_backup),
-    backup_time: data.backup_time ?? form.backup_time,
-    backup_keep_days: toNumber(data.backup_keep_days, form.backup_keep_days),
-    external_push_enabled: toBoolean(data.external_push_enabled, form.external_push_enabled),
-    wecom_webhook_url: data.wecom_webhook_url ?? '',
-    dingtalk_webhook_url: data.dingtalk_webhook_url ?? '',
-  }
-}
-
 async function loadConfig() {
   try {
     const res: any = await getSystemConfig()
     if (res.data) {
-      Object.assign(form, normalizeConfig(res.data))
+      Object.assign(form, normalizeSystemConfig(res.data))
     }
   } catch {
     // 已由全局拦截器处理
@@ -175,30 +131,13 @@ async function loadConfig() {
 async function handleSave() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
+  const validationMessage = validateSystemConfig(form)
+  if (validationMessage) {
+    ElMessage.warning(validationMessage)
+    return
+  }
   try {
-    await updateSystemConfig({
-      factory_name: form.factory_name,
-      system_title: form.system_title,
-      default_raw_warehouse: form.default_raw_warehouse,
-      default_finish_warehouse: form.default_finish_warehouse,
-      shift_day_start: form.shift_day_start,
-      shift_night_start: form.shift_night_start,
-      overtime_threshold_min: String(form.overtime_threshold_min),
-      bad_rate_warning: String(form.bad_rate_warning),
-      delivery_warning_days: String(form.delivery_warning_days),
-      piece_price_tolerance: String(form.piece_price_tolerance),
-      stock_warning_enabled: String(form.stock_warning_enabled),
-      fifo_enabled: String(form.fifo_enabled),
-      inventory_freeze_on_count: String(form.inventory_freeze_on_count),
-      location_capacity_check: String(form.location_capacity_check),
-      auto_daily_settle: String(form.auto_daily_settle),
-      auto_backup: String(form.auto_backup),
-      backup_time: form.backup_time,
-      backup_keep_days: String(form.backup_keep_days),
-      external_push_enabled: String(form.external_push_enabled),
-      wecom_webhook_url: form.wecom_webhook_url,
-      dingtalk_webhook_url: form.dingtalk_webhook_url,
-    })
+    await updateSystemConfig(buildSystemConfigPayload(form))
     ElMessage.success('保存成功')
   } catch {
     // 已由全局拦截器处理

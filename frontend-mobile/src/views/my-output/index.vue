@@ -33,11 +33,12 @@
           v-for="record in records"
           :key="record.id"
           :title="record.productName"
-          :label="`${record.workOrderNo} · ${record.createdAt || record.reportTime || ''}`"
+          :label="`${record.workOrderNo} · ${record.processName || '注塑'} · ${record.createdAt || record.reportTime || ''}`"
         >
           <template #value>
             <div class="record-value">
               <span class="quantity">{{ record.quantity }}</span>
+              <span class="process">{{ record.processName || '注塑' }}</span>
               <span class="defect" v-if="record.defectCount > 0">
                 不良{{ record.defectCount }}
               </span>
@@ -159,6 +160,12 @@ onMounted(() => {
     font-size: 16px;
     font-weight: bold;
     color: #333;
+  }
+
+  .process {
+    font-size: 12px;
+    color: #646566;
+    margin-top: 2px;
   }
 
   .defect {

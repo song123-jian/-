@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { login as loginApi, logout as logoutApi, getUserInfo as getUserInfoApi } from '@/api/auth'
 import router from '@/router'
 import { clearStoredToken, getStoredToken, setStoredToken } from '@/utils/auth-storage'
+import { resolvePostLoginPath } from '@/utils/auth-route'
 
 // 用户状态管理
 export const useUserStore = defineStore('user', () => {
@@ -15,13 +16,7 @@ export const useUserStore = defineStore('user', () => {
 
   function resolveLoginRedirect() {
     const redirect = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('redirect') : ''
-    if (!redirect || !redirect.startsWith('/')) {
-      return '/dashboard'
-    }
-    if (redirect.startsWith('/login')) {
-      return '/dashboard'
-    }
-    return redirect
+    return resolvePostLoginPath(redirect)
   }
 
   // 登录
@@ -51,7 +46,7 @@ export const useUserStore = defineStore('user', () => {
       // 获取用户信息失败不影响登录
     }
     // 优先回到登录前目标页，便于页面级验证和深链访问
-    router.push(resolveLoginRedirect())
+    router.replace(resolveLoginRedirect())
   }
 
   // 获取用户信息

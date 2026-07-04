@@ -5,6 +5,7 @@ export interface ProdReportListParams {
   pageSize?: number
   keyword?: string
   reportType?: string
+  processName?: string
   shift?: string
   startDate?: string
   endDate?: string
@@ -15,6 +16,7 @@ export interface ProdReportForm {
   machineId: number | null
   moldId?: number | null
   reportType: string
+  processName: string
   shift: string
   qty: number
   badQty?: number

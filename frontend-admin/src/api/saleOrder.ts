@@ -2,6 +2,8 @@ import request from './index'
 
 // 获取销售订单列表
 export const getSaleOrderList = (params: any) => request.get('/sale-orders', { params })
+// 获取销售订单明细列表
+export const getSaleOrderItemList = (params: any) => request.get('/sale-order-items', { params })
 // 获取销售订单详情
 export const getSaleOrderDetail = (id: number) => request.get(`/sale-orders/${id}`)
 // 创建销售订单

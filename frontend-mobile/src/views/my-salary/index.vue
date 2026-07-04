@@ -40,7 +40,7 @@
           v-for="item in dailyList"
           :key="item.date"
           :title="item.date"
-          :label="`计件${item.pieceCount}件 · 加班${item.overtimeHours}h`"
+          :label="`${item.productName || '-'} · ${item.processName || '注塑'} · 计件${item.pieceCount}件`"
         >
           <template #value>
             <span class="daily-amount">¥{{ item.dailyTotal.toFixed(2) }}</span>

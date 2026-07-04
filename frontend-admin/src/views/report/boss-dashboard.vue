@@ -2,188 +2,536 @@
   <div class="page-container">
     <PageHeader title="老板驾驶舱" />
 
-    <el-row :gutter="20" class="stat-row" v-loading="loading">
-      <el-col :span="6" v-for="item in statCards" :key="item.title">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-card-content">
-            <div class="stat-info">
-              <div class="stat-title">{{ item.title }}</div>
-              <div class="stat-value">{{ item.value }}</div>
-            </div>
-            <el-icon :size="48" :style="{ color: item.color }">
-              <component :is="item.icon" />
-            </el-icon>
+    <div class="dashboard-filter">
+      <el-form :inline="true" class="dashboard-filter__form">
+        <el-form-item label="经营期间">
+          <el-date-picker
+            v-model="monthRange"
+            type="monthrange"
+            range-separator="至"
+            start-placeholder="开始月份"
+            end-placeholder="结束月份"
+            value-format="YYYY-MM"
+            style="width: 280px"
+            clearable
+          />
+        </el-form-item>
+        <el-form-item label="快捷月数">
+          <el-input-number v-model="months" :min="1" :max="24" style="width: 140px" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="handleSearch">
+            <el-icon><Search /></el-icon>
+            查询
+          </el-button>
+          <el-button @click="handleRecentMonths">
+            <el-icon><Calendar /></el-icon>
+            最近月数
+          </el-button>
+          <el-button @click="handleReset">
+            <el-icon><Refresh /></el-icon>
+            重置
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </div>
+
+    <el-alert
+      v-if="errorMessage"
+      class="section-alert"
+      type="warning"
+      :title="errorMessage"
+      show-icon
+      :closable="false"
+    />
+
+    <div class="scope-line">
+      <span>周期：{{ scopeText }}</span>
+      <span>口径：销售订单、回款流水、销售出库、费用、已结工资、质检与设备状态统一归集。</span>
+    </div>
+
+    <div v-loading="loading" class="kpi-grid">
+      <div v-for="item in kpiCards" :key="item.label" class="kpi-card" :class="`kpi-card--${item.tone}`">
+        <div class="kpi-card__main">
+          <div>
+            <div class="kpi-card__label">{{ item.label }}</div>
+            <div class="kpi-card__value">{{ cardValueText(item) }}</div>
           </div>
+          <el-icon :size="30">
+            <component :is="cardIcon(item.icon)" />
+          </el-icon>
+        </div>
+        <div class="kpi-card__meta">{{ item.meta }}</div>
+      </div>
+    </div>
+
+    <div v-if="riskItems.length" class="risk-list">
+      <el-alert
+        v-for="item in riskItems"
+        :key="`${item.type}-${item.month || ''}-${item.title}`"
+        :type="riskAlertType(item.level)"
+        :title="item.title"
+        :description="item.description"
+        show-icon
+        :closable="false"
+      />
+    </div>
+
+    <el-row :gutter="16" class="chart-row">
+      <el-col :xs="24" :lg="12">
+        <el-card shadow="hover" v-loading="loading">
+          <template #header>
+            <div class="section-header">
+              <span>经营结构</span>
+              <el-tag type="info" effect="plain">{{ normalizedSummary.months || monthRows.length }} 个月</el-tag>
+            </div>
+          </template>
+          <div ref="financeChartRef" class="chart-container"></div>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :lg="12">
+        <el-card shadow="hover" v-loading="loading">
+          <template #header>
+            <div class="section-header">
+              <span>运营效率</span>
+              <el-tag :type="normalizedSummary.oee < 60 && normalizedSummary.machineCount > 0 ? 'warning' : 'success'" effect="plain">
+                OEE {{ percentText(normalizedSummary.oee) }}
+              </el-tag>
+            </div>
+          </template>
+          <div ref="operationChartRef" class="chart-container"></div>
         </el-card>
       </el-col>
     </el-row>
 
-    <el-row :gutter="20">
-      <el-col :span="12">
-        <el-card shadow="hover" v-loading="loading">
-          <template #header><span>经营结构</span></template>
-          <div ref="financeChartRef" class="chart-container"></div>
-        </el-card>
-      </el-col>
-      <el-col :span="12">
-        <el-card shadow="hover" v-loading="loading">
-          <template #header><span>设备综合效率</span></template>
-          <div ref="oeeChartRef" class="chart-container"></div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <el-card shadow="hover">
+      <template #header>
+        <div class="section-header">
+          <span>月度经营快照</span>
+          <el-tag type="info" effect="plain">{{ monthRows.length }} 行</el-tag>
+        </div>
+      </template>
+      <el-table :data="monthRows" stripe v-loading="loading" empty-text="暂无驾驶舱数据">
+        <el-table-column prop="month" label="月份" fixed width="105" />
+        <el-table-column label="订单金额" min-width="125" align="right">
+          <template #default="{ row }">{{ moneyText(row.orderAmount) }}</template>
+        </el-table-column>
+        <el-table-column label="回款金额" min-width="125" align="right">
+          <template #default="{ row }">{{ moneyText(row.paymentAmount) }}</template>
+        </el-table-column>
+        <el-table-column label="应收余额" min-width="125" align="right">
+          <template #default="{ row }">{{ moneyText(row.receivableBalance) }}</template>
+        </el-table-column>
+        <el-table-column label="出库成本" min-width="125" align="right">
+          <template #default="{ row }">{{ moneyText(row.materialCost) }}</template>
+        </el-table-column>
+        <el-table-column label="经营毛利" min-width="125" align="right">
+          <template #default="{ row }">
+            <span :class="{ negative: Number(row.grossProfit || 0) < 0 }">{{ moneyText(row.grossProfit) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="回款率" width="100" align="right">
+          <template #default="{ row }">{{ percentText(row.collectionRate) }}</template>
+        </el-table-column>
+        <el-table-column label="毛利率" width="100" align="right">
+          <template #default="{ row }">{{ percentText(row.profitRate) }}</template>
+        </el-table-column>
+        <el-table-column label="销售出库" width="110" align="right">
+          <template #default="{ row }">{{ numberText(row.shipmentQty) }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="110" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-tag :type="statusTagType(row.status)" effect="plain">{{ statusText(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import * as echarts from 'echarts'
+import {
+  Calendar,
+  Coin,
+  DataLine,
+  Document,
+  Money,
+  Odometer,
+  Refresh,
+  Search,
+  SetUp,
+  TrendCharts,
+  Wallet,
+} from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { getBossDashboard } from '@/api/dashboard'
+import { formatMoney } from '@/utils'
+import {
+  buildBossDashboardCards,
+  buildBossDashboardRiskItems,
+  buildBossFinanceChartRows,
+  buildBossOperationGaugeRows,
+  normalizeBossDashboardSummary,
+  type BossDashboardCard,
+  type BossDashboardRiskLevel,
+  type BossDashboardSummary,
+} from '@/utils/boss-dashboard'
+import {
+  createFinanceStatementScope,
+  getFinanceStatementMonthKey,
+  validateFinanceStatementRange,
+} from '@/utils/finance-statement'
 
-type DashboardBoss = {
-  monthOrderAmount?: number
-  monthPaymentAmount?: number
-  receivableBalance?: number
-  paymentRate?: number
-  monthCompletedQty?: number
-  monthBadRate?: number
-  monthSalaryTotal?: number
-  monthExpenseTotal?: number
-  monthGrossProfit?: number
-  oee?: number
+const iconMap = {
+  Coin,
+  DataLine,
+  Document,
+  Money,
+  Odometer,
+  SetUp,
+  TrendCharts,
+  Wallet,
 }
 
-const statCards = ref([
-  { title: '本月营收', value: '¥0', icon: 'Coin', color: '#409eff' },
-  { title: '本月毛利', value: '¥0', icon: 'TrendCharts', color: '#67c23a' },
-  { title: '应收账款', value: '¥0', icon: 'Money', color: '#e6a23c' },
-  { title: '回款率', value: '0.0%', icon: 'Document', color: '#f56c6c' },
-])
 const loading = ref(false)
-
+const months = ref(6)
+const monthRange = ref<string[]>([])
+const errorMessage = ref('')
+const summary = ref<BossDashboardSummary>({ monthItems: [], riskItems: [] })
 const financeChartRef = ref<HTMLElement>()
-const oeeChartRef = ref<HTMLElement>()
+const operationChartRef = ref<HTMLElement>()
 let financeChart: echarts.ECharts | null = null
-let oeeChart: echarts.ECharts | null = null
+let operationChart: echarts.ECharts | null = null
 
-function moneyText(value?: number) {
-  return `¥${Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+const normalizedSummary = computed(() => normalizeBossDashboardSummary(summary.value))
+const kpiCards = computed(() => buildBossDashboardCards(summary.value))
+const riskItems = computed(() => buildBossDashboardRiskItems(summary.value))
+const monthRows = computed(() => normalizedSummary.value.monthItems || [])
+const scopeText = computed(() => {
+  if (normalizedSummary.value.startDate && normalizedSummary.value.endDate) {
+    return `${normalizedSummary.value.startDate} 至 ${normalizedSummary.value.endDate}`
+  }
+  if (monthRange.value?.length === 2) return `${monthRange.value[0]} 至 ${monthRange.value[1]}`
+  return `近 ${months.value} 个月`
+})
+
+function cardIcon(name: string) {
+  return iconMap[name as keyof typeof iconMap] || DataLine
+}
+
+function moneyText(value: any) {
+  return `¥${formatMoney(Number(value || 0))}`
+}
+
+function percentText(value: any) {
+  return `${Number(value || 0).toFixed(1)}%`
+}
+
+function numberText(value: any) {
+  return Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+}
+
+function cardValueText(item: BossDashboardCard) {
+  if (item.valueType === 'money') return moneyText(item.value)
+  if (item.valueType === 'percent') return percentText(item.value)
+  return numberText(item.value)
+}
+
+function riskAlertType(level: BossDashboardRiskLevel) {
+  if (level === 'error') return 'error'
+  if (level === 'warning') return 'warning'
+  return 'info'
+}
+
+function statusTagType(status?: string | null) {
+  if (status === 'LOSS') return 'danger'
+  if (status === 'COST_GAP' || status === 'RECEIVABLE') return 'warning'
+  return 'success'
+}
+
+function statusText(status?: string | null) {
+  const labels: Record<string, string> = {
+    LOSS: '亏损',
+    COST_GAP: '缺成本',
+    RECEIVABLE: '有应收',
+    NORMAL: '正常',
+  }
+  return labels[String(status || '').toUpperCase()] || status || '正常'
+}
+
+function chartColor(tone?: string) {
+  const colors: Record<string, string> = {
+    primary: '#409eff',
+    success: '#67c23a',
+    warning: '#e6a23c',
+    danger: '#f56c6c',
+    neutral: '#909399',
+  }
+  return colors[tone || 'neutral'] || colors.neutral
 }
 
 function initCharts() {
-  if (financeChartRef.value && !financeChart) {
-    financeChart = echarts.init(financeChartRef.value)
-  }
-  if (oeeChartRef.value && !oeeChart) {
-    oeeChart = echarts.init(oeeChartRef.value)
-  }
+  if (financeChartRef.value && !financeChart) financeChart = echarts.init(financeChartRef.value)
+  if (operationChartRef.value && !operationChart) operationChart = echarts.init(operationChartRef.value)
 }
 
-function buildCharts(data: DashboardBoss) {
+function renderCharts() {
+  const financeRows = buildBossFinanceChartRows(summary.value)
+  const gaugeRows = buildBossOperationGaugeRows(summary.value)
   financeChart?.setOption({
     tooltip: { trigger: 'axis' },
-    xAxis: {
-      type: 'category',
-      data: ['订单金额', '收款金额', '应收余额', '工资总额', '费用总额', '毛利润'],
-    },
-    yAxis: { type: 'value', name: '金额(元)' },
+    grid: { top: 24, left: 52, right: 20, bottom: 42 },
+    xAxis: { type: 'category', data: financeRows.map((item) => item.label), axisLabel: { interval: 0, rotate: 20 } },
+    yAxis: { type: 'value', name: '元' },
     series: [
       {
         type: 'bar',
-        data: [
-          data.monthOrderAmount || 0,
-          data.monthPaymentAmount || 0,
-          data.receivableBalance || 0,
-          data.monthSalaryTotal || 0,
-          data.monthExpenseTotal || 0,
-          data.monthGrossProfit || 0,
-        ],
-        itemStyle: { color: '#409eff' },
+        data: financeRows.map((item) => ({ value: item.value, itemStyle: { color: chartColor(item.tone) } })),
+        barMaxWidth: 34,
       },
     ],
   })
-
-  oeeChart?.setOption({
+  operationChart?.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: {c}%' },
+    radar: {
+      radius: '62%',
+      indicator: gaugeRows.map((item) => ({ name: item.label, max: 100 })),
+    },
     series: [
       {
-        type: 'gauge',
-        progress: { show: true, width: 12 },
-        axisLine: { lineStyle: { width: 12 } },
-        detail: { valueAnimation: true, formatter: '{value}%' },
-        data: [{ value: data.oee || 0, name: 'OEE' }],
+        type: 'radar',
+        areaStyle: { opacity: 0.14 },
+        data: [
+          {
+            value: gaugeRows.map((item) => item.value),
+            name: '运营效率',
+            lineStyle: { color: '#409eff' },
+            itemStyle: { color: '#409eff' },
+          },
+        ],
       },
     ],
   })
-}
-
-async function fetchData() {
-  loading.value = true
-  try {
-    const res: any = await getBossDashboard()
-    const data: DashboardBoss = res.data || {}
-
-    statCards.value = [
-      { title: '本月营收', value: moneyText(data.monthOrderAmount), icon: 'Coin', color: '#409eff' },
-      { title: '本月毛利', value: moneyText(data.monthGrossProfit), icon: 'TrendCharts', color: '#67c23a' },
-      { title: '应收账款', value: moneyText(data.receivableBalance), icon: 'Money', color: '#e6a23c' },
-      { title: '回款率', value: `${Number(data.paymentRate || 0).toFixed(1)}%`, icon: 'Document', color: '#f56c6c' },
-    ]
-
-    buildCharts(data)
-  } catch {
-    buildCharts({})
-  } finally {
-    loading.value = false
-  }
 }
 
 function handleResize() {
   financeChart?.resize()
-  oeeChart?.resize()
+  operationChart?.resize()
 }
 
-onMounted(async () => {
+function buildDashboardParams() {
+  if (monthRange.value?.length === 2 && monthRange.value[0] && monthRange.value[1]) {
+    return {
+      startMonth: monthRange.value[0],
+      endMonth: monthRange.value[1],
+    }
+  }
+  return { months: months.value }
+}
+
+function applyRecentMonths() {
+  const scope = createFinanceStatementScope({ months: months.value })
+  monthRange.value = [
+    getFinanceStatementMonthKey(scope.startDate),
+    getFinanceStatementMonthKey(scope.endDate),
+  ]
+}
+
+async function fetchData() {
+  const params = buildDashboardParams()
+  const rangeError = validateFinanceStatementRange(params)
+  if (rangeError) {
+    summary.value = { monthItems: [], riskItems: [] }
+    errorMessage.value = rangeError
+    await nextTick()
+    renderCharts()
+    return
+  }
+
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    const res: any = await getBossDashboard(params)
+    summary.value = { monthItems: [], riskItems: [], ...(res.data || {}) }
+  } catch {
+    summary.value = { monthItems: [], riskItems: [] }
+    errorMessage.value = '老板驾驶舱加载失败，请检查 Supabase 连接、经营数据与表结构迁移。'
+  } finally {
+    loading.value = false
+    await nextTick()
+    initCharts()
+    renderCharts()
+  }
+}
+
+function handleSearch() {
+  fetchData()
+}
+
+function handleRecentMonths() {
+  applyRecentMonths()
+  fetchData()
+}
+
+function handleReset() {
+  months.value = 6
+  applyRecentMonths()
+  fetchData()
+}
+
+onMounted(() => {
   initCharts()
   window.addEventListener('resize', handleResize)
-  await fetchData()
+  applyRecentMonths()
+  fetchData()
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   financeChart?.dispose()
-  oeeChart?.dispose()
+  operationChart?.dispose()
 })
 </script>
 
 <style scoped lang="scss">
-.stat-row {
-  margin-bottom: 20px;
+.dashboard-filter {
+  margin-bottom: 12px;
+  padding: 16px 16px 4px;
+  border: 1px solid #e6e8eb;
+  border-radius: 4px;
+  background: #fff;
 }
 
-.stat-card {
-  .stat-card-content {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
+.dashboard-filter__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: flex-start;
+}
 
-  .stat-info {
-    .stat-title {
-      font-size: 14px;
-      color: #909399;
-      margin-bottom: 8px;
-    }
+.section-alert {
+  margin-bottom: 12px;
+}
 
-    .stat-value {
-      font-size: 28px;
-      font-weight: bold;
-      color: #303133;
-    }
-  }
+.scope-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-bottom: 12px;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.kpi-card {
+  min-width: 0;
+  min-height: 112px;
+  padding: 14px;
+  border: 1px solid #e4e7ed;
+  border-left: 4px solid #909399;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.kpi-card--primary {
+  border-left-color: #409eff;
+}
+
+.kpi-card--success {
+  border-left-color: #67c23a;
+}
+
+.kpi-card--warning {
+  border-left-color: #e6a23c;
+}
+
+.kpi-card--danger {
+  border-left-color: #f56c6c;
+}
+
+.kpi-card__main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.kpi-card__label {
+  color: #909399;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.kpi-card__value {
+  margin-top: 8px;
+  color: #303133;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.kpi-card__meta {
+  margin-top: 10px;
+  color: #606266;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.risk-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.chart-row {
+  margin-bottom: 16px;
+}
+
+.chart-row :deep(.el-card) {
+  margin-bottom: 16px;
 }
 
 .chart-container {
   height: 320px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.negative {
+  color: #f56c6c;
+  font-weight: 600;
+}
+
+:deep(.dashboard-filter .el-form-item) {
+  margin-bottom: 12px;
+}
+
+@media (max-width: 768px) {
+  .dashboard-filter :deep(.el-date-editor.el-input__wrapper) {
+    width: 100% !important;
+  }
+
+  .kpi-card__value {
+    font-size: 22px;
+  }
+
+  .chart-container {
+    height: 280px;
+  }
 }
 </style>

@@ -1,6 +1,7 @@
 import { ElMessage } from 'element-plus'
 import { clearStoredToken } from '@/utils/auth-storage'
 import { createSupabaseRequest } from './supabaseRequest'
+import { buildLoginUrl, getCurrentLocationPath } from '@/utils/auth-route'
 
 const request = createSupabaseRequest({
   onError(message) {
@@ -8,7 +9,7 @@ const request = createSupabaseRequest({
   },
   onUnauthorized() {
     clearStoredToken()
-    window.location.href = '/login'
+    window.location.replace(buildLoginUrl(getCurrentLocationPath()))
   },
 })
 

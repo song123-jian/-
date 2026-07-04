@@ -10,16 +10,26 @@ export interface StockItem {
   locationId: number
   productCode: string
   productName: string
+  batchId?: number
+  batchNo?: string
+  supplierId?: number | null
+  supplierCode?: string
+  supplierName?: string
   quantity: number
+  qty?: number
+  lockedQty?: number
+  availableQty?: number
   unit: string
   updateTime: string
 }
 
 /** 盘点参数 */
 export interface InventoryCheckParams {
+  warehouseId: number
   locationId: number
   productId: number
   actualQuantity: number
+  reason?: string
 }
 
 /** 调拨确认参数 */

@@ -129,6 +129,7 @@ import { getUnreadNotificationCount } from '@/api/notification'
 import { useAppStore } from '@/store/app'
 import { useUserStore } from '@/store/user'
 import { buildRoutePath, routeGroups } from '@/router/route-config'
+import { normalizeUnreadNotificationCount } from '@/utils/notification-center'
 
 const route = useRoute()
 const router = useRouter()
@@ -209,7 +210,7 @@ function goNotifications() {
 async function loadUnreadCount() {
   try {
     const res: any = await getUnreadNotificationCount()
-    unreadCount.value = res.data || 0
+    unreadCount.value = normalizeUnreadNotificationCount(res.data)
   } catch {
     unreadCount.value = 0
   }
@@ -307,6 +308,7 @@ onUnmounted(() => {
 
 .layout-main {
   flex-direction: column;
+  min-width: 0;
 }
 
 .layout-header {
@@ -371,5 +373,64 @@ onUnmounted(() => {
   background-color: #f3f5f7;
   padding: 16px;
   overflow-y: auto;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .layout-aside {
+    width: 64px !important;
+    min-width: 64px !important;
+    flex: 0 0 64px !important;
+  }
+
+  .logo-wrap {
+    padding: 0;
+  }
+
+  .logo-text {
+    display: none !important;
+  }
+
+  .side-menu {
+    padding: 8px 4px 16px;
+
+    :deep(.el-menu-item),
+    :deep(.el-sub-menu__title) {
+      margin: 4px 2px;
+      padding: 0 18px !important;
+    }
+
+    :deep(.el-menu-item span),
+    :deep(.el-sub-menu__title span),
+    :deep(.el-sub-menu__icon-arrow) {
+      display: none;
+    }
+  }
+
+  .layout-header {
+    padding: 0 10px;
+  }
+
+  .header-left {
+    min-width: 0;
+  }
+
+  .header-left :deep(.el-breadcrumb) {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .header-right {
+    gap: 10px;
+  }
+
+  .username {
+    display: none;
+  }
+
+  .layout-content {
+    padding: 12px;
+  }
 }
 </style>

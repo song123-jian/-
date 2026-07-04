@@ -62,6 +62,14 @@
         <van-cell-group inset>
           <van-cell title="机台编号" :value="machineCode" />
           <van-cell title="工单" :value="selectedWorkOrder?.workOrderNo || ''" />
+          <van-field
+            v-model.trim="reportForm.processName"
+            name="processName"
+            label="工序"
+            maxlength="50"
+            placeholder="请输入工序名称"
+            :rules="[{ validator: validateProcessName }]"
+          />
           <van-field name="shift" label="班次">
             <template #input>
               <van-radio-group v-model="reportForm.shift" direction="horizontal">
@@ -117,6 +125,7 @@ import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { getWorkOrdersByMachine, submitReport } from '../../api/prodReport'
 import { saveOfflineReport } from '../../utils/offline'
+import { normalizeMobileReportProcessName, validateMobileReportProcessName } from '../../utils/production-report'
 
 const router = useRouter()
 const activeTab = ref(1)
@@ -128,6 +137,7 @@ const workOrders = ref<any[]>([])
 const submitting = ref(false)
 
 const reportForm = reactive({
+  processName: '注塑',
   shift: 'DAY',
   quantity: '',
   defectCount: '',
@@ -141,6 +151,10 @@ function onBack() {
   } else {
     router.back()
   }
+}
+
+function validateProcessName(value: string) {
+  return validateMobileReportProcessName(value) || true
 }
 
 /** 扫码（调用摄像头或外部扫码器） */
@@ -185,6 +199,7 @@ async function onSubmitReport() {
   const params = {
     workOrderId: selectedOrderId.value,
     machineId: selectedWorkOrder.value?.machineId || 0,
+    processName: normalizeMobileReportProcessName(reportForm.processName),
     shift: reportForm.shift,
     quantity: Number(reportForm.quantity),
     defectCount: Number(reportForm.defectCount) || 0,
@@ -200,6 +215,7 @@ async function onSubmitReport() {
     selectedOrderId.value = 0
     selectedWorkOrder.value = null
     workOrders.value = []
+    reportForm.processName = '注塑'
     reportForm.quantity = ''
     reportForm.defectCount = ''
     reportForm.moldCount = ''

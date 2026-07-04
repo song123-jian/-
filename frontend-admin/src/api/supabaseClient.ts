@@ -10,6 +10,15 @@ export const supabaseStorageBucket =
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey)
 
+export const supabaseRuntimeEnv = {
+  hasUrl: Boolean(supabaseUrl),
+  hasAnonKey: Boolean(supabaseAnonKey),
+  hasAuthEmailDomain: Boolean(import.meta.env.VITE_SUPABASE_AUTH_EMAIL_DOMAIN?.trim()),
+  hasStorageBucket: Boolean(import.meta.env.VITE_SUPABASE_STORAGE_BUCKET?.trim()),
+  authEmailDomain: supabaseAuthEmailDomain,
+  storageBucket: supabaseStorageBucket,
+}
+
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {

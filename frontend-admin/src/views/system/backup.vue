@@ -1,10 +1,13 @@
 <template>
   <div class="page-container cloud-ops-page">
     <PageHeader title="云库运维">
-      <el-tag :type="isSupabaseConfigured ? 'success' : 'warning'" effect="plain">
-        {{ isSupabaseConfigured ? 'Supabase 已连接' : 'Supabase 未配置' }}
-      </el-tag>
-      <el-button plain @click="refreshCheck">
+      <el-tag :type="tagType(envState.state)" effect="plain">{{ envState.stateText }}</el-tag>
+      <el-tag :type="tagType(backupPolicy.state)" effect="plain">{{ backupPolicy.stateText }}</el-tag>
+      <el-button plain @click="exportOpsPackage">
+        <el-icon><Download /></el-icon>
+        导出清单
+      </el-button>
+      <el-button plain :loading="loading" @click="refreshCheck">
         <el-icon><Refresh /></el-icon>
         重新检查
       </el-button>
@@ -12,107 +15,182 @@
 
     <section class="ops-hero">
       <div class="ops-copy">
-        <p class="ops-eyebrow">Supabase Cloud Only</p>
-        <h3 class="ops-title">本仓库已完全移除本地后端，备份与恢复统一在 Supabase 控制台执行</h3>
+        <p class="ops-eyebrow">Supabase Cloud Operations</p>
+        <h3 class="ops-title">云数据库备份、恢复和附件核对统一纳入可审计运维流程</h3>
         <p class="ops-description">
-          当前页面不再提供伪造的“立即备份”或“恢复”按钮，避免误以为仓库内仍有本地服务、磁盘任务或数据库守护进程。
-          生产数据、认证、存储和回滚操作都应以 Supabase 云项目为唯一准入点。
+          前端不直接触发数据库恢复或删除动作，避免高风险操作绕过 Supabase 控制台、身份验证和审计记录。
+          本页聚合环境状态、系统备份策略、恢复检查点和控制台入口，作为恢复演练与上线前核对依据。
         </p>
       </div>
       <div class="ops-summary">
-        <div class="ops-summary-item">
-          <span class="ops-summary-label">当前架构</span>
-          <strong>前端直连 Supabase</strong>
-        </div>
-        <div class="ops-summary-item">
-          <span class="ops-summary-label">最近检查</span>
-          <strong>{{ checkedAt }}</strong>
+        <div v-for="item in summaryCards" :key="item.label" class="ops-summary-item">
+          <span class="ops-summary-label">{{ item.label }}</span>
+          <strong>{{ item.value }}</strong>
+          <small>{{ item.description }}</small>
         </div>
       </div>
     </section>
 
+    <el-alert v-if="envState.state !== 'success'" :title="envState.summary" :type="tagType(envState.state)" show-icon :closable="false" />
+    <el-alert v-if="backupPolicy.state !== 'success'" :title="backupPolicy.summary" type="warning" show-icon :closable="false" />
+
     <section class="ops-grid">
-      <article class="ops-card">
+      <article class="ops-card env-card">
         <div class="ops-card-head">
           <span class="ops-step">01</span>
-          <h4>本地环境核对</h4>
+          <div>
+            <h4>环境变量核对</h4>
+            <p>必填项缺失时，前端无法连接 Supabase 云项目。</p>
+          </div>
         </div>
-        <p>确认两个前端目录都已配置 `.env.local`，且指向同一个 Supabase 云项目。</p>
-        <div class="ops-tags">
-          <el-tag v-for="item in requiredEnvKeys" :key="item" effect="plain" type="info">{{ item }}</el-tag>
+        <div class="env-table">
+          <div v-for="row in envRows" :key="row.key" class="env-row">
+            <div class="env-main">
+              <strong>{{ row.key }}</strong>
+              <span>{{ row.description }}</span>
+            </div>
+            <div class="env-meta">
+              <el-tag :type="tagType(row.state)" effect="plain">{{ row.stateText }}</el-tag>
+              <span>{{ row.valueText }}</span>
+            </div>
+          </div>
         </div>
       </article>
 
       <article class="ops-card">
         <div class="ops-card-head">
           <span class="ops-step">02</span>
-          <h4>数据库初始化脚本</h4>
+          <div>
+            <h4>备份策略</h4>
+            <p>{{ backupPolicy.summary }}</p>
+          </div>
         </div>
-        <p>先执行业务表脚本，再执行云端权限和存储桶脚本，保证前端直连所需对象已全部创建。</p>
-        <div class="ops-tags">
-          <el-tag effect="plain">database/init.sql</el-tag>
-          <el-tag effect="plain">database/supabase-cloud.sql</el-tag>
+        <div class="policy-metrics">
+          <div>
+            <span>计划时间</span>
+            <strong>{{ backupPolicy.time }}</strong>
+          </div>
+          <div>
+            <span>保留天数</span>
+            <strong>{{ backupPolicy.keepDays }} 天</strong>
+          </div>
         </div>
+        <ul class="ops-list">
+          <li v-for="item in backupPolicy.nextActions" :key="item">{{ item }}</li>
+        </ul>
       </article>
 
       <article class="ops-card">
         <div class="ops-card-head">
           <span class="ops-step">03</span>
-          <h4>云端备份与回滚入口</h4>
+          <div>
+            <h4>云端控制台入口</h4>
+            <p>所有真实备份、恢复、导出和权限核对均在 Supabase 控制台执行。</p>
+          </div>
         </div>
-        <p>日常备份、时间点恢复、导出和存储核对都在 Supabase 控制台中完成，不再通过仓库页面触发。</p>
-        <ul class="ops-list">
-          <li v-for="item in consoleEntries" :key="item">{{ item }}</li>
-        </ul>
+        <div class="entry-list">
+          <div v-for="item in consoleEntries" :key="item.title" class="entry-item">
+            <strong>{{ item.title }}</strong>
+            <span>{{ item.path }}</span>
+            <small>{{ item.purpose }}</small>
+          </div>
+        </div>
       </article>
 
       <article class="ops-card">
         <div class="ops-card-head">
           <span class="ops-step">04</span>
-          <h4>恢复前检查清单</h4>
+          <div>
+            <h4>恢复前检查清单</h4>
+            <p>恢复操作必须同时覆盖数据、身份、附件和业务链路。</p>
+          </div>
         </div>
-        <p>执行回滚或恢复前，先确认业务窗口、Auth 用户、存储文件和 RLS 规则一致，避免只恢复表数据。</p>
-        <ul class="ops-list">
-          <li v-for="item in recoveryChecklist" :key="item">{{ item }}</li>
-        </ul>
+        <div class="check-list">
+          <div v-for="item in recoveryChecklist" :key="item.step" class="check-item">
+            <span class="check-step">{{ item.step }}</span>
+            <div>
+              <div class="check-title">
+                <strong>{{ item.title }}</strong>
+                <el-tag :type="tagType(item.risk)" effect="plain" size="small">{{ item.risk === 'danger' ? '高风险' : item.risk === 'warning' ? '需复核' : '闭环' }}</el-tag>
+              </div>
+              <p>{{ item.detail }}</p>
+            </div>
+          </div>
+        </div>
       </article>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Refresh } from '@element-plus/icons-vue'
+import { computed, onMounted, ref } from 'vue'
+import { Download, Refresh } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
-import { isSupabaseConfigured } from '@/api/supabaseClient'
+import { getSystemConfig } from '@/api/system'
+import { supabaseRuntimeEnv } from '@/api/supabaseClient'
 import { formatDateTime } from '@/utils'
+import {
+  buildCloudOpsBackupPolicy,
+  buildCloudOpsConsoleEntries,
+  buildCloudOpsEnvRows,
+  buildCloudOpsExportPackage,
+  buildCloudOpsRecoveryChecklist,
+  getCloudOpsEnvState,
+  type CloudOpsState,
+} from '@/utils/cloud-ops'
+import { DEFAULT_SYSTEM_CONFIG, normalizeSystemConfig, type SystemConfigForm } from '@/utils/system-config'
 
-const requiredEnvKeys = [
-  'VITE_SUPABASE_URL',
-  'VITE_SUPABASE_ANON_KEY',
-  'VITE_SUPABASE_AUTH_EMAIL_DOMAIN',
-  'VITE_SUPABASE_STORAGE_BUCKET',
-]
-
-const consoleEntries = [
-  'Supabase Console -> Database -> Backups',
-  'Supabase Console -> Database -> SQL Editor',
-  'Supabase Console -> Authentication -> Users',
-  'Supabase Console -> Storage -> Buckets -> erp-files',
-]
-
-const recoveryChecklist = [
-  '确认恢复时间点与业务停写窗口一致',
-  '同步核对 sys_user、Supabase Auth 用户和角色权限',
-  '核对 storage 中业务附件是否需要同时回退',
-  '恢复后重新验证登录、工作台和核心单据链路',
-]
-
+const loading = ref(false)
 const checkedAt = ref(formatDateTime(new Date()))
+const config = ref<SystemConfigForm>({ ...DEFAULT_SYSTEM_CONFIG })
 
-function refreshCheck() {
-  checkedAt.value = formatDateTime(new Date())
+const envRows = computed(() => buildCloudOpsEnvRows(supabaseRuntimeEnv))
+const envState = computed(() => getCloudOpsEnvState(envRows.value))
+const backupPolicy = computed(() => buildCloudOpsBackupPolicy(config.value))
+const consoleEntries = computed(() => buildCloudOpsConsoleEntries(supabaseRuntimeEnv))
+const recoveryChecklist = buildCloudOpsRecoveryChecklist()
+
+const summaryCards = computed(() => [
+  { label: '当前架构', value: '前端直连 Supabase', description: '无本地后端服务依赖' },
+  { label: '最近检查', value: checkedAt.value, description: envState.value.summary },
+  { label: '备份策略', value: backupPolicy.value.stateText, description: backupPolicy.value.summary },
+  { label: '存储桶', value: supabaseRuntimeEnv.storageBucket, description: '业务附件恢复需同步核对' },
+])
+
+function tagType(state: CloudOpsState) {
+  if (state === 'success') return 'success'
+  if (state === 'warning') return 'warning'
+  if (state === 'danger') return 'danger'
+  return 'info'
 }
+
+async function refreshCheck() {
+  loading.value = true
+  try {
+    const res = await getSystemConfig() as any
+    config.value = normalizeSystemConfig(res.data || {})
+  } catch {
+    config.value = normalizeSystemConfig(config.value)
+  } finally {
+    checkedAt.value = formatDateTime(new Date())
+    loading.value = false
+  }
+}
+
+function exportOpsPackage() {
+  const payload = buildCloudOpsExportPackage(supabaseRuntimeEnv, config.value)
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `云库运维清单_${new Date().toISOString().slice(0, 10)}.json`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+onMounted(() => {
+  refreshCheck()
+})
 </script>
 
 <style scoped lang="scss">
@@ -159,10 +237,10 @@ function refreshCheck() {
 }
 
 .ops-summary {
-  width: min(320px, 100%);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  width: min(360px, 100%);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
 }
 
 .ops-summary-item {
@@ -175,9 +253,19 @@ function refreshCheck() {
   background: #fff;
 }
 
-.ops-summary-label {
+.ops-summary-label,
+.ops-summary-item small,
+.entry-item small,
+.env-main span,
+.env-meta span,
+.policy-metrics span {
   font-size: 12px;
   color: #8b95a1;
+}
+
+.ops-summary-item strong,
+.policy-metrics strong {
+  color: #1f2937;
 }
 
 .ops-grid {
@@ -196,9 +284,9 @@ function refreshCheck() {
 
 .ops-card-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .ops-card-head h4 {
@@ -207,13 +295,23 @@ function refreshCheck() {
   color: #1f2937;
 }
 
-.ops-step {
+.ops-card-head p,
+.ops-list,
+.check-item p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #6b7280;
+}
+
+.ops-step,
+.check-step {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: 999px;
+  border-radius: 50%;
   background: #eef4ff;
   color: #3159b7;
   font-size: 13px;
@@ -221,26 +319,69 @@ function refreshCheck() {
   flex-shrink: 0;
 }
 
-.ops-card p {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.7;
-  color: #6b7280;
+.env-table,
+.entry-list,
+.check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.ops-tags {
+.env-row,
+.entry-item,
+.check-item {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #edf0f5;
+  border-radius: 8px;
+  background: #fafcff;
+}
+
+.env-main,
+.entry-item {
+  min-width: 0;
+  flex: 1;
+}
+
+.env-main,
+.env-meta,
+.entry-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.env-meta {
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.policy-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.policy-metrics > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f8fafc;
 }
 
 .ops-list {
-  margin: 14px 0 0;
   padding-left: 18px;
-  color: #4b5563;
-  font-size: 13px;
-  line-height: 1.8;
+}
+
+.check-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 @media (max-width: 992px) {
@@ -260,6 +401,15 @@ function refreshCheck() {
 
   .ops-title {
     font-size: 20px;
+  }
+
+  .env-row,
+  .check-item {
+    flex-direction: column;
+  }
+
+  .env-meta {
+    align-items: flex-start;
   }
 }
 </style>
