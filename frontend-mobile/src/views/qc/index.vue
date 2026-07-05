@@ -130,6 +130,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import { getPendingQcOrders, submitQcRecord, uploadQcImage } from '../../api/qcRecord'
+import { saveOfflineActionTask } from '../../utils/offline'
 import {
   getQcUploadBlockingMessage,
   validateMobileQcRecordInput,
@@ -263,26 +264,34 @@ async function onSubmit() {
     return
   }
 
+  const images = fileList.value
+    .filter((file) => file.status === 'done' && file.url)
+    .map((file) => file.url)
+  const payload = {
+    workOrderId: selectedOrderId.value,
+    productId: selectedWorkOrder.value?.productId,
+    inspectionType: qcForm.inspectionType,
+    result: qcForm.result,
+    defectType: qcForm.defectType || undefined,
+    defectDesc: qcForm.defectDesc || undefined,
+    sampleCount: Number(qcForm.sampleCount),
+    images,
+  }
+
   submitting.value = true
   try {
-    const images = fileList.value
-      .filter((file) => file.status === 'done' && file.url)
-      .map((file) => file.url)
-
-    await submitQcRecord({
-      workOrderId: selectedOrderId.value,
-      productId: selectedWorkOrder.value?.productId,
-      inspectionType: qcForm.inspectionType,
-      result: qcForm.result,
-      defectType: qcForm.defectType || undefined,
-      defectDesc: qcForm.defectDesc || undefined,
-      sampleCount: Number(qcForm.sampleCount),
-      images,
-    })
+    await submitQcRecord(payload)
     showToast('质检提交成功')
     router.back()
   } catch (error: any) {
-    showToast(error?.message || '提交失败')
+    saveOfflineActionTask({
+      source: 'qc',
+      title: `质检 ${selectedWorkOrder.value?.workOrderNo || selectedOrderId.value}`,
+      description: `${selectedWorkOrder.value?.productName || '待质检'} / ${qcForm.inspectionType}`,
+      payload,
+      last_error: error?.message || '提交失败',
+    })
+    showToast('提交失败，已保存到离线任务')
   } finally {
     submitting.value = false
   }

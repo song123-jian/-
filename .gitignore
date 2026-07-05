@@ -23,6 +23,7 @@ desktop.ini
 *.txt
 !README.txt
 dump.rdb
+output/
 
 # 本地环境文件
 .env

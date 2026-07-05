@@ -11,9 +11,9 @@
         :collapse="appStore.sidebarCollapsed"
         :collapse-transition="false"
         router
-        background-color="#304156"
-        text-color="#bfcbd9"
-        active-text-color="#409eff"
+        background-color="#182235"
+        text-color="#c5cfdb"
+        active-text-color="#ffffff"
         class="side-menu"
       >
         <el-menu-item index="/dashboard">
@@ -233,13 +233,14 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .layout-container {
   height: 100vh;
-  background: #f3f5f7;
+  background: #eef2f6;
 }
 
 .layout-aside {
-  background: linear-gradient(180deg, #172033 0%, #1f2937 100%);
+  background: #182235;
   transition: width 0.3s;
   overflow: hidden;
+  box-shadow: 1px 0 0 rgba(15, 23, 42, 0.12);
 }
 
 .logo-wrap {
@@ -247,7 +248,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #263445;
+  background-color: #121a2a;
   padding: 0 16px;
   overflow: hidden;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -257,7 +258,7 @@ onUnmounted(() => {
     height: 32px;
     flex-shrink: 0;
     border-radius: 8px;
-    background-color: #409eff;
+    background: #12a594;
     color: #fff;
     display: flex;
     align-items: center;
@@ -268,8 +269,8 @@ onUnmounted(() => {
 
   .logo-text {
     color: #fff;
-    font-size: 16px;
-    font-weight: bold;
+    font-size: 15px;
+    font-weight: 700;
     margin-left: 10px;
     white-space: nowrap;
   }
@@ -280,7 +281,7 @@ onUnmounted(() => {
   height: calc(100vh - 60px);
   overflow-y: auto;
   background: transparent;
-  padding: 8px 8px 16px;
+  padding: 18px 8px 20px;
 
   &::-webkit-scrollbar {
     width: 0;
@@ -288,10 +289,10 @@ onUnmounted(() => {
 
   :deep(.el-menu-item),
   :deep(.el-sub-menu__title) {
-    height: 42px;
-    line-height: 42px;
-    border-radius: 8px;
-    margin: 4px 6px;
+    height: 44px;
+    line-height: 44px;
+    border-radius: 6px;
+    margin: 7px 6px;
     transition: background-color 0.2s ease, color 0.2s ease;
   }
 
@@ -301,8 +302,9 @@ onUnmounted(() => {
   }
 
   :deep(.el-menu-item.is-active) {
-    background-color: rgba(64, 158, 255, 0.18);
+    background-color: rgba(18, 165, 148, 0.22);
     color: #fff;
+    box-shadow: inset 3px 0 0 #12a594;
   }
 }
 
@@ -316,10 +318,10 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid #e8ebf0;
-  background: rgba(255, 255, 255, 0.92);
+  border-bottom: 1px solid #dfe5ec;
+  background: rgba(255, 255, 255, 0.96);
   padding: 0 16px;
-  box-shadow: 0 1px 8px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   backdrop-filter: blur(10px);
 }
 
@@ -330,11 +332,18 @@ onUnmounted(() => {
   .collapse-btn {
     font-size: 20px;
     cursor: pointer;
-    margin-right: 16px;
-    color: #606266;
+    margin-right: 14px;
+    color: #526071;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 
     &:hover {
-      color: #409eff;
+      color: #0f766e;
+      background: #eef7f6;
     }
   }
 }
@@ -350,13 +359,18 @@ onUnmounted(() => {
 
   .notice-icon {
     cursor: pointer;
+    color: #526071;
+
+    &:hover {
+      color: #0f766e;
+    }
   }
 
   .user-info {
     display: flex;
     align-items: center;
     cursor: pointer;
-    color: #606266;
+    color: #526071;
 
     .username {
       margin-left: 6px;
@@ -364,13 +378,13 @@ onUnmounted(() => {
     }
 
     &:hover {
-      color: #409eff;
+      color: #0f766e;
     }
   }
 }
 
 .layout-content {
-  background-color: #f3f5f7;
+  background-color: #eef2f6;
   padding: 16px;
   overflow-y: auto;
   min-width: 0;

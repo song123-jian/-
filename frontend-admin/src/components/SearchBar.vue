@@ -61,15 +61,15 @@ function handleReset() {
 <style scoped lang="scss">
 .search-bar {
   background: #fff;
-  padding: 16px 16px 4px;
-  border: 1px solid #e6e8eb;
-  border-radius: 12px;
-  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.03);
+  padding: 14px 14px 2px;
+  border: 1px solid #dfe5ec;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 
   .search-form {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px 12px;
+    gap: 2px 10px;
     align-items: flex-start;
   }
 }

@@ -57,8 +57,37 @@ withDefaults(
   align-items: flex-start;
 }
 
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.kpi-card {
+  min-height: 72px;
+  padding: 12px 14px;
+  border: 1px solid #dfe5ec;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.kpi-title {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.kpi-value {
+  margin-top: 6px;
+  color: #1f2933;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 28px;
+}
+
 :deep(.pagination) {
-  margin-top: 16px;
+  margin-top: 12px;
   display: flex;
   justify-content: flex-end;
 }

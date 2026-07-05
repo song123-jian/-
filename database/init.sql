@@ -792,3 +792,269 @@ INSERT INTO sys_config (config_key, config_value, config_desc) VALUES
 ('external_push_enabled', 'false', '是否启用外部消息推送'),
 ('wecom_webhook_url', '', '企业微信 Webhook'),
 ('dingtalk_webhook_url', '', '钉钉 Webhook');
+
+-- ============================================================
+-- Injection professional extension tables
+-- ============================================================
+CREATE TABLE IF NOT EXISTS process_card (
+    id BIGSERIAL PRIMARY KEY,
+    card_no VARCHAR(50) NOT NULL UNIQUE,
+    product_id BIGINT NOT NULL,
+    mold_id BIGINT,
+    machine_id BIGINT,
+    material_id BIGINT,
+    version_no INT NOT NULL DEFAULT 1,
+    material_temp DECIMAL(10,2),
+    mold_temp DECIMAL(10,2),
+    injection_pressure DECIMAL(10,2),
+    holding_pressure DECIMAL(10,2),
+    cooling_seconds INT,
+    cycle_seconds INT,
+    clamping_force DECIMAL(10,2),
+    back_pressure DECIMAL(10,2),
+    change_reason TEXT,
+    status VARCHAR(64) DEFAULT 'DRAFT',
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS trial_mold_record (
+    id BIGSERIAL PRIMARY KEY,
+    trial_no VARCHAR(50) NOT NULL UNIQUE,
+    prod_order_id BIGINT NOT NULL,
+    process_card_id BIGINT NOT NULL,
+    mold_id BIGINT,
+    machine_id BIGINT,
+    first_article_result VARCHAR(100),
+    image_urls JSONB DEFAULT '[]'::jsonb,
+    remark TEXT,
+    status VARCHAR(64) DEFAULT 'WAIT_TRIAL',
+    created_by BIGINT,
+    confirmed_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS material_mix_order (
+    id BIGSERIAL PRIMARY KEY,
+    mix_no VARCHAR(50) NOT NULL UNIQUE,
+    prod_order_id BIGINT NOT NULL,
+    product_id BIGINT,
+    material_batch_id BIGINT NOT NULL,
+    material_qty DECIMAL(12,3) NOT NULL,
+    regrind_ratio DECIMAL(6,2) DEFAULT 0,
+    drying_temp DECIMAL(10,2),
+    drying_minutes INT,
+    remark TEXT,
+    status VARCHAR(64) DEFAULT 'DRAFT',
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_material_mix_regrind CHECK (regrind_ratio >= 0 AND regrind_ratio <= 100)
+);
+
+CREATE TABLE IF NOT EXISTS batch_trace_link (
+    id BIGSERIAL PRIMARY KEY,
+    trace_no VARCHAR(80) NOT NULL UNIQUE,
+    source_type VARCHAR(64) NOT NULL,
+    source_id BIGINT NOT NULL,
+    target_type VARCHAR(64) NOT NULL,
+    target_id BIGINT NOT NULL,
+    batch_id BIGINT,
+    prod_order_id BIGINT,
+    sale_order_id BIGINT,
+    remark TEXT,
+    status VARCHAR(64) DEFAULT 'DRAFT',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS startup_check (
+    id BIGSERIAL PRIMARY KEY,
+    check_no VARCHAR(50) NOT NULL UNIQUE,
+    prod_order_id BIGINT NOT NULL,
+    process_card_id BIGINT,
+    material_ready BOOLEAN DEFAULT false,
+    mold_ready BOOLEAN DEFAULT false,
+    machine_ready BOOLEAN DEFAULT false,
+    first_article_ok BOOLEAN DEFAULT false,
+    staff_ready BOOLEAN DEFAULT false,
+    failed_items JSONB DEFAULT '[]'::jsonb,
+    failed_items_text TEXT,
+    remark TEXT,
+    status VARCHAR(64) DEFAULT 'PENDING',
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS maintenance_order (
+    id BIGSERIAL PRIMARY KEY,
+    order_no VARCHAR(50) NOT NULL UNIQUE,
+    machine_id BIGINT NOT NULL,
+    fault_type VARCHAR(100) NOT NULL,
+    priority VARCHAR(64) DEFAULT 'INFO',
+    assignee_id BIGINT,
+    spare_part_cost DECIMAL(12,2) DEFAULT 0,
+    remark TEXT,
+    status VARCHAR(64) DEFAULT 'REPORTED',
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS spare_part (
+    id BIGSERIAL PRIMARY KEY,
+    code VARCHAR(50) UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    spec VARCHAR(200),
+    qty DECIMAL(12,3) DEFAULT 0,
+    safe_stock DECIMAL(12,3) DEFAULT 0,
+    unit VARCHAR(20) DEFAULT 'pcs',
+    remark TEXT,
+    status VARCHAR(64) DEFAULT 'ACTIVE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS mold_maintenance_plan (
+    id BIGSERIAL PRIMARY KEY,
+    plan_no VARCHAR(50) NOT NULL UNIQUE,
+    mold_id BIGINT NOT NULL,
+    mold_code VARCHAR(80),
+    maintenance_cycle INT NOT NULL,
+    shots_since_maintenance INT DEFAULT 0,
+    lifetime INT DEFAULT 0,
+    used_shots INT DEFAULT 0,
+    abnormal_count INT DEFAULT 0,
+    last_maintenance_date DATE,
+    next_maintenance_date DATE,
+    maintenance_rate DECIMAL(8,2) DEFAULT 0,
+    life_rate DECIMAL(8,2) DEFAULT 0,
+    risk_level VARCHAR(64) DEFAULT 'normal',
+    remark TEXT,
+    status VARCHAR(64) DEFAULT 'NORMAL',
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS andon_event (
+    id BIGSERIAL PRIMARY KEY,
+    event_no VARCHAR(50) NOT NULL UNIQUE,
+    source_type VARCHAR(64) NOT NULL,
+    source_id BIGINT,
+    level VARCHAR(64) DEFAULT 'INFO',
+    title VARCHAR(200) NOT NULL,
+    description TEXT,
+    assignee_id BIGINT,
+    closed_reason TEXT,
+    status VARCHAR(64) DEFAULT 'OPEN',
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS label_template (
+    id BIGSERIAL PRIMARY KEY,
+    template_no VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    target_type VARCHAR(64) NOT NULL,
+    template_content TEXT,
+    version_no INT DEFAULT 1,
+    status VARCHAR(64) DEFAULT 'ACTIVE',
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS customer_complaint (
+    id BIGSERIAL PRIMARY KEY,
+    complaint_no VARCHAR(50) NOT NULL UNIQUE,
+    customer_id BIGINT NOT NULL,
+    product_id BIGINT,
+    batch_id BIGINT,
+    severity VARCHAR(64) DEFAULT 'INFO',
+    defect_desc TEXT,
+    corrective_action TEXT,
+    preventive_action TEXT,
+    d1_team TEXT,
+    d2_problem TEXT,
+    d3_containment TEXT,
+    d4_root_cause TEXT,
+    d5_corrective_action TEXT,
+    d6_implementation TEXT,
+    d7_prevention TEXT,
+    d8_closure TEXT,
+    status VARCHAR(64) DEFAULT 'REGISTERED',
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS oee_record (
+    id BIGSERIAL PRIMARY KEY,
+    record_no VARCHAR(50) UNIQUE,
+    record_date DATE NOT NULL,
+    shift VARCHAR(64) NOT NULL,
+    machine_id BIGINT NOT NULL,
+    planned_minutes INT NOT NULL,
+    running_minutes INT NOT NULL,
+    ideal_cycle_seconds DECIMAL(10,2),
+    actual_qty INT DEFAULT 0,
+    good_qty INT DEFAULT 0,
+    downtime_minutes INT DEFAULT 0,
+    changeover_minutes INT DEFAULT 0,
+    availability DECIMAL(8,2) DEFAULT 0,
+    performance DECIMAL(8,2) DEFAULT 0,
+    quality_rate DECIMAL(8,2) DEFAULT 0,
+    oee DECIMAL(8,2) DEFAULT 0,
+    status VARCHAR(64) DEFAULT 'DRAFT',
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS process_change (
+    id BIGSERIAL PRIMARY KEY,
+    change_no VARCHAR(50) NOT NULL UNIQUE,
+    change_type VARCHAR(64) NOT NULL,
+    target_type VARCHAR(64) NOT NULL,
+    target_id BIGINT NOT NULL,
+    old_version VARCHAR(50),
+    new_version VARCHAR(50),
+    reason TEXT,
+    effective_at TIMESTAMP,
+    status VARCHAR(64) DEFAULT 'DRAFT',
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS purchase_requisition (
+    id BIGSERIAL PRIMARY KEY,
+    requisition_no VARCHAR(50) NOT NULL UNIQUE,
+    material_id BIGINT NOT NULL,
+    shortage_qty DECIMAL(12,3) DEFAULT 0,
+    requested_qty DECIMAL(12,3) NOT NULL,
+    supplier_id BIGINT,
+    expected_date DATE,
+    source_mrp_no VARCHAR(80),
+    remark TEXT,
+    status VARCHAR(64) DEFAULT 'DRAFT',
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_process_card_product_status ON process_card (product_id, status);
+CREATE INDEX IF NOT EXISTS idx_trial_mold_order_status ON trial_mold_record (prod_order_id, status);
+CREATE INDEX IF NOT EXISTS idx_material_mix_order_batch ON material_mix_order (prod_order_id, material_batch_id);
+CREATE INDEX IF NOT EXISTS idx_batch_trace_lookup ON batch_trace_link (batch_id, prod_order_id, sale_order_id);
+CREATE INDEX IF NOT EXISTS idx_startup_check_order_status ON startup_check (prod_order_id, status);
+CREATE INDEX IF NOT EXISTS idx_maintenance_machine_status ON maintenance_order (machine_id, status);
+CREATE INDEX IF NOT EXISTS idx_mold_maintenance_plan_status ON mold_maintenance_plan (mold_id, status, risk_level);
+CREATE INDEX IF NOT EXISTS idx_andon_status_level ON andon_event (status, level);
+CREATE INDEX IF NOT EXISTS idx_complaint_customer_status ON customer_complaint (customer_id, status);
+CREATE INDEX IF NOT EXISTS idx_oee_machine_date ON oee_record (machine_id, record_date);
+CREATE INDEX IF NOT EXISTS idx_process_change_target ON process_change (target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_requisition_material_status ON purchase_requisition (material_id, status);

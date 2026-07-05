@@ -1,7 +1,14 @@
 <template>
   <div class="base-crud-table">
-    <el-card shadow="hover">
-      <el-table :data="rows" stripe v-loading="loading" :empty-text="config.emptyText" @selection-change="$emit('selection-change', $event)">
+    <el-card shadow="never">
+      <el-table
+        :data="rows"
+        stripe
+        v-loading="loading"
+        :empty-text="config.emptyText"
+        class="crud-table"
+        @selection-change="$emit('selection-change', $event)"
+      >
         <el-table-column v-if="showSelection" type="selection" width="46" />
         <el-table-column
           v-for="column in config.tableColumns"
@@ -37,17 +44,19 @@
             </template>
           </template>
         </el-table-column>
-        <el-table-column :label="actionLabel" fixed="right" :width="config.actionWidth">
+        <el-table-column :label="actionLabel" fixed="right" :width="config.actionWidth" align="center" class-name="action-column">
           <template #default="{ row }">
-            <el-button
-              v-for="action in config.rowActions"
-              :key="action.key"
-              link
-              :type="action.type || 'primary'"
-              @click="$emit('row-action', action.key, row)"
-            >
-              {{ typeof action.label === 'function' ? action.label(row) : action.label }}
-            </el-button>
+            <div class="row-actions">
+              <el-button
+                v-for="action in config.rowActions"
+                :key="action.key"
+                link
+                :type="action.type || 'primary'"
+                @click="$emit('row-action', action.key, row)"
+              >
+                {{ typeof action.label === 'function' ? action.label(row) : action.label }}
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -99,8 +108,30 @@ function resolveCell(column: TableColumn, row: any) {
 </script>
 
 <style scoped lang="scss">
+.base-crud-table {
+  min-width: 0;
+}
+
+.crud-table {
+  width: 100%;
+}
+
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  min-height: 24px;
+
+  :deep(.el-button) {
+    margin-left: 0;
+    padding: 0;
+  }
+}
+
 .pagination {
-  margin-top: 16px;
+  margin-top: 12px;
   display: flex;
   justify-content: flex-end;
 }

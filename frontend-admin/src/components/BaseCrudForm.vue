@@ -1,6 +1,6 @@
 <template>
-  <el-dialog v-model="visible" :title="title" :width="config.dialogWidth">
-    <el-form ref="formRef" :model="model" :rules="resolvedFormRules" :label-width="config.formLabelWidth">
+  <el-dialog v-model="visible" :title="title" :width="config.dialogWidth" class="base-crud-dialog">
+    <el-form ref="formRef" :model="model" :rules="resolvedFormRules" :label-width="config.formLabelWidth" class="base-crud-form">
       <template v-for="(row, rowIndex) in config.formRows" :key="rowIndex">
         <el-row :gutter="16">
           <el-col v-for="field in row" :key="field.prop" :span="field.span || 24">
@@ -53,8 +53,10 @@
       </template>
     </el-form>
     <template #footer>
-      <el-button @click="visible = false">取消</el-button>
-      <el-button type="primary" @click="handleConfirm">确定</el-button>
+      <div class="dialog-actions">
+        <el-button @click="visible = false">取消</el-button>
+        <el-button type="primary" @click="handleConfirm">确定</el-button>
+      </div>
     </template>
   </el-dialog>
 </template>
@@ -107,3 +109,22 @@ function resolveOptions(field: FormField) {
 
 defineExpose({ formRef })
 </script>
+
+<style scoped lang="scss">
+.base-crud-form {
+  :deep(.el-form-item) {
+    margin-bottom: 16px;
+  }
+
+  :deep(.el-form-item__label) {
+    color: #4b5563;
+    font-weight: 500;
+  }
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+</style>

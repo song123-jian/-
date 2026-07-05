@@ -10,7 +10,11 @@
         clearable
       >
         <template #button>
-          <van-button size="small" type="primary" @click="onScan">扫码</van-button>
+          <ScanEntryButton
+            :raw-value="transferCode"
+            expected-type="transfer"
+            @scanned="onTransferScanned"
+          />
         </template>
       </van-field>
       <div class="scan-btn-wrap">
@@ -94,12 +98,15 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { showConfirmDialog, showToast } from 'vant'
+import ScanEntryButton from '../../components/ScanEntryButton.vue'
 import { confirmTransfer, getPendingTransfers, getTransferByCode } from '../../api/stock'
+import { saveOfflineActionTask } from '../../utils/offline'
 import {
   getStockTransferStatusText,
   transferItemTraceLabel,
   validateStockTransferReceive,
 } from '../../utils/stock-transfer'
+import type { MobileScanPayload } from '../../utils/scan-entry'
 
 const router = useRouter()
 const transferCode = ref('')
@@ -130,8 +137,9 @@ function transferItemLabel(item: any) {
   return transferItemTraceLabel(item)
 }
 
-function onScan() {
-  showToast('请使用扫码枪扫描调拨单条码')
+function onTransferScanned(payload: MobileScanPayload) {
+  transferCode.value = payload.value
+  showToast(`已识别调拨单：${payload.value}`)
 }
 
 async function onQuery() {
@@ -172,16 +180,22 @@ async function onConfirm() {
   }
 
   loading.value = true
+  const payload = { transferId: Number(transferInfo.value.id) }
   try {
-    await confirmTransfer({
-      transferId: Number(transferInfo.value.id),
-    })
+    await confirmTransfer(payload)
     showToast('确认收货成功')
     transferInfo.value = null
     transferCode.value = ''
     await loadPendingList()
   } catch (error: any) {
-    showToast(error?.message || '操作失败')
+    saveOfflineActionTask({
+      source: 'transfer',
+      title: `调拨接收 ${transferInfo.value?.transferNo || payload.transferId}`,
+      description: `${transferInfo.value?.fromWarehouseName || '-'} → ${transferInfo.value?.toWarehouseName || '-'}`,
+      payload,
+      last_error: error?.message || '操作失败',
+    })
+    showToast('操作失败，已保存到离线任务')
   } finally {
     loading.value = false
   }

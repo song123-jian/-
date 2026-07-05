@@ -9,6 +9,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    ScanEntryButton: typeof import('./src/components/ScanEntryButton.vue')['default']
     VanBadge: typeof import('vant/es')['Badge']
     VanButton: typeof import('vant/es')['Button']
     VanCell: typeof import('vant/es')['Cell']
@@ -31,6 +32,7 @@ declare module 'vue' {
     VanStep: typeof import('vant/es')['Step']
     VanSteps: typeof import('vant/es')['Steps']
     VanSwipeCell: typeof import('vant/es')['SwipeCell']
+    VanSwitch: typeof import('vant/es')['Switch']
     VanTab: typeof import('vant/es')['Tab']
     VanTabbar: typeof import('vant/es')['Tabbar']
     VanTabbarItem: typeof import('vant/es')['TabbarItem']

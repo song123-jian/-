@@ -63,7 +63,25 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../views/notifications/index.vue'),
     meta: { title: '消息通知', requireAuth: true },
   },
+  {
+    path: '/m/todo',
+    name: 'Todo',
+    component: () => import('../views/todo/index.vue'),
+    meta: { title: '待办中心', requireAuth: true },
+  },
+  {
+    path: '/m/offline-tasks',
+    name: 'OfflineTasks',
+    component: () => import('../views/offline-tasks/index.vue'),
+    meta: { title: '离线任务', requireAuth: true },
+  },
   // 默认重定向到首页
+  {
+    path: '/m/injection/:moduleKey?',
+    name: 'MobileInjection',
+    component: () => import('../views/injection/index.vue'),
+    meta: { title: '注塑专业', requireAuth: true },
+  },
   {
     path: '/',
     redirect: '/m/home',

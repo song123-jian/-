@@ -31,7 +31,15 @@
           clearable
           :rules="[{ required: true, message: '请输入产品编码、ID或供应商' }]"
           @blur="queryStockPreview"
-        />
+        >
+          <template #button>
+            <ScanEntryButton
+              :raw-value="productKeyword"
+              expected-type="product"
+              @scanned="onProductScanned"
+            />
+          </template>
+        </van-field>
         <van-field
           v-model="actualQuantity"
           label="实盘数量"
@@ -128,7 +136,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
+import ScanEntryButton from '../../components/ScanEntryButton.vue'
 import { getLocations, getStockList, getWarehouses, submitInventoryCheck } from '../../api/stock'
+import { saveOfflineActionTask } from '../../utils/offline'
 import {
   buildMobileInventoryCheckPayload,
   chooseInventoryStockRow,
@@ -140,6 +150,7 @@ import {
   inventorySupplierText,
   inventoryTraceLabel,
 } from '../../utils/inventory-check'
+import type { MobileScanPayload } from '../../utils/scan-entry'
 
 const router = useRouter()
 const showWarehousePicker = ref(false)
@@ -280,6 +291,11 @@ async function queryStockPreview() {
   }
 }
 
+function onProductScanned(payload: MobileScanPayload) {
+  productKeyword.value = payload.value
+  queryStockPreview()
+}
+
 function resetEntry() {
   productKeyword.value = ''
   actualQuantity.value = ''
@@ -299,12 +315,20 @@ async function onSubmit() {
   }
 
   submitting.value = true
+  const payload = buildMobileInventoryCheckPayload(inventoryInput.value, selectedStock.value)
   try {
-    await submitInventoryCheck(buildMobileInventoryCheckPayload(inventoryInput.value, selectedStock.value))
+    await submitInventoryCheck(payload)
     showToast('盘点提交成功')
     resetEntry()
   } catch (error: any) {
-    showToast(error?.message || '提交失败')
+    saveOfflineActionTask({
+      source: 'inventory',
+      title: `盘点 ${selectedStock.value?.productCode || payload.productId}`,
+      description: stockLocationLabel(selectedStock.value),
+      payload,
+      last_error: error?.message || '提交失败',
+    })
+    showToast('提交失败，已保存到离线任务')
   } finally {
     submitting.value = false
   }

@@ -20,19 +20,32 @@ defineProps<{
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 16px;
-  min-height: 44px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #e8ebf0;
+  gap: 12px 16px;
+  min-height: 42px;
+  padding: 2px 0 8px;
+  border-bottom: 1px solid #dfe5ec;
 
   .page-title {
+    position: relative;
     flex: 1 1 180px;
     min-width: 0;
+    padding-left: 10px;
     font-size: 18px;
-    font-weight: 600;
-    color: #303133;
+    font-weight: 700;
+    color: #1f2933;
     margin: 0;
-    line-height: 1.2;
+    line-height: 1.35;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 4px;
+      bottom: 4px;
+      width: 3px;
+      border-radius: 999px;
+      background: #12a594;
+    }
   }
 
   .page-extra {
@@ -41,7 +54,7 @@ defineProps<{
     justify-content: flex-end;
     flex: 1 1 320px;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 8px;
   }
 }
 </style>

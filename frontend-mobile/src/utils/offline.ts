@@ -9,9 +9,14 @@ const DB_NAME = 'inject_erp_offline'
 const DB_VERSION = 1
 /** 存储表名称 */
 const STORE_NAME = 'offline_reports'
+/** 通用离线任务本地存储键 */
+const ACTION_TASKS_STORAGE_KEY = 'inject_erp_offline_action_tasks'
 
 /** 同步状态 */
 export type SyncStatus = 'pending' | 'syncing' | 'synced' | 'failed'
+
+/** 通用离线任务来源 */
+export type OfflineActionSource = 'qc' | 'inventory' | 'transfer'
 
 /** 离线报工记录 */
 export interface OfflineReport {
@@ -26,6 +31,70 @@ export interface OfflineReport {
   sync_status: SyncStatus
   created_at: string
   retry_count: number
+}
+
+/** 质检/盘点/调拨通用离线任务 */
+export interface OfflineActionTask {
+  id: string
+  source: OfflineActionSource
+  title: string
+  description: string
+  payload: Record<string, any>
+  sync_status: SyncStatus
+  created_at: string
+  retry_count: number
+  last_error?: string
+}
+
+export type OfflineActionTaskInput = {
+  source: OfflineActionSource
+  title: string
+  description: string
+  payload: Record<string, any>
+  last_error?: string
+}
+
+function hasLocalStorage() {
+  return typeof window !== 'undefined' && Boolean(window.localStorage)
+}
+
+function createOfflineActionTaskId(source: OfflineActionSource) {
+  return `${source}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function readOfflineActionTasks(): OfflineActionTask[] {
+  if (!hasLocalStorage()) return []
+  try {
+    const raw = window.localStorage.getItem(ACTION_TASKS_STORAGE_KEY)
+    const rows = raw ? JSON.parse(raw) : []
+    return Array.isArray(rows) ? rows : []
+  } catch {
+    return []
+  }
+}
+
+function writeOfflineActionTasks(rows: OfflineActionTask[]) {
+  if (!hasLocalStorage()) return
+  window.localStorage.setItem(ACTION_TASKS_STORAGE_KEY, JSON.stringify(rows))
+}
+
+function normalizeActionTaskStatus(value?: string): SyncStatus {
+  if (value === 'syncing' || value === 'synced' || value === 'failed') return value
+  return 'pending'
+}
+
+function normalizeOfflineActionTask(row: OfflineActionTask): OfflineActionTask {
+  return {
+    id: String(row.id || createOfflineActionTaskId(row.source)),
+    source: row.source,
+    title: String(row.title || '离线任务'),
+    description: String(row.description || ''),
+    payload: row.payload || {},
+    sync_status: normalizeActionTaskStatus(row.sync_status),
+    created_at: String(row.created_at || new Date().toISOString()),
+    retry_count: Number(row.retry_count || 0),
+    last_error: row.last_error,
+  }
 }
 
 /** 打开数据库 */
@@ -87,15 +156,25 @@ export async function saveOfflineReport(
 
 /** 获取所有待同步的报工记录 */
 export async function getPendingReports(): Promise<OfflineReport[]> {
+  const reports = await getOfflineReports(['pending'])
+  return reports
+}
+
+/** 获取离线报工记录，可按状态筛选 */
+export async function getOfflineReports(statuses?: SyncStatus[]): Promise<OfflineReport[]> {
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readonly')
     const store = tx.objectStore(STORE_NAME)
-    const index = store.index('sync_status')
-    const request = index.getAll('pending')
+    const request = store.getAll()
 
     request.onsuccess = () => {
-      resolve(request.result || [])
+      const rows = request.result || []
+      if (!statuses?.length) {
+        resolve(rows)
+        return
+      }
+      resolve(rows.filter((item) => statuses.includes(item.sync_status)))
     }
     request.onerror = () => {
       reject(request.error)
@@ -104,6 +183,67 @@ export async function getPendingReports(): Promise<OfflineReport[]> {
       db.close()
     }
   })
+}
+
+/** 获取失败或待同步记录，用于移动端离线任务中心 */
+export async function getActionableOfflineReports(): Promise<OfflineReport[]> {
+  return getOfflineReports(['pending', 'failed', 'syncing'])
+}
+
+/** 保存质检/盘点/调拨离线任务 */
+export function saveOfflineActionTask(input: OfflineActionTaskInput): OfflineActionTask {
+  const task: OfflineActionTask = {
+    id: createOfflineActionTaskId(input.source),
+    source: input.source,
+    title: input.title,
+    description: input.description,
+    payload: input.payload,
+    sync_status: 'pending',
+    created_at: new Date().toISOString(),
+    retry_count: 0,
+    last_error: input.last_error,
+  }
+  const rows = readOfflineActionTasks().map(normalizeOfflineActionTask)
+  rows.push(task)
+  writeOfflineActionTasks(rows)
+  return task
+}
+
+/** 获取通用离线任务，可按状态筛选 */
+export function getOfflineActionTasks(statuses?: SyncStatus[]): OfflineActionTask[] {
+  const rows = readOfflineActionTasks().map(normalizeOfflineActionTask)
+  if (!statuses?.length) return rows
+  return rows.filter((item) => statuses.includes(item.sync_status))
+}
+
+/** 获取失败、待同步或同步中的通用离线任务 */
+export function getActionableOfflineActionTasks(): OfflineActionTask[] {
+  return getOfflineActionTasks(['pending', 'failed', 'syncing'])
+}
+
+/** 更新通用离线任务状态 */
+export function updateOfflineActionTaskStatus(id: string, status: SyncStatus, lastError = '') {
+  const rows = readOfflineActionTasks().map((item) => {
+    const task = normalizeOfflineActionTask(item)
+    if (task.id !== id) return task
+    return {
+      ...task,
+      sync_status: status,
+      retry_count: status === 'failed' ? task.retry_count + 1 : task.retry_count,
+      last_error: lastError || task.last_error,
+    }
+  })
+  writeOfflineActionTasks(rows)
+}
+
+/** 删除已同步通用离线任务 */
+export function deleteOfflineActionTask(id: string) {
+  writeOfflineActionTasks(readOfflineActionTasks().filter((item) => item.id !== id))
+}
+
+/** 将失败通用任务重新放回待同步队列 */
+export function retryOfflineActionTask(id: string) {
+  updateOfflineActionTaskStatus(id, 'pending')
 }
 
 /** 更新报工记录的同步状态 */
@@ -156,6 +296,58 @@ export async function deleteSyncedReport(id: number): Promise<void> {
   })
 }
 
+/** 将失败记录重新放回待同步队列 */
+export async function retryOfflineReport(id: number): Promise<void> {
+  await updateSyncStatus(id, 'pending')
+}
+
+async function submitOfflineActionTask(task: OfflineActionTask) {
+  if (task.source === 'qc') {
+    const { submitQcRecord } = await import('../api/qcRecord')
+    await submitQcRecord(task.payload as any)
+    return
+  }
+  if (task.source === 'inventory') {
+    const { submitInventoryCheck } = await import('../api/stock')
+    await submitInventoryCheck(task.payload as any)
+    return
+  }
+  if (task.source === 'transfer') {
+    const { confirmTransfer } = await import('../api/stock')
+    await confirmTransfer(task.payload as any)
+  }
+}
+
+/** 同步质检/盘点/调拨通用离线任务 */
+export async function syncOfflineActionTasks(): Promise<{
+  success: number
+  failed: number
+}> {
+  const tasks = getOfflineActionTasks(['pending'])
+  let success = 0
+  let failed = 0
+
+  for (const task of tasks) {
+    if (task.retry_count >= 5) {
+      updateOfflineActionTaskStatus(task.id, 'failed', task.last_error || '超过最大重试次数')
+      failed++
+      continue
+    }
+
+    try {
+      updateOfflineActionTaskStatus(task.id, 'syncing')
+      await submitOfflineActionTask(task)
+      deleteOfflineActionTask(task.id)
+      success++
+    } catch (error: any) {
+      updateOfflineActionTaskStatus(task.id, 'failed', error?.message || '同步失败')
+      failed++
+    }
+  }
+
+  return { success, failed }
+}
+
 /** 同步离线报工数据到服务器 */
 export async function syncOfflineReports(): Promise<{
   success: number
@@ -190,8 +382,8 @@ export async function syncOfflineReports(): Promise<{
       await deleteSyncedReport(report.id!)
       success++
     } catch {
-      // 同步失败，恢复为待同步状态
-      await updateSyncStatus(report.id!, 'pending')
+      // 同步失败，记录失败状态并累计重试次数，离线任务中心可继续重试。
+      await updateSyncStatus(report.id!, 'failed')
       failed++
     }
   }
@@ -204,17 +396,20 @@ export function setupAutoSync(): void {
   // 页面加载时如果有网络，尝试同步
   if (navigator.onLine) {
     syncOfflineReports()
+    syncOfflineActionTasks()
   }
 
   // 监听网络恢复事件
   window.addEventListener('online', () => {
     syncOfflineReports()
+    syncOfflineActionTasks()
   })
 
   // 页面回到前台时再补一次同步，避免长时间后台后错过
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && navigator.onLine) {
       syncOfflineReports()
+      syncOfflineActionTasks()
     }
   })
 }

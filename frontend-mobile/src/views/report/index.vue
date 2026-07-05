@@ -19,7 +19,11 @@
           clearable
         >
           <template #button>
-            <van-button size="small" type="primary" @click="onScan">扫码</van-button>
+            <ScanEntryButton
+              :raw-value="machineCode"
+              expected-type="machine"
+              @scanned="onMachineScanned"
+            />
           </template>
         </van-field>
       </van-cell-group>
@@ -58,6 +62,18 @@
 
     <!-- 第三步：报工表单 -->
     <div v-if="step === 2" class="step-content">
+      <div class="template-strip">
+        <van-button
+          v-for="template in reportTemplates"
+          :key="template.code"
+          size="small"
+          :type="selectedTemplateCode === template.code ? 'primary' : 'default'"
+          plain
+          @click="applyTemplateCode(template.code)"
+        >
+          {{ template.name }}
+        </van-button>
+      </div>
       <van-form @submit="onSubmitReport">
         <van-cell-group inset>
           <van-cell title="机台编号" :value="machineCode" />
@@ -123,9 +139,16 @@
 import { ref, reactive, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
+import ScanEntryButton from '../../components/ScanEntryButton.vue'
 import { getWorkOrdersByMachine, submitReport } from '../../api/prodReport'
 import { saveOfflineReport } from '../../utils/offline'
 import { normalizeMobileReportProcessName, validateMobileReportProcessName } from '../../utils/production-report'
+import {
+  MOBILE_REPORT_TEMPLATES,
+  applyMobileReportTemplate,
+  findMobileReportTemplate,
+} from '../../utils/report-template'
+import type { MobileScanPayload } from '../../utils/scan-entry'
 
 const router = useRouter()
 const activeTab = ref(1)
@@ -135,6 +158,8 @@ const selectedOrderId = ref<number>(0)
 const selectedWorkOrder = ref<any>(null)
 const workOrders = ref<any[]>([])
 const submitting = ref(false)
+const selectedTemplateCode = ref('injection-day')
+const reportTemplates = MOBILE_REPORT_TEMPLATES
 
 const reportForm = reactive({
   processName: '注塑',
@@ -157,10 +182,18 @@ function validateProcessName(value: string) {
   return validateMobileReportProcessName(value) || true
 }
 
-/** 扫码（调用摄像头或外部扫码器） */
-function onScan() {
-  // 实际项目中可集成扫码SDK
-  showToast('请使用扫码枪扫描机台条码')
+function onMachineScanned(payload: MobileScanPayload) {
+  machineCode.value = payload.value
+  showToast(`已识别机台：${payload.value}`)
+}
+
+function applyTemplateCode(code = selectedTemplateCode.value) {
+  selectedTemplateCode.value = code
+  const next = applyMobileReportTemplate(reportForm, code)
+  reportForm.processName = String(next.processName || '注塑')
+  reportForm.shift = String(next.shift || 'DAY')
+  reportForm.defectCount = next.defectCount === undefined || next.defectCount === null ? '' : String(next.defectCount)
+  reportForm.moldCount = next.moldCount === undefined || next.moldCount === null ? '' : String(next.moldCount)
 }
 
 /** 加载工单列表 */
@@ -219,6 +252,7 @@ async function onSubmitReport() {
     reportForm.quantity = ''
     reportForm.defectCount = ''
     reportForm.moldCount = ''
+    applyTemplateCode(selectedTemplateCode.value)
   } catch {
     // 网络异常时保存到离线数据库
     try {
@@ -231,20 +265,68 @@ async function onSubmitReport() {
     submitting.value = false
   }
 }
+
+watch(
+  () => reportForm.quantity,
+  (value) => {
+    const template = findMobileReportTemplate(selectedTemplateCode.value)
+    if (template.moldCountMode === 'sameAsQty') reportForm.moldCount = value ? String(value) : ''
+  },
+)
 </script>
 
 <style scoped lang="scss">
 .report-page {
   min-height: 100vh;
-  background: #f5f5f5;
+  background: #eef2f6;
   padding-bottom: 60px;
+
+  :deep(.van-steps) {
+    margin: 10px 12px 0;
+    border: 1px solid #dfe5ec;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  :deep(.van-cell-group--inset) {
+    margin: 0 12px;
+  }
+
+  :deep(.van-cell) {
+    align-items: center;
+    padding: 13px 16px;
+  }
+
+  :deep(.van-field__label) {
+    color: #526071;
+    font-weight: 600;
+  }
+
+  :deep(.van-field__control) {
+    color: #1f2933;
+  }
 }
 
 .step-content {
-  padding: 16px 0;
+  padding: 14px 0 82px;
+}
+
+.template-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 0 12px 12px;
 }
 
 .btn-wrap {
-  padding: 24px 32px;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 50px;
+  z-index: 10;
+  padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+  background: rgba(238, 242, 246, 0.94);
+  border-top: 1px solid #dfe5ec;
+  backdrop-filter: blur(8px);
 }
 </style>

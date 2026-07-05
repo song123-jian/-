@@ -104,6 +104,13 @@ import {
 import { summarizeStockLedgerRows } from '../utils/stock-ledger'
 import { buildPurchaseInboundPayload } from '../utils/purchase-inbound'
 import { buildStockTransferPayload } from '../utils/stock-transfer'
+import {
+  INJECTION_MODULES,
+  buildInjectionRecordPayload,
+  getInjectionModuleByResource,
+  validateInjectionRecord,
+  type InjectionModuleKey,
+} from '../utils/injection-professional'
 import bcrypt from 'bcryptjs'
 import QRCode from 'qrcode'
 
@@ -139,6 +146,7 @@ const routeConfigs: RouteConfig[] = [
   { resource: 'mold-maintenance-records', table: 'mold_maintenance_record' },
   { resource: 'mold-mount-records', table: 'mold_mount_record' },
   { resource: 'downtime-records', table: 'downtime_record', searchColumns: ['reason', 'remark'] },
+  { resource: 'spare-parts', table: 'spare_part', searchColumns: ['code', 'name', 'spec', 'remark'] },
   { resource: 'sale-orders', table: 'sale_order', searchColumns: ['order_no', 'remark'] },
   { resource: 'sale-order-items', table: 'sale_order_item', searchColumns: ['remark'] },
   { resource: 'prod-orders', table: 'prod_order', searchColumns: ['order_no', 'remark'] },
@@ -163,6 +171,11 @@ const routeConfigs: RouteConfig[] = [
   { resource: 'products', table: 'product', searchColumns: ['code', 'name', 'spec', 'type'] },
   { resource: 'molds', table: 'mold', searchColumns: ['code', 'name', 'remark'] },
   { resource: 'users', table: 'sys_user', searchColumns: ['username', 'real_name', 'phone'] },
+  ...INJECTION_MODULES.map((item) => ({
+    resource: item.resource,
+    table: item.table,
+    searchColumns: [toSnakeCase(item.codeField), 'title', 'name', 'remark', 'status'],
+  })),
   { resource: 'stock', table: 'stock' },
 ]
 
@@ -199,6 +212,20 @@ const tableColumns: Record<string, string[]> = {
   sys_user: ['id', 'username', 'real_name', 'phone', 'password_hash', 'role', 'status', 'login_fail_count', 'lock_until', 'last_login_at', 'created_at', 'updated_at'],
   warehouse: ['id', 'code', 'name', 'type', 'address', 'factory_code', 'workshop', 'manager_id', 'is_enabled', 'created_at'],
   warehouse_location: ['id', 'warehouse_id', 'code', 'name', 'area', 'shelf', 'layer', 'position', 'is_enabled'],
+  process_card: ['id', 'card_no', 'product_id', 'mold_id', 'machine_id', 'material_id', 'version_no', 'material_temp', 'mold_temp', 'injection_pressure', 'holding_pressure', 'cooling_seconds', 'cycle_seconds', 'clamping_force', 'back_pressure', 'change_reason', 'status', 'created_by', 'created_at', 'updated_at'],
+  trial_mold_record: ['id', 'trial_no', 'prod_order_id', 'process_card_id', 'mold_id', 'machine_id', 'first_article_result', 'image_urls', 'remark', 'status', 'created_by', 'confirmed_by', 'created_at', 'updated_at'],
+  material_mix_order: ['id', 'mix_no', 'prod_order_id', 'product_id', 'material_batch_id', 'material_qty', 'regrind_ratio', 'drying_temp', 'drying_minutes', 'remark', 'status', 'created_by', 'created_at', 'updated_at'],
+  batch_trace_link: ['id', 'trace_no', 'source_type', 'source_id', 'target_type', 'target_id', 'batch_id', 'prod_order_id', 'sale_order_id', 'remark', 'status', 'created_at'],
+  startup_check: ['id', 'check_no', 'prod_order_id', 'process_card_id', 'material_ready', 'mold_ready', 'machine_ready', 'first_article_ok', 'staff_ready', 'failed_items', 'failed_items_text', 'remark', 'status', 'created_by', 'created_at', 'updated_at'],
+  maintenance_order: ['id', 'order_no', 'machine_id', 'fault_type', 'priority', 'assignee_id', 'spare_part_cost', 'remark', 'status', 'created_by', 'created_at', 'updated_at'],
+  spare_part: ['id', 'code', 'name', 'spec', 'qty', 'safe_stock', 'unit', 'remark', 'status', 'created_at', 'updated_at'],
+  mold_maintenance_plan: ['id', 'plan_no', 'mold_id', 'mold_code', 'maintenance_cycle', 'shots_since_maintenance', 'lifetime', 'used_shots', 'abnormal_count', 'last_maintenance_date', 'next_maintenance_date', 'maintenance_rate', 'life_rate', 'risk_level', 'remark', 'status', 'created_by', 'created_at', 'updated_at'],
+  andon_event: ['id', 'event_no', 'source_type', 'source_id', 'level', 'title', 'description', 'assignee_id', 'closed_reason', 'status', 'created_by', 'created_at', 'updated_at'],
+  label_template: ['id', 'template_no', 'name', 'target_type', 'template_content', 'version_no', 'status', 'created_by', 'created_at', 'updated_at'],
+  customer_complaint: ['id', 'complaint_no', 'customer_id', 'product_id', 'batch_id', 'severity', 'defect_desc', 'corrective_action', 'preventive_action', 'd1_team', 'd2_problem', 'd3_containment', 'd4_root_cause', 'd5_corrective_action', 'd6_implementation', 'd7_prevention', 'd8_closure', 'status', 'created_by', 'created_at', 'updated_at'],
+  oee_record: ['id', 'record_no', 'record_date', 'shift', 'machine_id', 'planned_minutes', 'running_minutes', 'ideal_cycle_seconds', 'actual_qty', 'good_qty', 'downtime_minutes', 'changeover_minutes', 'availability', 'performance', 'quality_rate', 'oee', 'status', 'created_by', 'created_at'],
+  process_change: ['id', 'change_no', 'change_type', 'target_type', 'target_id', 'old_version', 'new_version', 'reason', 'effective_at', 'status', 'created_by', 'created_at', 'updated_at'],
+  purchase_requisition: ['id', 'requisition_no', 'material_id', 'shortage_qty', 'requested_qty', 'supplier_id', 'expected_date', 'source_mrp_no', 'remark', 'status', 'created_by', 'created_at', 'updated_at'],
 }
 
 const filterOnlyKeys = new Set([
@@ -2264,6 +2291,13 @@ async function assertSupplierCanDelete(id: number) {
 }
 
 async function insertTable(route: RouteConfig, payload: any) {
+  const injectionModule = getInjectionModuleByResource(route.resource)
+  if (injectionModule) {
+    const submitted = toCamelDeep(payload || {})
+    const message = validateInjectionRecord(injectionModule.key as InjectionModuleKey, submitted)
+    if (message) throw new Error(message)
+    payload = buildInjectionRecordPayload(injectionModule.key as InjectionModuleKey, submitted)
+  }
   if (route.table === 'sys_user') {
     return saveUserRecord(undefined, payload)
   }
@@ -2297,6 +2331,16 @@ async function insertTable(route: RouteConfig, payload: any) {
 }
 
 async function updateTable(route: RouteConfig, id: number, payload: any) {
+  const injectionModule = getInjectionModuleByResource(route.resource)
+  if (injectionModule) {
+    const submitted = toCamelDeep(payload || {})
+    const hasFormField = injectionModule.formFields.some((field) => submitted[field.prop] !== undefined)
+    if (hasFormField) {
+      const message = validateInjectionRecord(injectionModule.key as InjectionModuleKey, submitted)
+      if (message) throw new Error(message)
+      payload = buildInjectionRecordPayload(injectionModule.key as InjectionModuleKey, submitted)
+    }
+  }
   if (route.table === 'sys_user') {
     return saveUserRecord(id, payload)
   }
@@ -4509,10 +4553,14 @@ async function bossDashboard(params?: Record<string, any>) {
 }
 
 async function actionUpdate(route: RouteConfig, id: number, action?: string) {
+  const injectionPayload = buildInjectionActionPayload(route, action)
+  if (injectionPayload) return updateTable(route, id, injectionPayload)
+
   const statusMap: Record<string, Record<string, any>> = {
     approve: { status: 'APPROVED' },
     confirm: { status: 'CONFIRMED' },
     cancel: { status: 'CANCELLED' },
+    assign: { status: 'ASSIGNED' },
     dispatch: { status: 'SCHEDULED' },
     start: { status: 'RUNNING', actual_start: new Date().toISOString() },
     pause: { status: 'PAUSED' },
@@ -4523,10 +4571,40 @@ async function actionUpdate(route: RouteConfig, id: number, action?: string) {
     receive: { status: 'RECEIVED', receive_time: new Date().toISOString() },
     submit: { status: 'SUBMITTED' },
     reject: { status: 'REJECTED' },
+    print: { status: 'PRINTED' },
+    generate: { status: 'GENERATED' },
     read: { is_read: 1 },
   }
   await assertProdOrderActionAllowed(route, id, action)
   return updateTable(route, id, statusMap[action || ''] || {})
+}
+
+function buildInjectionActionPayload(route: RouteConfig, action?: string) {
+  const module = getInjectionModuleByResource(route.resource)
+  if (!module || !action) return null
+  const now = new Date().toISOString()
+  const common: Record<string, Record<string, any>> = {
+    submit: { status: 'SUBMITTED' },
+    approve: { status: 'APPROVED' },
+    reject: { status: 'REJECTED' },
+    assign: { status: 'ASSIGNED' },
+    start: { status: 'PROCESSING', actual_start: now },
+    finish: { status: 'FINISHED', actual_end: now },
+    close: { status: 'CLOSED' },
+    print: { status: 'PRINTED' },
+    generate: { status: 'GENERATED' },
+  }
+  const mapByModule: Record<string, Record<string, Record<string, any>>> = {
+    'process-card': { submit: { status: 'ACTIVE' }, approve: { status: 'ACTIVE' }, reject: { status: 'INACTIVE' } },
+    'trial-mold': { start: { status: 'TRIALING' }, finish: { status: 'WAIT_CONFIRM' }, approve: { status: 'APPROVED_PRODUCTION' }, reject: { status: 'REJECTED' } },
+    'maintenance-order': { start: { status: 'PROCESSING', actual_start: now }, finish: { status: 'FINISHED', actual_end: now } },
+    'mold-maintenance-plan': { generate: { status: 'GENERATED' } },
+    'andon-event': { start: { status: 'PROCESSING', actual_start: now }, finish: { status: 'CLOSED', actual_end: now } },
+    'label-template': { submit: { status: 'ACTIVE' }, approve: { status: 'ACTIVE' }, print: { status: 'PRINTED' } },
+    'customer-complaint': { assign: { status: 'ANALYZING' }, start: { status: 'IMPROVING' }, finish: { status: 'VERIFYING' } },
+    'purchase-requisition': { generate: { status: 'CONVERTED' } },
+  }
+  return mapByModule[module.key]?.[action] || common[action] || null
 }
 
 async function assertProdOrderActionAllowed(route: RouteConfig, id: number, action?: string) {
