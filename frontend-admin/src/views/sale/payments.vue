@@ -1,6 +1,10 @@
 <template>
   <div class="page-container">
     <PageHeader title="回款登记">
+      <el-button plain :loading="exporting" @click="handleExport">
+        <el-icon><Download /></el-icon>
+        导出Excel
+      </el-button>
       <el-button type="primary" @click="handleAdd">
         <el-icon><Plus /></el-icon>
         新增回款
@@ -41,10 +45,12 @@
       </el-form-item>
     </SearchBar>
 
+    <SalesMetricStrip :metrics="metricCards" />
+
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading" empty-text="暂无回款记录">
-        <el-table-column prop="paymentNo" label="回款单号" min-width="170" show-overflow-tooltip />
-        <el-table-column prop="orderNo" label="销售订单" min-width="170" show-overflow-tooltip />
+        <el-table-column prop="paymentNo" label="回款单号" min-width="170" fixed="left" show-overflow-tooltip />
+        <el-table-column prop="orderNo" label="销售订单" min-width="170" fixed="left" show-overflow-tooltip />
         <el-table-column prop="customerName" label="客户" min-width="150" show-overflow-tooltip />
         <el-table-column prop="amount" label="回款金额" width="120" align="right">
           <template #default="{ row }">{{ moneyText(row.amount) }}</template>
@@ -67,10 +73,9 @@
           <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
         </el-table-column>
         <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
-        <el-table-column label="操作" fixed="right" width="150">
+        <el-table-column label="操作" fixed="right" width="150" align="center">
           <template #default="{ row }">
-            <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
-            <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
+            <RowActions :actions="paymentRowActions" @command="handlePaymentCommand(row, $event)" />
           </template>
         </el-table-column>
       </el-table>
@@ -169,13 +174,19 @@ import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Download, Plus } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
+import RowActions, { type RowActionItem } from '@/components/RowActions.vue'
 import SearchBar from '@/components/SearchBar.vue'
+import SalesMetricStrip from '@/components/SalesMetricStrip.vue'
 import { getCustomerList } from '@/api/customer'
 import { createPayment, deletePayment, getPaymentList, updatePayment } from '@/api/payment'
 import { getSaleOrderList } from '@/api/saleOrder'
 import { formatDate, formatDateTime, formatMoney } from '@/utils'
+import { recordBusinessAudit } from '@/utils/business-audit'
+import { printBusinessDocument } from '@/utils/business-print'
+import { exportExcelFile, type ExcelColumn } from '@/utils/export-excel'
+import { buildSalePaymentMetricCards } from '@/utils/sale-management'
 import {
   SALE_PAYMENT_METHOD_OPTIONS,
   buildSalePaymentPayload,
@@ -212,6 +223,7 @@ type PaymentForm = {
 }
 
 const loading = ref(false)
+const exporting = ref(false)
 const tableData = ref<any[]>([])
 const customerOptions = ref<OptionItem[]>([])
 const saleOrderOptions = ref<OptionItem[]>([])
@@ -223,12 +235,34 @@ const dialogVisible = ref(false)
 const dialogTitle = ref('新增回款')
 const formRef = ref<FormInstance>()
 const submitLoading = ref(false)
+const overPaymentRiskCount = ref(0)
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
 const route = useRoute()
+
+const paymentRowActions: RowActionItem[] = [
+  { key: 'print', label: '打印', type: 'primary' },
+  { key: 'edit', label: '编辑', type: 'primary' },
+  { key: 'delete', label: '删除', type: 'danger' },
+]
 
 const paymentMethodOptions = SALE_PAYMENT_METHOD_OPTIONS
 
 const form = reactive<PaymentForm>(createFormState())
+
+const paymentExportColumns: ExcelColumn<any>[] = [
+  { label: '回款单号', prop: 'paymentNo' },
+  { label: '销售订单', prop: 'orderNo' },
+  { label: '客户', prop: 'customerName' },
+  { label: '回款金额', value: (row) => moneyText(row.amount ?? row.payAmount) },
+  { label: '订单金额', value: (row) => moneyText(row.totalAmount) },
+  { label: '已回款', value: (row) => moneyText(row.receivedAmount) },
+  { label: '未收余额', value: (row) => moneyText(row.receivableAmount) },
+  { label: '回款日期', value: (row) => row.paymentDate || row.payDate || '' },
+  { label: '付款方式', value: (row) => methodLabel(row.paymentMethod || row.payMethod) },
+  { label: '发票号', prop: 'invoiceNo' },
+  { label: '创建时间', value: (row) => formatDateTime(row.createdAt) },
+  { label: '备注', prop: 'remark' },
+]
 
 const selectedOrder = computed(() =>
   saleOrderOptions.value.find((item) => Number(item.id) === Number(form.saleOrderId || 0))
@@ -249,6 +283,10 @@ const maxReceivableAmount = computed(() => {
   if (!order) return 0
   return getEditablePaymentLimit(order, null, editingRecord.value)
 })
+
+const metricCards = computed(() =>
+  buildSalePaymentMetricCards(tableData.value, saleOrderOptions.value, undefined, overPaymentRiskCount.value)
+)
 
 const collectableOrderOptions = computed(() =>
   saleOrderOptions.value.filter((item) => {
@@ -307,6 +345,12 @@ function methodLabel(value?: string) {
   return getPaymentMethodLabel(value)
 }
 
+function handlePaymentCommand(row: any, command: string) {
+  if (command === 'print') handlePrint(row)
+  if (command === 'edit') handleEdit(row)
+  if (command === 'delete') handleDelete(row)
+}
+
 function resetForm(next?: Partial<PaymentForm>) {
   Object.assign(form, createFormState(), next || {})
 }
@@ -320,6 +364,12 @@ function buildPayload() {
     invoiceNo: form.invoiceNo,
     remark: form.remark,
   }, maxReceivableAmount.value)
+}
+
+function recordOverPaymentRisk() {
+  if (Number(form.amount || 0) > Number(maxReceivableAmount.value || 0)) {
+    overPaymentRiskCount.value += 1
+  }
 }
 
 async function loadOptions() {
@@ -366,6 +416,97 @@ async function fetchData() {
   } finally {
     loading.value = false
   }
+}
+
+async function handleExport() {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const res: any = await getPaymentList({
+      page: 1,
+      pageSize: 10000,
+      keyword: searchKeyword.value || undefined,
+      customerId: searchCustomerId.value || undefined,
+      saleOrderId: searchSaleOrderId.value || undefined,
+      startDate: searchDate.value?.[0] || undefined,
+      endDate: searchDate.value?.[1] || undefined,
+    })
+    const rows = res.data?.records || res.data?.list || []
+    const filename = `回款登记导出_${Date.now()}.xls`
+    exportExcelFile({
+      filename,
+      sheetName: '回款登记',
+      columns: paymentExportColumns,
+      rows,
+    })
+    await recordBusinessAudit({
+      module: '回款登记',
+      action: 'EXPORT',
+      targetType: 'payment_record',
+      targetId: 'filtered',
+      count: rows.length,
+      scope: '当前筛选',
+      filename,
+      detail: {
+        keyword: searchKeyword.value,
+        customerId: searchCustomerId.value,
+        saleOrderId: searchSaleOrderId.value,
+        startDate: searchDate.value?.[0] || '',
+        endDate: searchDate.value?.[1] || '',
+      },
+    })
+    ElMessage.success(`已导出 ${rows.length} 条回款记录`)
+  } catch {
+    ElMessage.error('导出失败')
+  } finally {
+    exporting.value = false
+  }
+}
+
+async function handlePrint(row: any) {
+  const paymentAmount = row.amount ?? row.payAmount
+  const paymentDate = row.paymentDate || row.payDate || ''
+  const paymentMethod = row.paymentMethod || row.payMethod
+  const opened = printBusinessDocument({
+    title: '回款收据',
+    subtitle: row.paymentNo || `#${row.id || ''}`,
+    sections: [
+      { label: '客户', value: row.customerName || '-' },
+      { label: '销售订单', value: row.orderNo || '-' },
+      { label: '回款日期', value: paymentDate || '-' },
+      { label: '付款方式', value: methodLabel(paymentMethod) },
+      { label: '发票号', value: row.invoiceNo || '-' },
+      { label: '创建时间', value: formatDateTime(row.createdAt) },
+    ],
+    columns: [
+      { label: '回款单号', prop: 'paymentNo' },
+      { label: '回款金额', prop: 'amount', align: 'right' },
+      { label: '订单金额', prop: 'totalAmount', align: 'right' },
+      { label: '已回款', prop: 'receivedAmount', align: 'right' },
+      { label: '未收余额', prop: 'receivableAmount', align: 'right' },
+    ],
+    rows: [{
+      paymentNo: row.paymentNo || '-',
+      amount: moneyText(paymentAmount),
+      totalAmount: moneyText(row.totalAmount),
+      receivedAmount: moneyText(row.receivedAmount),
+      receivableAmount: moneyText(row.receivableAmount),
+    }],
+    totals: [{ label: '本次回款', value: moneyText(paymentAmount) }],
+    remark: row.remark,
+  })
+  if (!opened) {
+    ElMessage.error('打印窗口被浏览器拦截')
+    return
+  }
+  await recordBusinessAudit({
+    module: '回款登记',
+    action: 'PRINT',
+    targetType: 'payment_record',
+    targetId: row.id || row.paymentNo,
+    summary: `打印回款收据 ${row.paymentNo || ''}`,
+    detail: { paymentNo: row.paymentNo, orderNo: row.orderNo, customerName: row.customerName, amount: paymentAmount },
+  })
 }
 
 function handleSearch(formData: { keyword: string }) {
@@ -433,7 +574,10 @@ function applyRoutePrefill() {
 
 async function handleSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
-  if (!valid) return
+  if (!valid) {
+    recordOverPaymentRisk()
+    return
+  }
   if (submitLoading.value) return
   submitLoading.value = true
   try {

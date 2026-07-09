@@ -36,6 +36,24 @@ export type StockTransferInput = {
   sourceStock?: StockTransferStockRowLike | null
 }
 
+export type StockTransferRowLike = {
+  transferStatus?: string | null
+  status?: string | null
+  qty?: number | string | null
+  receivedQty?: number | string | null
+  received_qty?: number | string | null
+}
+
+export type StockTransferSummary = {
+  recordCount: number
+  shippedCount: number
+  receivedCount: number
+  exceptionCount: number
+  transferQty: number
+  receivedQty: number
+  remainingQty: number
+}
+
 export function toStockTransferNumber(value: unknown) {
   const num = Number(value)
   return Number.isFinite(num) ? num : 0
@@ -48,6 +66,41 @@ function toOptionalId(value: unknown) {
 
 function normalizeStatus(value: unknown) {
   return String(value ?? '').trim().toUpperCase()
+}
+
+export function normalizeStockTransferStatus(value?: string | null) {
+  return normalizeStatus(value)
+}
+
+export function getStockTransferStatusText(value?: string | null) {
+  const map: Record<string, string> = {
+    DRAFT: '草稿',
+    CONFIRMED: '已确认',
+    SHIPPED: '已发出',
+    RECEIVED: '已收货',
+    CANCELLED: '已取消',
+    REJECTED: '已驳回',
+  }
+  const status = normalizeStockTransferStatus(value)
+  return map[status] || value || '-'
+}
+
+export function getStockTransferStatusTag(value?: string | null) {
+  const status = normalizeStockTransferStatus(value)
+  if (status === 'RECEIVED') return 'success'
+  if (status === 'SHIPPED' || status === 'CONFIRMED') return 'warning'
+  if (status === 'CANCELLED' || status === 'REJECTED') return 'danger'
+  return 'info'
+}
+
+export function getStockTransferFlowStep(value?: string | null) {
+  const status = normalizeStockTransferStatus(value)
+  if (status === 'RECEIVED') return 4
+  if (status === 'SHIPPED') return 3
+  if (status === 'CONFIRMED') return 2
+  if (status === 'DRAFT') return 1
+  if (status === 'CANCELLED' || status === 'REJECTED') return -1
+  return 0
 }
 
 function roundUnitCost(value: unknown) {
@@ -91,6 +144,49 @@ export function getTransferStockUnitCost(row?: StockTransferStockRowLike | null)
 
 export function getTransferAmount(qty: unknown, unitCost: unknown) {
   return roundMoney(toStockTransferNumber(qty) * toStockTransferNumber(unitCost))
+}
+
+export function getTransferRowStatus(row?: StockTransferRowLike | null) {
+  return normalizeStockTransferStatus(row?.transferStatus || row?.status || 'RECEIVED')
+}
+
+export function getTransferRowReceivedQty(row?: StockTransferRowLike | null) {
+  const status = getTransferRowStatus(row)
+  if (row?.receivedQty !== undefined || row?.received_qty !== undefined) {
+    return Math.max(toStockTransferNumber(row.receivedQty ?? row.received_qty), 0)
+  }
+  return status === 'RECEIVED' ? Math.max(toStockTransferNumber(row?.qty), 0) : 0
+}
+
+export function getTransferRowRemainingQty(row?: StockTransferRowLike | null) {
+  return Math.max(toStockTransferNumber(row?.qty) - getTransferRowReceivedQty(row), 0)
+}
+
+export function summarizeStockTransferRows(rows: StockTransferRowLike[] = []): StockTransferSummary {
+  return rows.reduce(
+    (summary, row) => {
+      const status = getTransferRowStatus(row)
+      const qty = Math.max(toStockTransferNumber(row.qty), 0)
+      const receivedQty = getTransferRowReceivedQty(row)
+      summary.recordCount += 1
+      summary.transferQty = roundMoney(summary.transferQty + qty)
+      summary.receivedQty = roundMoney(summary.receivedQty + receivedQty)
+      summary.remainingQty = roundMoney(summary.remainingQty + Math.max(qty - receivedQty, 0))
+      if (status === 'SHIPPED') summary.shippedCount += 1
+      else if (status === 'RECEIVED') summary.receivedCount += 1
+      else if (['CANCELLED', 'REJECTED'].includes(status)) summary.exceptionCount += 1
+      return summary
+    },
+    {
+      recordCount: 0,
+      shippedCount: 0,
+      receivedCount: 0,
+      exceptionCount: 0,
+      transferQty: 0,
+      receivedQty: 0,
+      remainingQty: 0,
+    } as StockTransferSummary
+  )
 }
 
 export function isTransferStockUsable(row?: StockTransferStockRowLike | null) {

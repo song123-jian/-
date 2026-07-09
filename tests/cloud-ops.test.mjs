@@ -1,14 +1,21 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import {
   buildCloudOpsBackupPolicy,
   buildCloudOpsConsoleEntries,
+  buildCloudOpsCoverageReport,
   buildCloudOpsEnvRows,
   buildCloudOpsExportPackage,
   buildCloudOpsRecoveryChecklist,
+  buildQualityTraceabilityDeliveryReadiness,
   getCloudOpsEnvState,
+  parseCloudOpsCoveragePackage,
+  QUALITY_TRACEABILITY_SMOKE_ROUTES,
 } from '../frontend-admin/src/utils/cloud-ops.ts'
 import { DEFAULT_SYSTEM_CONFIG } from '../frontend-admin/src/utils/system-config.ts'
+
+const read = (path) => readFileSync(path, 'utf8')
 
 describe('cloud ops environment state', () => {
   it('marks missing required Supabase URL and key as a blocking configuration risk', () => {
@@ -120,6 +127,9 @@ describe('cloud ops export package', () => {
     assert.equal(payload.backupPolicy.time, '03:30')
     assert.equal(payload.consoleEntries.find((item) => item.title === '业务附件').path.endsWith('private-qc-assets'), true)
     assert.equal(payload.recoveryChecklist.length, 4)
+    assert.equal(payload.qualityTraceabilityReadiness.gates.length, 6)
+    assert.equal(payload.coverageReport.items.length, 4)
+    assert.equal(payload.recoveryChecklist.every((item) => item.coverage.length && item.evidence.length && item.acceptance), true)
   })
 
   it('keeps destructive recovery steps outside the front-end action model', () => {
@@ -129,5 +139,91 @@ describe('cloud ops export package', () => {
     assert.equal(checklist.some((item) => item.risk === 'danger' && item.title === '停写窗口'), true)
     assert.equal(packageText.includes('delete'), false)
     assert.equal(packageText.includes('service_role'), false)
+  })
+})
+
+describe('quality traceability delivery readiness', () => {
+  it('summarizes a fully verified quality traceability delivery as ready', () => {
+    const readiness = buildQualityTraceabilityDeliveryReadiness({
+      envState: 'success',
+      schemaApplied: true,
+      validationPassed: true,
+      browserSmokePassed: true,
+      recoveryCoveragePassed: true,
+    })
+
+    assert.equal(readiness.state, 'success')
+    assert.equal(readiness.gates.length, 6)
+    assert.equal(readiness.gates.some((gate) => gate.key === 'recovery-coverage'), true)
+    assert.equal(readiness.commands.includes('npm run verify:quality-traceability'), true)
+    assert.equal(readiness.smokeRoutes.includes('/qc/records?action=create&checkType=IPQC'), true)
+    assert.equal(readiness.coreFiles.includes('database/supabase-cloud.sql'), true)
+  })
+
+  it('keeps cloud schema confirmation visible when the live Supabase project has not been proven', () => {
+    const readiness = buildQualityTraceabilityDeliveryReadiness({
+      envState: 'success',
+      validationPassed: true,
+      browserSmokePassed: true,
+      recoveryCoveragePassed: true,
+    })
+    const schemaGate = readiness.gates.find((gate) => gate.key === 'qc-schema')
+
+    assert.equal(readiness.state, 'warning')
+    assert.equal(schemaGate.state, 'warning')
+    assert.equal(schemaGate.evidence.includes('disposal_status'), true)
+    assert.deepEqual(readiness.smokeRoutes, [...QUALITY_TRACEABILITY_SMOKE_ROUTES])
+  })
+})
+
+describe('cloud ops recovery coverage package', () => {
+  it('round-trips a coverage report without granting destructive credentials', () => {
+    const report = buildCloudOpsCoverageReport({
+      generatedAt: '2026-07-06T00:00:00.000Z',
+      operator: '运维负责人',
+      restorePoint: '2026-07-06 08:00',
+      items: buildCloudOpsRecoveryChecklist().map((item) => ({
+        title: item.title,
+        coverage: item.coverage,
+        evidence: item.evidence,
+        acceptance: item.acceptance,
+        status: 'covered',
+        evidenceNote: item.title === '停写窗口' ? '停写通知、恢复窗口、抽查记录已留档' : '验收证据已留档',
+        checkedBy: '运维负责人',
+        checkedAt: '2026-07-06T08:30:00.000Z',
+        metadata: item.title === '停写窗口'
+          ? {
+              writeStopStart: '2026-07-06 07:50:00',
+              writeStopEnd: '2026-07-06 08:30:00',
+              writeFreezeConfirmed: true,
+            }
+          : {},
+      })),
+    })
+    const parsed = parseCloudOpsCoveragePackage(JSON.stringify({ coverageReport: report }))
+    const text = JSON.stringify(parsed)
+
+    assert.equal(parsed.status, 'covered')
+    assert.equal(parsed.items.length, 4)
+    assert.equal(parsed.summary.includes('4/4'), true)
+    assert.equal(parsed.items.find((item) => item.title === '停写窗口').metadata.writeFreezeConfirmed, true)
+    assert.equal(parsed.items.find((item) => item.title === '停写窗口').evidenceNote.includes('停写通知'), true)
+    assert.equal(text.includes('service_role'), false)
+  })
+})
+
+describe('cloud ops recovery execution page', () => {
+  it('keeps write-freeze and identity-permission evidence editable on the backup page', () => {
+    const page = read('frontend-admin/src/views/system/backup.vue')
+
+    assert.equal(page.includes('恢复闭环执行'), true)
+    assert.equal(page.includes('停写开始'), true)
+    assert.equal(page.includes('停写结束'), true)
+    assert.equal(page.includes('停写窗口内无新增单据、库存移动、生产报工和工资结算'), true)
+    assert.equal(page.includes('管理员账号可登录并访问系统管理'), true)
+    assert.equal(page.includes('现场角色、只读角色和越权菜单已抽查'), true)
+    assert.equal(page.includes('RLS/Storage 策略和业务附件权限已复核'), true)
+    assert.equal(page.includes('applyCoverageReportToDraft'), true)
+    assert.equal(page.includes('syncCoverageDraft'), true)
   })
 })

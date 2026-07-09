@@ -70,6 +70,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '待办中心', requireAuth: true },
   },
   {
+    path: '/m/abnormal-report',
+    name: 'AbnormalReport',
+    component: () => import('../views/abnormal-report/index.vue'),
+    meta: { title: '异常上报', requireAuth: true },
+  },
+  {
     path: '/m/offline-tasks',
     name: 'OfflineTasks',
     component: () => import('../views/offline-tasks/index.vue'),

@@ -299,6 +299,10 @@ CREATE TABLE qc_record (
     checker_id BIGINT NOT NULL,
     check_time TIMESTAMP NOT NULL,
     image_urls VARCHAR(1000),
+    disposal_status VARCHAR(32) DEFAULT 'OPEN',
+    disposal_assignee VARCHAR(100),
+    disposal_close_reason TEXT,
+    disposal_updated_at TIMESTAMP,
     remark TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -1058,3 +1062,99 @@ CREATE INDEX IF NOT EXISTS idx_complaint_customer_status ON customer_complaint (
 CREATE INDEX IF NOT EXISTS idx_oee_machine_date ON oee_record (machine_id, record_date);
 CREATE INDEX IF NOT EXISTS idx_process_change_target ON process_change (target_type, target_id);
 CREATE INDEX IF NOT EXISTS idx_purchase_requisition_material_status ON purchase_requisition (material_id, status);
+
+-- Unified workflow center for approvals, task handoff and todo integration.
+CREATE TABLE IF NOT EXISTS workflow_definition (
+    id BIGSERIAL PRIMARY KEY,
+    code VARCHAR(80) NOT NULL UNIQUE,
+    name VARCHAR(120) NOT NULL,
+    business_type VARCHAR(80) NOT NULL UNIQUE,
+    enabled BOOLEAN DEFAULT TRUE,
+    config JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS workflow_instance (
+    id BIGSERIAL PRIMARY KEY,
+    definition_code VARCHAR(80) NOT NULL,
+    business_type VARCHAR(80) NOT NULL,
+    business_id BIGINT NOT NULL,
+    business_code VARCHAR(120),
+    title VARCHAR(240) NOT NULL,
+    status VARCHAR(64) DEFAULT 'DRAFT',
+    current_node VARCHAR(80),
+    route VARCHAR(200),
+    owner_id BIGINT,
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    finished_at TIMESTAMP,
+    CONSTRAINT uq_workflow_instance_business UNIQUE (business_type, business_id)
+);
+
+CREATE TABLE IF NOT EXISTS workflow_task (
+    id BIGSERIAL PRIMARY KEY,
+    instance_id BIGINT NOT NULL REFERENCES workflow_instance(id) ON DELETE CASCADE,
+    task_no VARCHAR(120) NOT NULL UNIQUE,
+    business_type VARCHAR(80) NOT NULL,
+    business_id BIGINT NOT NULL,
+    business_code VARCHAR(120),
+    title VARCHAR(240) NOT NULL,
+    description TEXT,
+    status VARCHAR(64) DEFAULT 'OPEN',
+    node VARCHAR(80),
+    priority INT DEFAULT 60,
+    assignee_id BIGINT,
+    assignee_name VARCHAR(120),
+    source_route VARCHAR(200),
+    due_at TIMESTAMP,
+    created_by BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    claimed_at TIMESTAMP,
+    started_at TIMESTAMP,
+    finished_at TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS workflow_log (
+    id BIGSERIAL PRIMARY KEY,
+    instance_id BIGINT REFERENCES workflow_instance(id) ON DELETE CASCADE,
+    task_id BIGINT REFERENCES workflow_task(id) ON DELETE SET NULL,
+    business_type VARCHAR(80) NOT NULL,
+    business_id BIGINT NOT NULL,
+    action VARCHAR(64) NOT NULL,
+    from_status VARCHAR(64),
+    to_status VARCHAR(64),
+    actor_id BIGINT,
+    note TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO workflow_definition (code, name, business_type, config)
+VALUES
+    ('customer-master-review', '客户资料审核', 'customer', '{"route":"/base/customers"}'::jsonb),
+    ('sale-order-approval', '销售订单审核', 'sale_order', '{"route":"/sale/orders"}'::jsonb),
+    ('purchase-requisition-approval', '采购请购审批', 'purchase_requisition', '{"route":"/injection/purchase-requisition"}'::jsonb),
+    ('production-order-flow', '生产工单闭环', 'prod_order', '{"route":"/prod/orders"}'::jsonb),
+    ('maintenance-order-repair-flow', '设备维修闭环', 'maintenance_order', '{"route":"/injection/maintenance-order"}'::jsonb),
+    ('spare-part-replenishment', '备件补货闭环', 'spare_part', '{"route":"/equipment/spare-parts"}'::jsonb),
+    ('salary-month-review', '工资月结复核', 'salary_month', '{"route":"/salary/monthly"}'::jsonb),
+    ('qc-defect-disposal-flow', '不良品处置闭环', 'qc_record', '{"route":"/qc/defect-disposal"}'::jsonb),
+    ('stock-inventory-approval', '库存盘点审批', 'stock_inventory', '{"route":"/stock/inventory"}'::jsonb),
+    ('expense-approval-flow', '费用支出审批', 'expense_record', '{"route":"/finance/expenses"}'::jsonb),
+    ('payment-confirmation-flow', '销售回款确认', 'payment_record', '{"route":"/sale/payments"}'::jsonb),
+    ('purchase-inbound-review', '采购入库复核', 'purchase_inbound', '{"route":"/stock/in-purchase"}'::jsonb)
+ON CONFLICT (business_type) DO UPDATE
+SET code = EXCLUDED.code,
+    name = EXCLUDED.name,
+    config = EXCLUDED.config,
+    enabled = TRUE,
+    updated_at = CURRENT_TIMESTAMP;
+
+CREATE INDEX IF NOT EXISTS idx_workflow_instance_status ON workflow_instance (status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_workflow_instance_business ON workflow_instance (business_type, business_id);
+CREATE INDEX IF NOT EXISTS idx_workflow_task_status_priority ON workflow_task (status, priority, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_workflow_task_assignee ON workflow_task (assignee_id, status);
+CREATE INDEX IF NOT EXISTS idx_workflow_task_business ON workflow_task (business_type, business_id);
+CREATE INDEX IF NOT EXISTS idx_workflow_log_business ON workflow_log (business_type, business_id, created_at DESC);

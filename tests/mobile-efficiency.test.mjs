@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import { readFileSync } from 'node:fs'
 import {
   buildMobileTodoItems,
   summarizeMobileTodos,
@@ -125,18 +126,36 @@ describe('移动端待办中心', () => {
         { id: 'report-1', source: 'report', title: '报工失败', description: 'MO-001', syncStatus: 'failed', retryCount: 1, createdAt: '2026-07-04', canRetry: true, payload: {} },
         { id: 'report-2', source: 'report', title: '已同步', description: 'MO-003', syncStatus: 'synced', retryCount: 0, createdAt: '2026-07-04', canRetry: false, payload: {} },
       ],
+      injectionTasks: [{ id: 5, moduleKey: 'andon-event', title: '安灯处理', moduleTitle: '注塑', description: 'A01 异常', route: '/m/injection/andon-event' }],
     })
 
-    assert.deepEqual(todos.map((item) => item.type), ['offline', 'report', 'qc', 'inventory', 'transfer'])
+    assert.deepEqual(todos.map((item) => item.type), ['offline', 'report', 'injection', 'qc', 'inventory', 'transfer'])
     assert.equal(todos[0].route, '/m/offline-tasks')
     assert.deepEqual(summarizeMobileTodos(todos), {
-      total: 5,
+      total: 6,
       report: 1,
       qc: 1,
       inventory: 1,
       transfer: 1,
       offline: 1,
-      injection: 0,
+      injection: 1,
     })
+  })
+
+  it('首页和待办页接入同一组关键待办来源', () => {
+    const home = readFileSync('frontend-mobile/src/views/home/index.vue', 'utf8')
+    const todo = readFileSync('frontend-mobile/src/views/todo/index.vue', 'utf8')
+
+    for (const marker of ['getCurrentShiftTasks', 'getPendingQcOrders', 'getPendingInventoryTasks', 'getPendingTransfers', 'getActionableOfflineReports', 'getInjectionMobileTasks']) {
+      assert.equal(home.includes(marker), true)
+      assert.equal(todo.includes(marker), true)
+    }
+    for (const prop of ['reportTasks:', 'qcOrders:', 'inventoryTasks:', 'transferTasks:', 'offlineTasks:', 'injectionTasks:']) {
+      assert.equal(home.includes(prop), true)
+      assert.equal(todo.includes(prop), true)
+    }
+    assert.equal(todo.includes('盘点 {{ summary.inventory }}'), true)
+    assert.equal(todo.includes('filterOptions'), true)
+    assert.equal(todo.includes('filteredTodos'), true)
   })
 })

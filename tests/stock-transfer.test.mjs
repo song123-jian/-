@@ -4,14 +4,20 @@ import { describe, it } from 'node:test'
 import {
   buildStockTransferPayload,
   getMaxSingleTransferQty,
+  getStockTransferFlowStep,
+  getStockTransferStatusTag,
+  getStockTransferStatusText,
   getSuggestedTransferStock,
   getTransferAmount,
   getTransferAvailableQty,
+  getTransferRowReceivedQty,
+  getTransferRowRemainingQty,
   getTransferStockAvailableQty,
   getTransferStockCandidates,
   getTransferStockUnitCost,
   isTransferProductEnabled,
   isTransferWarehouseEnabled,
+  summarizeStockTransferRows,
   validateStockTransferInput,
 } from '../frontend-admin/src/utils/stock-transfer.ts'
 import { getLedgerRelatedOrderText } from '../frontend-admin/src/utils/stock-ledger.ts'
@@ -127,6 +133,37 @@ describe('stock transfer validation and payload', () => {
   })
 })
 
+describe('stock transfer lifecycle status', () => {
+  it('labels shipped and received transfer lifecycle states', () => {
+    assert.equal(getStockTransferStatusText('SHIPPED'), '已发出')
+    assert.equal(getStockTransferStatusText('RECEIVED'), '已收货')
+    assert.equal(getStockTransferStatusTag('SHIPPED'), 'warning')
+    assert.equal(getStockTransferStatusTag('REJECTED'), 'danger')
+    assert.equal(getStockTransferFlowStep('SHIPPED'), 3)
+    assert.equal(getStockTransferFlowStep('RECEIVED'), 4)
+  })
+
+  it('summarizes pending receive and closed transfer quantities', () => {
+    const summary = summarizeStockTransferRows([
+      { transferStatus: 'SHIPPED', qty: 10, receivedQty: 0 },
+      { transferStatus: 'RECEIVED', qty: 8 },
+      { transferStatus: 'REJECTED', qty: 3 },
+    ])
+
+    assert.equal(getTransferRowReceivedQty({ transferStatus: 'RECEIVED', qty: 8 }), 8)
+    assert.equal(getTransferRowRemainingQty({ transferStatus: 'SHIPPED', qty: 10, receivedQty: 2 }), 8)
+    assert.deepEqual(summary, {
+      recordCount: 3,
+      shippedCount: 1,
+      receivedCount: 1,
+      exceptionCount: 1,
+      transferQty: 21,
+      receivedQty: 8,
+      remainingQty: 13,
+    })
+  })
+})
+
 describe('stock transfer page, API and ledger integration', () => {
   it('uses shared transfer rules in the page and Supabase request adapter', () => {
     const pageSource = readFileSync(new URL('../frontend-admin/src/views/stock/transfer.vue', import.meta.url), 'utf8')
@@ -136,11 +173,16 @@ describe('stock transfer page, API and ledger integration', () => {
     assert.match(pageSource, /buildStockTransferPayload/)
     assert.match(pageSource, /getTransferStockCandidates/)
     assert.match(pageSource, /sourceStockOptions/)
+    assert.match(pageSource, /transferSummaryItems/)
+    assert.match(pageSource, /transferStatusText\(row\)/)
     assert.match(requestSource, /import \{ buildStockTransferPayload \} from '..\/utils\/stock-transfer'/)
     assert.match(requestSource, /path === 'stock\/transfer'/)
     assert.match(requestSource, /async function validateStockTransferMove/)
     assert.match(requestSource, /async function createStockTransferDocument/)
     assert.match(requestSource, /relatedOrderType = 'STOCK_TRANSFER'/)
+    assert.match(requestSource, /status:\s*'SHIPPED'/)
+    assert.match(requestSource, /receive_time:\s*null/)
+    assert.match(requestSource, /received_qty:\s*0/)
     assert.match(cloudSource, /create table if not exists public\.stock_transfer/)
     assert.match(cloudSource, /create table if not exists public\.stock_transfer_item/)
   })

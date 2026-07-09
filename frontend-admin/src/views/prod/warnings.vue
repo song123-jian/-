@@ -9,6 +9,15 @@
       </el-button>
     </PageHeader>
 
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      :title="errorMessage"
+      show-icon
+      :closable="false"
+    />
+
     <el-row :gutter="16" class="stat-row">
       <el-col :span="6" v-for="item in statCards" :key="item.title">
         <el-card shadow="hover" class="stat-card">
@@ -107,6 +116,7 @@ import {
 
 const router = useRouter()
 const loading = ref(false)
+const errorMessage = ref('')
 const warnings = ref<any[]>([])
 const summary = ref<any>({})
 const workflowStates = ref<WarningWorkflowState[]>([])
@@ -116,10 +126,17 @@ const searchLevel = ref('')
 const searchWorkflowStatus = ref('')
 const WORKFLOW_STORAGE_KEY = 'inject_erp_warning_workflow_states'
 
+function failureText(error: any, fallback: string) {
+  return error?.message || error?.response?.data?.message || fallback
+}
+
+const stockWarningCount = computed(() => workflowWarnings.value.filter((item) => item.category === '库存').length)
+const errorWarningCount = computed(() => workflowWarnings.value.filter((item) => item.level === 'ERROR').length)
+
 const statCards = computed(() => [
-  { title: '预警总数', value: summary.value.total ?? 0, icon: 'Bell', color: '#e6a23c' },
-  { title: '库存预警', value: summary.value.stock ?? 0, icon: 'Coin', color: '#67c23a' },
-  { title: '严重预警', value: summary.value.error ?? 0, icon: 'WarningFilled', color: '#d9534f' },
+  { title: '预警总数', value: summary.value.total ?? workflowSummary.value.total, icon: 'Bell', color: '#e6a23c' },
+  { title: '库存预警', value: summary.value.stock ?? stockWarningCount.value, icon: 'Coin', color: '#67c23a' },
+  { title: '严重预警', value: summary.value.error ?? errorWarningCount.value, icon: 'WarningFilled', color: '#d9534f' },
   { title: '待闭环严重', value: workflowSummary.value.unclosedError, icon: 'Checked', color: '#c45656' },
 ])
 
@@ -140,8 +157,8 @@ const filteredWarnings = computed(() => {
   })
 })
 
-function handleRowClick() {
-  router.push('/system/notifications')
+function handleRowClick(row: WarningWorkflowItem) {
+  router.push(row.actionPath || '/system/notifications')
 }
 
 function handleSearch(formData: { keyword: string }) {
@@ -216,16 +233,25 @@ function handleWorkflowAction(row: WarningWorkflowItem) {
 
 async function fetchData() {
   loading.value = true
-  try {
-    const [listRes, summaryRes]: any = await Promise.all([getWarningList(), getWarningSummary()])
-    warnings.value = listRes.data || []
-    summary.value = summaryRes.data || {}
-  } catch {
+  errorMessage.value = ''
+  const [listRes, summaryRes] = await Promise.allSettled([getWarningList(), getWarningSummary()])
+
+  if (listRes.status === 'fulfilled') {
+    warnings.value = listRes.value.data || []
+  } else {
     warnings.value = []
-    summary.value = {}
-  } finally {
-    loading.value = false
+    errorMessage.value = failureText(listRes.reason, '生产预警列表加载失败，请检查 Supabase 连接、库存、批次、模具和预警配置。')
   }
+
+  if (summaryRes.status === 'fulfilled') {
+    summary.value = summaryRes.value.data || {}
+  } else {
+    summary.value = {}
+    errorMessage.value = errorMessage.value || failureText(summaryRes.reason, '生产预警统计加载失败，请检查预警汇总接口。')
+  }
+
+  if (errorMessage.value) ElMessage.error(errorMessage.value)
+  loading.value = false
 }
 
 onMounted(() => {
@@ -237,6 +263,10 @@ onMounted(() => {
 <style scoped lang="scss">
 .stat-row {
   margin-bottom: 16px;
+}
+
+.page-alert {
+  margin-bottom: 12px;
 }
 
 .stat-card {

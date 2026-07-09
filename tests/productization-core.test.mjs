@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import { readFileSync } from 'node:fs'
 import {
   buildAuditFieldDiffs,
   buildAuditTrailEntry,
@@ -29,6 +30,78 @@ import {
   getWarningWorkflowStatusText,
   summarizeWarningWorkflow,
 } from '../frontend-admin/src/utils/warning-workflow.ts'
+
+const warningsPageSource = readFileSync('frontend-admin/src/views/prod/warnings.vue', 'utf8')
+const productizationPageSource = readFileSync('frontend-admin/src/views/prod/productization.vue', 'utf8')
+
+describe('生产 P1 辅助页面交付目标', () => {
+  it('预警中心覆盖筛选、闭环、钻取和失败反馈验收标准', () => {
+    for (const marker of [
+      'PageHeader title="预警中心"',
+      '预警总数',
+      '库存预警',
+      '严重预警',
+      '待闭环严重',
+      '分类',
+      '等级',
+      '闭环',
+      '闭环状态',
+      '负责人',
+      '闭环动作',
+    ]) {
+      assert.equal(warningsPageSource.includes(marker), true)
+    }
+
+    for (const marker of [
+      'buildWarningWorkflowItems',
+      'createWarningWorkflowState',
+      'summarizeWarningWorkflow',
+      'WORKFLOW_STORAGE_KEY',
+      'Promise.allSettled',
+      'row.actionPath || \'/system/notifications\'',
+      '生产预警列表加载失败',
+      '生产预警统计加载失败',
+      'errorMessage',
+      'page-alert',
+      'ElMessage.error',
+    ]) {
+      assert.equal(warningsPageSource.includes(marker), true)
+    }
+  })
+
+  it('产品化中心覆盖 MRP、排程、成本、审计、模板和失败反馈验收标准', () => {
+    for (const marker of [
+      'PageHeader title="产品化中心"',
+      '缺料项',
+      '排程冲突',
+      '成本预警',
+      '审计字段',
+      '导入模板',
+      'BOM/MRP',
+      '生产排程',
+      '成本核算',
+      '审计差异',
+      '模板中心',
+    ]) {
+      assert.equal(productizationPageSource.includes(marker), true)
+    }
+
+    for (const marker of [
+      'buildMrpRequirementRows',
+      'buildProductionScheduleBoard',
+      'buildProductCostResult',
+      'buildAuditTrailEntry',
+      'buildImportTemplateCsv',
+      'URL.revokeObjectURL',
+      '导入模板下载失败',
+      'errorMessage',
+      'page-alert',
+      'ElMessage.error',
+    ]) {
+      assert.equal(productizationPageSource.includes(marker), true)
+    }
+  })
+})
 
 describe('BOM/MRP 基础版', () => {
   it('按 BOM 用量、损耗、库存、在途和安全库存生成缺料提示', () => {

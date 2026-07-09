@@ -14,6 +14,13 @@
           <el-option label="已结算" value="SETTLED" />
         </el-select>
       </el-form-item>
+      <el-form-item label="异常">
+        <el-select v-model="searchAuditType" placeholder="全部" clearable style="width: 150px">
+          <el-option label="只看缺单价" value="MISSING_PRICE" />
+          <el-option label="只看异常金额" value="ZERO_AMOUNT_WITH_QTY" />
+          <el-option label="只看阻断项" value="BLOCKING" />
+        </el-select>
+      </el-form-item>
       <el-form-item label="日期范围">
         <el-date-picker
           v-model="searchDate"
@@ -27,9 +34,11 @@
       </el-form-item>
     </SearchBar>
 
+    <MetricStrip :items="dailyAuditCards" testid="salary-daily-audit" />
+
     <el-card shadow="hover">
       <el-table
-        :data="tableData"
+        :data="filteredTableData"
         stripe
         v-loading="loading"
         show-summary
@@ -55,7 +64,17 @@
             <el-tooltip v-if="row.priceMissing" :content="row.priceMessage || '缺少有效计件单价'" placement="top">
               <el-tag type="danger" effect="plain">待处理</el-tag>
             </el-tooltip>
+            <el-tooltip v-else-if="rowHasZeroAmount(row)" content="存在合格产量但计件金额为 0 或负数" placement="top">
+              <el-tag type="danger" effect="plain">异常金额</el-tag>
+            </el-tooltip>
             <span v-else>¥{{ moneyText(row.amount) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="审计" width="110" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="rowBlockingCount(row) > 0" type="danger" effect="plain">阻断</el-tag>
+            <el-tag v-else-if="rowWarningCount(row) > 0" type="warning" effect="plain">待结</el-tag>
+            <el-tag v-else type="success" effect="plain">正常</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="105" align="center">
@@ -84,13 +103,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import PageHeader from '@/components/PageHeader.vue'
+import MetricStrip from '@/components/MetricStrip.vue'
 import SearchBar from '@/components/SearchBar.vue'
 import { getDailySalaryList } from '@/api/salary'
 import { getUserList } from '@/api/user'
 import { formatDateTime, formatMoney } from '@/utils'
 import { getSalaryDailyStatusText, isSalaryDailySettled } from '@/utils/salary-monthly'
+import { buildDailySalaryAuditCards, buildSalaryAuditIssues } from '@/utils/salary-audit'
 
 type OptionItem = { id: number; realName?: string; username?: string }
 
@@ -99,8 +120,26 @@ const tableData = ref<any[]>([])
 const userOptions = ref<OptionItem[]>([])
 const searchWorkerId = ref<number | null>(null)
 const searchStatus = ref('')
+const searchAuditType = ref('')
 const searchDate = ref<string[]>(currentMonthRange())
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
+
+const auditFilteredRows = computed(() => filterRowsByAudit(tableData.value))
+const filteredTableData = computed(() => {
+  if (!searchAuditType.value) return tableData.value
+  const start = (pagination.page - 1) * pagination.pageSize
+  return auditFilteredRows.value.slice(start, start + pagination.pageSize)
+})
+const dailyAuditCards = computed(() => buildDailySalaryAuditCards(searchAuditType.value ? auditFilteredRows.value : tableData.value))
+
+function filterRowsByAudit(rows: any[]) {
+  if (!searchAuditType.value) return rows
+  return rows.filter((row) => {
+    const issues = buildSalaryAuditIssues(row, 'daily')
+    if (searchAuditType.value === 'BLOCKING') return issues.some((item) => item.level === 'blocking')
+    return issues.some((item) => item.type === searchAuditType.value)
+  })
+}
 
 function currentMonthRange() {
   const now = new Date()
@@ -130,8 +169,8 @@ async function fetchData() {
   loading.value = true
   try {
     const params: Record<string, any> = {
-      page: pagination.page,
-      pageSize: pagination.pageSize,
+      page: searchAuditType.value ? 1 : pagination.page,
+      pageSize: searchAuditType.value ? 1000 : pagination.pageSize,
       workerId: searchWorkerId.value || undefined,
       status: searchStatus.value || undefined,
     }
@@ -140,8 +179,9 @@ async function fetchData() {
       params.endDate = searchDate.value[1]
     }
     const res: any = await getDailySalaryList(params)
-    tableData.value = res.data?.list || res.data?.records || []
-    pagination.total = res.data?.total || 0
+    const records = res.data?.list || res.data?.records || []
+    tableData.value = records
+    pagination.total = searchAuditType.value ? filterRowsByAudit(records).length : res.data?.total || 0
   } catch {
     tableData.value = []
     pagination.total = 0
@@ -158,6 +198,7 @@ function handleSearch() {
 function handleReset() {
   searchWorkerId.value = null
   searchStatus.value = ''
+  searchAuditType.value = ''
   searchDate.value = currentMonthRange()
   pagination.page = 1
   fetchData()
@@ -175,6 +216,22 @@ function salarySummaryMethod({ columns, data }: { columns: any[]; data: any[] })
     }
     return ''
   })
+}
+
+function rowAuditIssues(row: Record<string, any>) {
+  return buildSalaryAuditIssues(row, 'daily')
+}
+
+function rowBlockingCount(row: Record<string, any>) {
+  return rowAuditIssues(row).filter((item) => item.level === 'blocking').length
+}
+
+function rowWarningCount(row: Record<string, any>) {
+  return rowAuditIssues(row).filter((item) => item.level === 'warning').length
+}
+
+function rowHasZeroAmount(row: Record<string, any>) {
+  return rowAuditIssues(row).some((item) => item.type === 'ZERO_AMOUNT_WITH_QTY')
 }
 
 onMounted(async () => {

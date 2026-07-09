@@ -1,5 +1,5 @@
 <template>
-  <MasterCrudPage :title="config.title" :metrics="metrics">
+  <MasterCrudPage :title="config.title" :subtitle="config.subtitle" :metrics="metrics">
     <template #toolbar>
       <el-button v-for="action in config.toolbarActions" :key="action.key" :type="action.type || 'default'" :plain="action.plain" @click="handleToolbarAction(action.key)">
         <el-icon v-if="action.icon">
@@ -10,7 +10,13 @@
     </template>
 
     <template #search>
-      <SearchBar :keyword="searchKeyword" @search="handleSearch" @reset="handleReset">
+      <SearchBar
+        :keyword="searchKeyword"
+        title="筛选仓库"
+        description="按仓库关键字、状态和库位属性筛选库存地点。"
+        @search="handleSearch"
+        @reset="handleReset"
+      >
         <template #default>
           <el-form-item v-for="field in config.searchFields" :key="field.prop" :label="field.label">
             <el-select v-if="field.type === 'select'" v-model="searchState[field.prop as keyof typeof searchState]" :placeholder="field.placeholder || '全部'" clearable :filterable="field.filterable" :style="{ width: field.width || '140px' }">

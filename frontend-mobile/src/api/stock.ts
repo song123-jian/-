@@ -72,6 +72,11 @@ export function getPendingTransfers() {
   return request.get('/stock-transfers', { params: { page: 1, size: 50, status: 'SHIPPED' } })
 }
 
+/** 获取待盘点列表 */
+export function getPendingInventoryTasks() {
+  return request.get('/stock-inventories', { params: { page: 1, size: 50, status: 'COUNTING' } })
+}
+
 /** 扫码获取调拨信息 */
 export function getTransferByCode(code: string) {
   return request.get('/stock-transfers', { params: { keyword: code, page: 1, size: 20 } })

@@ -1,0 +1,309 @@
+:root {
+  --ui-font-family: "Microsoft YaHei", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  --ui-font-size-page-title: 18px;
+  --ui-font-size-section-title: 15px;
+  --ui-font-size-body: 14px;
+  --ui-font-size-table: 13px;
+  --ui-font-size-meta: 12px;
+  --ui-font-size-number: 24px;
+  --ui-line-height-title: 24px;
+  --ui-line-height-body: 22px;
+  --ui-line-height-meta: 18px;
+  --ui-line-height-number: 30px;
+  --ui-font-weight-title: 700;
+  --ui-font-weight-label: 600;
+  --ui-font-weight-number: 700;
+  --ui-icon-menu: 18px;
+  --ui-icon-button: 16px;
+  --ui-icon-page: 18px;
+  --ui-icon-metric: 28px;
+  --ui-header-height: 60px;
+  --ui-sidebar-width: 232px;
+  --ui-sidebar-width-collapsed: 64px;
+  --ui-radius-card: 8px;
+  --ui-radius-control: 6px;
+  --ui-radius-tag: 999px;
+  --ui-space-page-gap: 14px;
+  --ui-space-card-padding: 14px;
+  --ui-space-table-cell-x: 12px;
+  --ui-color-bg: #eef2f6;
+  --ui-color-surface: #ffffff;
+  --ui-color-surface-muted: #f8fafc;
+  --ui-color-table-header: #f5f7fa;
+  --ui-color-text: #1f2933;
+  --ui-color-text-secondary: #526071;
+  --ui-color-text-muted: #64748b;
+  --ui-color-border: #dfe5ec;
+  --ui-color-border-soft: #e8edf3;
+  --ui-color-primary: #409eff;
+  --ui-color-accent: #0f766e;
+  --ui-color-sidebar: #172033;
+  --ui-color-success: #67c23a;
+  --ui-color-warning: #e6a23c;
+  --ui-color-danger: #f56c6c;
+  --ui-color-neutral: #909399;
+  --ui-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --ui-shadow-panel: 0 18px 48px rgba(15, 23, 42, 0.10);
+  --ui-focus-ring: 0 0 0 3px rgba(64, 158, 255, 0.16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  font-family: var(--ui-font-family);
+  font-size: var(--ui-font-size-body);
+  line-height: 1.5;
+  color: var(--ui-color-text);
+  background: var(--ui-color-bg);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.ui-number,
+.metric-card__value,
+.kpi-card__value,
+.sales-metric-card__value,
+.page-container .el-table .is-right .cell,
+.page-container .el-input-number,
+.page-container [class*="amount"],
+.page-container [class*="Amount"],
+.page-container [class*="qty"],
+.page-container [class*="Qty"],
+.page-container [class*="rate"],
+.page-container [class*="Rate"] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.ui-text-muted {
+  color: var(--ui-color-text-muted);
+  font-size: var(--ui-font-size-meta);
+  line-height: var(--ui-line-height-meta);
+}
+
+.page-container {
+  gap: var(--ui-space-page-gap);
+}
+
+.page-container > .el-card,
+.page-container > .search-bar,
+.page-container > .el-descriptions,
+.page-container > .el-alert,
+.page-container > .el-empty,
+.page-container .visual-surface {
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-card);
+  background: var(--ui-color-surface);
+  box-shadow: var(--ui-shadow-card);
+}
+
+.page-container > .el-card .el-card__header,
+.page-container .section-header,
+.page-container .table-header {
+  min-height: 42px;
+  color: var(--ui-color-text);
+  font-size: var(--ui-font-size-section-title);
+  font-weight: var(--ui-font-weight-label);
+  line-height: var(--ui-line-height-body);
+}
+
+.page-container > .el-card .el-card__body {
+  padding: var(--ui-space-card-padding) 16px;
+}
+
+.page-container .el-table.el-table {
+  --el-table-border-color: var(--ui-color-border-soft);
+  --el-table-header-bg-color: var(--ui-color-table-header);
+  --el-table-row-hover-bg-color: #f7fbff;
+  --el-table-text-color: var(--ui-color-text);
+  --el-table-header-text-color: var(--ui-color-text-secondary);
+  border-radius: var(--ui-radius-control);
+  font-size: var(--ui-font-size-table);
+}
+
+.page-container .el-table.el-table .cell {
+  padding: 0 var(--ui-space-table-cell-x);
+  line-height: 21px;
+}
+
+.page-container .el-table.el-table th.el-table__cell {
+  height: 42px;
+  font-size: var(--ui-font-size-table);
+  font-weight: var(--ui-font-weight-label);
+}
+
+.page-container .el-table.el-table td.el-table__cell {
+  height: 42px;
+  padding: 7px 0;
+}
+
+.page-container .el-table .is-right .cell {
+  text-align: right;
+}
+
+.page-container .el-button .el-icon,
+.el-dialog .el-button .el-icon {
+  width: var(--ui-icon-button);
+  height: var(--ui-icon-button);
+  font-size: var(--ui-icon-button);
+}
+
+.page-container .el-button,
+.el-dialog .el-button {
+  min-height: 32px;
+  border-radius: var(--ui-radius-control);
+  font-size: var(--ui-font-size-body);
+  font-weight: 500;
+}
+
+.page-container .el-button.is-link {
+  min-height: 24px;
+}
+
+.page-container .el-tag.el-tag {
+  min-width: 56px;
+  min-height: 22px;
+  justify-content: center;
+  border-radius: var(--ui-radius-tag);
+  padding: 0 9px;
+  font-size: var(--ui-font-size-meta);
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.page-container .el-form-item__label,
+.el-dialog .el-form-item__label {
+  color: #4b5563;
+  font-size: var(--ui-font-size-body);
+  font-weight: 500;
+  line-height: var(--ui-line-height-body);
+}
+
+.page-container .el-input__wrapper,
+.page-container .el-select__wrapper,
+.page-container .el-textarea__inner,
+.page-container .el-input-number,
+.el-dialog .el-input__wrapper,
+.el-dialog .el-select__wrapper,
+.el-dialog .el-textarea__inner,
+.el-dialog .el-input-number {
+  border-radius: var(--ui-radius-control);
+}
+
+.page-container .kpi-grid,
+.page-container .stock-risk-summary,
+.page-container .metric-grid,
+.page-container .sales-metric-strip,
+.page-container .ui-metric-strip {
+  gap: 12px;
+}
+
+.page-container .kpi-card.kpi-card,
+.page-container .sales-metric-card.sales-metric-card,
+.page-container .metric-card.metric-card,
+.page-container .ui-metric-card.ui-metric-card {
+  min-width: 0;
+  min-height: 104px;
+  padding: 14px;
+  border: 1px solid var(--ui-color-border);
+  border-left: 4px solid var(--ui-color-neutral);
+  border-radius: var(--ui-radius-card);
+  background: var(--ui-color-surface);
+  box-shadow: var(--ui-shadow-card);
+}
+
+.page-container .kpi-card--primary,
+.page-container .sales-metric-card.is-primary,
+.page-container .ui-metric-card.is-primary {
+  border-left-color: var(--ui-color-primary);
+}
+
+.page-container .kpi-card--success,
+.page-container .sales-metric-card.is-success,
+.page-container .ui-metric-card.is-success {
+  border-left-color: var(--ui-color-success);
+}
+
+.page-container .kpi-card--warning,
+.page-container .sales-metric-card.is-warning,
+.page-container .ui-metric-card.is-warning {
+  border-left-color: var(--ui-color-warning);
+}
+
+.page-container .kpi-card--danger,
+.page-container .sales-metric-card.is-danger,
+.page-container .ui-metric-card.is-danger {
+  border-left-color: var(--ui-color-danger);
+}
+
+.page-container .kpi-card__label,
+.page-container .sales-metric-card__label,
+.page-container .metric-card__label,
+.page-container .ui-metric-card__label,
+.page-container .kpi-card span,
+.page-container .kpi-card small {
+  color: var(--ui-color-text-muted);
+  font-size: var(--ui-font-size-meta);
+  font-weight: 500;
+  line-height: var(--ui-line-height-meta);
+}
+
+.page-container .kpi-card__value,
+.page-container .sales-metric-card__value,
+.page-container .metric-card__value,
+.page-container .ui-metric-card__value,
+.page-container .kpi-card strong {
+  margin-top: 6px;
+  color: var(--ui-color-text);
+  font-size: var(--ui-font-size-number);
+  font-weight: var(--ui-font-weight-number);
+  line-height: var(--ui-line-height-number);
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.page-container .kpi-card__meta,
+.page-container .sales-metric-card__meta,
+.page-container .metric-card__meta,
+.page-container .ui-metric-card__meta {
+  margin-top: 6px;
+  color: var(--ui-color-text-secondary);
+  font-size: var(--ui-font-size-meta);
+  line-height: var(--ui-line-height-meta);
+}
+
+.page-container .kpi-card .el-icon,
+.page-container .metric-card .el-icon,
+.page-container .ui-metric-card .el-icon {
+  width: var(--ui-icon-metric);
+  height: var(--ui-icon-metric);
+  font-size: var(--ui-icon-metric);
+}
+
+.layout-aside .el-menu .el-icon,
+.layout-header .el-icon {
+  width: var(--ui-icon-menu);
+  height: var(--ui-icon-menu);
+  font-size: var(--ui-icon-menu);
+}
+
+@media (max-width: 768px) {
+  :root {
+    --ui-space-page-gap: 10px;
+    --ui-font-size-number: 22px;
+    --ui-line-height-number: 28px;
+  }
+
+  .page-container > .el-card .el-card__body {
+    padding: 12px;
+  }
+
+  .page-container .el-table.el-table .cell {
+    padding: 0 10px;
+  }
+}

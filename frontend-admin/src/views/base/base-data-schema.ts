@@ -80,6 +80,8 @@ export type TableColumn = {
   label: string
   width?: number | string
   minWidth?: number | string
+  fixed?: 'left' | 'right' | boolean
+  align?: 'left' | 'center' | 'right'
   kind?: 'text' | 'tag' | 'progress' | 'image'
   tagMap?: Record<string, TagMeta>
   formatter?: (value: any, row: any) => string
@@ -109,6 +111,11 @@ export type FormField = {
   optionsSource?: 'products'
 }
 
+export type FormSection = {
+  title: string
+  rows: FormField[][]
+}
+
 export type MetricSpec = {
   label: string
   resolve: (rows: any[], total: number) => string | number
@@ -116,6 +123,7 @@ export type MetricSpec = {
 
 export type BasePageConfig<TSearch extends Record<string, any>, TForm extends Record<string, any>> = {
   title: string
+  subtitle: string
   entityName: string
   detailTitle: string
   emptyText: string
@@ -130,6 +138,7 @@ export type BasePageConfig<TSearch extends Record<string, any>, TForm extends Re
   tableColumns: TableColumn[]
   detailItems: DetailItem[]
   formRows: FormField[][]
+  formSections?: FormSection[]
   metrics: MetricSpec[]
   createSearchState: () => TSearch
   createFormState: () => TForm
@@ -217,6 +226,53 @@ export function makeToolbarActions() {
 
 const toolbar = makeToolbarActions()
 
+function normalizeStatus(value: any) {
+  return String(value ?? '').trim()
+}
+
+function isEnabledStatus(value: any) {
+  const status = normalizeStatus(value).toUpperCase()
+  return status === '1' || status === '启用' || status === 'TRUE' || status === 'ENABLED'
+}
+
+function hasText(value: any) {
+  return String(value ?? '').trim() !== ''
+}
+
+function hasPositiveNumber(value: any) {
+  return Number(value || 0) > 0
+}
+
+function getMachineDataRisk(row: any) {
+  if (!hasText(row.code) || !hasText(row.name) || !hasText(row.workshop)) return '基础信息缺失'
+  if (!hasPositiveNumber(row.tonnage)) return '吨位待补全'
+  if (String(row.status || '').toUpperCase() === 'STOPPED') return '停机异常'
+  return ''
+}
+
+function getMoldDataRisk(row: any) {
+  if (!hasText(row.code) || !hasText(row.name) || !hasPositiveNumber(row.productId)) return '基础信息缺失'
+  if (!hasPositiveNumber(row.lifetime)) return '寿命待补全'
+  if (!hasPositiveNumber(row.maintenanceCycle)) return '保养周期待补全'
+  if (Number(row.maintenanceRate || 0) >= 80) return '临近保养'
+  if (String(row.status || '').toUpperCase() === 'SCRAP') return '已报废'
+  return ''
+}
+
+function getWarehouseDataRisk(row: any) {
+  if (!hasText(row.code) || !hasText(row.name) || !hasText(row.type)) return '基础信息缺失'
+  if (!hasText(row.factoryCode) && !hasText(row.workshop)) return '组织归属待补全'
+  if (!hasPositiveNumber(row.managerId)) return '负责人待补全'
+  return ''
+}
+
+function getUserDataRisk(row: any) {
+  if (!hasText(row.username) || !hasText(row.realName)) return '基础信息缺失'
+  if (!hasText(row.role)) return '角色权限待补全'
+  if (!isEnabledStatus(row.status)) return '账号已禁用'
+  return ''
+}
+
 export const baseStatusMap: Record<string, TagMeta> = {
   '1': { label: '启用', type: 'success' },
   '0': { label: '禁用', type: 'info' },
@@ -299,6 +355,7 @@ export const productPageConfig: BasePageConfig<
   }
 > = {
   title: '产品管理',
+  subtitle: '维护产品编码、规格、类型、单价和图片资料，支撑销售、库存和工资核算。',
   entityName: '产品',
   detailTitle: '产品关联信息',
   emptyText: '暂无产品',
@@ -334,16 +391,16 @@ export const productPageConfig: BasePageConfig<
       formatter: (value) => isProductImageUrlAllowed(value) ? String(value || '').trim() : '-',
       imageAlt: (row) => productImageAlt(normalizeProductMaster(row)),
     },
-    { prop: 'code', label: '编码', width: 120 },
-    { prop: 'name', label: '名称', minWidth: 140 },
+    { prop: 'code', label: '编码', width: 120, fixed: 'left' },
+    { prop: 'name', label: '名称', minWidth: 140, fixed: 'left' },
     { prop: 'type', label: '类型', width: 100, kind: 'tag', tagMap: productTypeMap },
     { prop: 'spec', label: '规格', width: 140 },
     { prop: 'unit', label: '单位', width: 90 },
-    { prop: 'piecePrice', label: '单价', width: 110, formatter: (_value, row) => formatMoneyText(row.piecePrice) },
-    { prop: 'safeStock', label: '安全库存', width: 100 },
-    { prop: 'rawMaterialUsage', label: '原料用量', width: 110 },
-    { prop: 'cavityYield', label: '单模产出', width: 100 },
-    { prop: 'cycleTimeSec', label: '周期(s)', width: 100 },
+    { prop: 'piecePrice', label: '单价', width: 110, align: 'right', formatter: (_value, row) => formatMoneyText(row.piecePrice) },
+    { prop: 'safeStock', label: '安全库存', width: 100, align: 'right' },
+    { prop: 'rawMaterialUsage', label: '原料用量', width: 110, align: 'right' },
+    { prop: 'cavityYield', label: '单模产出', width: 100, align: 'right' },
+    { prop: 'cycleTimeSec', label: '周期(s)', width: 100, align: 'right' },
     { prop: 'status', label: '状态', width: 90, kind: 'tag', tagMap: baseStatusMap },
   ],
   detailItems: [
@@ -410,6 +467,8 @@ export const productPageConfig: BasePageConfig<
     } },
     { label: '图片完整', resolve: (rows) => buildProductMasterSummary(rows.map(normalizeProductMaster)).withImage },
     { label: '工艺参数', resolve: (rows) => buildProductMasterSummary(rows.map(normalizeProductMaster)).withProcessParams },
+    { label: '原料规则', resolve: (rows) => buildProductMasterSummary(rows.map(normalizeProductMaster)).withMaterialRule },
+    { label: '安全库存', resolve: (rows) => buildProductMasterSummary(rows.map(normalizeProductMaster)).withSafeStock },
     { label: '数据风险', resolve: (rows) => buildProductMasterSummary(rows.map(normalizeProductMaster)).dataRisks },
   ],
   createSearchState: () => ({ type: '', status: '' }),
@@ -538,6 +597,7 @@ export const machinePageConfig: BasePageConfig<
   }
 > = {
   title: '机台管理',
+  subtitle: '维护设备状态、吨位、位置和点检属性，支撑现场执行与设备看板。',
   entityName: '机台',
   detailTitle: '机台关联信息',
   emptyText: '暂无机台',
@@ -567,10 +627,10 @@ export const machinePageConfig: BasePageConfig<
     { key: 'delete', label: '删除', type: 'danger', link: true },
   ],
   tableColumns: [
-    { prop: 'code', label: '编码', width: 120 },
-    { prop: 'name', label: '名称', minWidth: 140 },
+    { prop: 'code', label: '编码', width: 120, fixed: 'left' },
+    { prop: 'name', label: '名称', minWidth: 140, fixed: 'left' },
     { prop: 'model', label: '型号', width: 120 },
-    { prop: 'tonnage', label: '吨位', width: 90 },
+    { prop: 'tonnage', label: '吨位', width: 90, align: 'right' },
     { prop: 'factoryCode', label: '工厂', width: 110 },
     { prop: 'workshop', label: '车间', width: 120 },
     { prop: 'location', label: '位置', minWidth: 120 },
@@ -610,10 +670,10 @@ export const machinePageConfig: BasePageConfig<
   ],
   metrics: [
     { label: '机台总数', resolve: (_rows, total) => total },
-    { label: '运行中', resolve: (rows) => rows.filter((item) => item.status === 'RUNNING').length },
-    { label: '空闲', resolve: (rows) => rows.filter((item) => item.status === 'IDLE').length },
-    { label: '维护中', resolve: (rows) => rows.filter((item) => item.status === 'MAINTENANCE').length },
-    { label: '停机', resolve: (rows) => rows.filter((item) => item.status === 'STOPPED').length },
+    { label: '运行状态', resolve: (rows) => rows.filter((item) => item.status === 'RUNNING').length },
+    { label: '保养状态', resolve: (rows) => rows.filter((item) => item.status === 'MAINTENANCE').length },
+    { label: '寿命参数', resolve: (rows) => rows.filter((item) => hasPositiveNumber(item.tonnage) && hasText(item.purchaseDate)).length },
+    { label: '异常风险', resolve: (rows) => rows.filter((item) => getMachineDataRisk(item)).length },
   ],
   createSearchState: () => ({ status: '', workshop: '' }),
   createFormState: () => ({
@@ -684,6 +744,7 @@ export const moldPageConfig: BasePageConfig<
   }
 > = {
   title: '模具管理',
+  subtitle: '维护模具寿命、穴数、适配产品和保养状态，支撑上下模与生产排程。',
   entityName: '模具',
   detailTitle: '模具关联信息',
   emptyText: '暂无模具',
@@ -714,13 +775,13 @@ export const moldPageConfig: BasePageConfig<
     { key: 'delete', label: '删除', type: 'danger', link: true },
   ],
   tableColumns: [
-    { prop: 'code', label: '编码', width: 130 },
-    { prop: 'name', label: '名称', minWidth: 140 },
+    { prop: 'code', label: '编码', width: 130, fixed: 'left' },
+    { prop: 'name', label: '名称', minWidth: 140, fixed: 'left' },
     { prop: 'productName', label: '产品', minWidth: 140 },
-    { prop: 'cavities', label: '穴数', width: 80 },
-    { prop: 'usedShots', label: '累计模次', width: 100 },
-    { prop: 'shotsSinceMaintenance', label: '距保养', width: 90 },
-    { prop: 'maintenanceCycle', label: '周期', width: 90 },
+    { prop: 'cavities', label: '穴数', width: 80, align: 'right' },
+    { prop: 'usedShots', label: '累计模次', width: 100, align: 'right' },
+    { prop: 'shotsSinceMaintenance', label: '距保养', width: 90, align: 'right' },
+    { prop: 'maintenanceCycle', label: '周期', width: 90, align: 'right' },
     {
       prop: 'maintenanceRate',
       label: '进度',
@@ -754,7 +815,7 @@ export const moldPageConfig: BasePageConfig<
       { prop: 'maintenanceCycle', label: '保养周期', type: 'number', span: 12, min: 1 },
     ],
     [
-      baseCreateStatusFormField(),
+      { prop: 'status', label: '状态', type: 'select', span: 12, options: moldStatusOptions },
     ],
     [
       { prop: 'remark', label: '备注', type: 'textarea', span: 24, rows: 3, placeholder: '备注' },
@@ -762,10 +823,10 @@ export const moldPageConfig: BasePageConfig<
   ],
   metrics: [
     { label: '模具总数', resolve: (_rows, total) => total },
-    { label: '正常', resolve: (rows) => rows.filter((item) => item.status === 'NORMAL').length },
-    { label: '维护中', resolve: (rows) => rows.filter((item) => item.status === 'REPAIR').length },
-    { label: '报废', resolve: (rows) => rows.filter((item) => item.status === 'SCRAP').length },
-    { label: '临近保养', resolve: (rows) => rows.filter((item) => Number(item.maintenanceRate || 0) >= 80).length },
+    { label: '运行状态', resolve: (rows) => rows.filter((item) => item.status === 'NORMAL').length },
+    { label: '保养状态', resolve: (rows) => rows.filter((item) => item.status === 'REPAIR' || Number(item.maintenanceRate || 0) >= 80).length },
+    { label: '寿命参数', resolve: (rows) => rows.filter((item) => hasPositiveNumber(item.lifetime) && hasPositiveNumber(item.maintenanceCycle)).length },
+    { label: '异常风险', resolve: (rows) => rows.filter((item) => getMoldDataRisk(item)).length },
   ],
   createSearchState: () => ({ status: '' }),
   createFormState: () => ({
@@ -833,32 +894,34 @@ export const customerPageConfig: BasePageConfig<
   }
 > = {
   title: '客户管理',
+  subtitle: '维护客户档案、联系人、账期和信用等级，支撑销售订单与应收回款。',
   entityName: '客户',
   detailTitle: '客户信息',
   emptyText: '暂无客户',
   emptyDetailText: '请选择一条客户查看详情',
   dialogWidth: '720px',
   formLabelWidth: '96px',
-  actionWidth: 160,
+  actionWidth: 210,
   logKeyword: '客户管理',
   searchFields: [
     baseStatusSearchField,
     { prop: 'creditLevel', label: '信用', type: 'select', width: '140px', options: customerCreditOptions },
   ],
-  toolbarActions: [toolbar.add, toolbar.refresh],
+  toolbarActions: [toolbar.add, toolbar.refresh, toolbar.export],
   rowActions: [
     { key: 'inspect', label: '详情', type: 'primary', link: true },
     { key: 'edit', label: '编辑', type: 'primary', link: true },
+    { key: 'approve', label: '审核', type: 'success', link: true },
     { key: 'delete', label: '删除', type: 'danger', link: true },
   ],
   tableColumns: [
-    { prop: 'code', label: '编号', width: 120 },
-    { prop: 'name', label: '名称', minWidth: 140 },
+    { prop: 'code', label: '编号', width: 120, fixed: 'left' },
+    { prop: 'name', label: '名称', minWidth: 140, fixed: 'left' },
     { prop: 'shortName', label: '简称', width: 120 },
     { prop: 'contact', label: '联系人', width: 100 },
     { prop: 'phone', label: '电话', width: 130 },
     { prop: 'creditLevel', label: '信用', width: 90, kind: 'tag', tagMap: customerCreditMap },
-    { prop: 'paymentDays', label: '账期', width: 90, formatter: (value) => `${Number(value || 0)}天` },
+    { prop: 'paymentDays', label: '账期', width: 90, align: 'right', formatter: (value) => `${Number(value || 0)}天` },
     { prop: 'status', label: '状态', width: 90, kind: 'tag', tagMap: baseStatusMap },
   ],
   detailItems: [
@@ -904,9 +967,9 @@ export const customerPageConfig: BasePageConfig<
   ],
   metrics: [
     { label: '客户总数', resolve: (_rows, total) => total },
-    { label: '启用', resolve: (rows) => buildCustomerMasterSummary(rows.map(normalizeCustomerMaster)).enabled },
-    { label: '含税信息', resolve: (rows) => buildCustomerMasterSummary(rows.map(normalizeCustomerMaster)).withTaxInfo },
-    { label: '现结客户', resolve: (rows) => buildCustomerMasterSummary(rows.map(normalizeCustomerMaster)).cashCustomers },
+    { label: '联系人', resolve: (rows) => buildCustomerMasterSummary(rows.map(normalizeCustomerMaster)).withContact },
+    { label: '税票信息', resolve: (rows) => buildCustomerMasterSummary(rows.map(normalizeCustomerMaster)).withTaxInfo },
+    { label: '账期', resolve: (rows) => rows.filter((item) => Number(item.paymentDays || 0) >= 0).length },
     { label: '销售归属', resolve: (rows) => buildCustomerMasterSummary(rows.map(normalizeCustomerMaster)).assignedSales },
     { label: '数据风险', resolve: (rows) => buildCustomerMasterSummary(rows.map(normalizeCustomerMaster)).dataRisks },
   ],
@@ -1014,6 +1077,7 @@ export const supplierPageConfig: BasePageConfig<
   }
 > = {
   title: '供应商管理',
+  subtitle: '维护供应商资质、联系人、账期和风险状态，支撑采购闭环与来料追溯。',
   entityName: '供应商',
   detailTitle: '供应商信息',
   emptyText: '暂无供应商',
@@ -1030,8 +1094,8 @@ export const supplierPageConfig: BasePageConfig<
     { key: 'delete', label: '删除', type: 'danger', link: true },
   ],
   tableColumns: [
-    { prop: 'code', label: '编号', width: 120 },
-    { prop: 'name', label: '名称', minWidth: 140 },
+    { prop: 'code', label: '编号', width: 120, fixed: 'left' },
+    { prop: 'name', label: '名称', minWidth: 140, fixed: 'left' },
     { prop: 'contact', label: '联系人', width: 100 },
     { prop: 'phone', label: '电话', width: 130 },
     { prop: 'mainMaterial', label: '主营材料', minWidth: 150 },
@@ -1068,10 +1132,9 @@ export const supplierPageConfig: BasePageConfig<
   ],
   metrics: [
     { label: '供应商总数', resolve: (_rows, total) => total },
-    { label: '启用', resolve: (rows) => buildSupplierMasterSummary(rows.map(normalizeSupplierMaster)).enabled },
-    { label: '禁用', resolve: (rows) => buildSupplierMasterSummary(rows.map(normalizeSupplierMaster)).disabled },
+    { label: '联系人', resolve: (rows) => buildSupplierMasterSummary(rows.map(normalizeSupplierMaster)).withContact },
+    { label: '电话', resolve: (rows) => buildSupplierMasterSummary(rows.map(normalizeSupplierMaster)).withPhone },
     { label: '主营材料', resolve: (rows) => buildSupplierMasterSummary(rows.map(normalizeSupplierMaster)).withMainMaterial },
-    { label: '有联系人', resolve: (rows) => buildSupplierMasterSummary(rows.map(normalizeSupplierMaster)).withContact },
     { label: '数据风险', resolve: (rows) => buildSupplierMasterSummary(rows.map(normalizeSupplierMaster)).dataRisks },
   ],
   createSearchState: () => ({ status: '' }),
@@ -1141,6 +1204,7 @@ export const userPageConfig: BasePageConfig<
   }
 > = {
   title: '用户管理',
+  subtitle: '维护管理端账号、角色和启用状态，支撑权限菜单与审计追踪。',
   entityName: '用户',
   detailTitle: '用户信息',
   emptyText: '暂无用户',
@@ -1165,8 +1229,8 @@ export const userPageConfig: BasePageConfig<
     { key: 'delete', label: '删除', type: 'danger', link: true },
   ],
   tableColumns: [
-    { prop: 'username', label: '用户名', width: 140 },
-    { prop: 'realName', label: '姓名', width: 120 },
+    { prop: 'username', label: '用户名', width: 140, fixed: 'left' },
+    { prop: 'realName', label: '姓名', width: 120, fixed: 'left' },
     { prop: 'phone', label: '手机号', width: 140 },
     { prop: 'role', label: '角色', width: 120 },
     { prop: 'status', label: '状态', width: 90, kind: 'tag', tagMap: baseStatusMap },
@@ -1205,10 +1269,10 @@ export const userPageConfig: BasePageConfig<
   ],
   metrics: [
     { label: '用户总数', resolve: (_rows, total) => total },
-    { label: '启用', resolve: (rows) => rows.filter((item) => String(item.status) === '1').length },
-    { label: '禁用', resolve: (rows) => rows.filter((item) => String(item.status) === '0').length },
-    { label: '管理员', resolve: (rows) => rows.filter((item) => item.role === 'admin').length },
-    { label: '操作员', resolve: (rows) => rows.filter((item) => item.role === 'operator').length },
+    { label: '启用状态', resolve: (rows) => rows.filter((item) => isEnabledStatus(item.status)).length },
+    { label: '角色/权限', resolve: (rows) => rows.filter((item) => hasText(item.role)).length },
+    { label: '基础完整性', resolve: (rows) => rows.filter((item) => !getUserDataRisk(item)).length },
+    { label: '数据风险', resolve: (rows) => rows.filter((item) => getUserDataRisk(item)).length },
   ],
   createSearchState: () => ({ status: '', role: '' }),
   createFormState: () => ({
@@ -1283,9 +1347,11 @@ export const warehousePageConfig: BasePageConfig<
     factoryCode: string
     workshop: string
     managerId: number | null
+    status: string
   }
 > = {
   title: '仓库管理',
+  subtitle: '维护仓库、库位和启用状态，支撑入库、出库、调拨和库存查询。',
   entityName: '仓库',
   detailTitle: '仓库信息',
   emptyText: '暂无仓库',
@@ -1312,8 +1378,8 @@ export const warehousePageConfig: BasePageConfig<
     { key: 'delete', label: '删除', type: 'danger', link: true },
   ],
   tableColumns: [
-    { prop: 'code', label: '编号', width: 120 },
-    { prop: 'name', label: '名称', minWidth: 140 },
+    { prop: 'code', label: '编号', width: 120, fixed: 'left' },
+    { prop: 'name', label: '名称', minWidth: 140, fixed: 'left' },
     { prop: 'type', label: '类型', width: 100 },
     { prop: 'factoryCode', label: '工厂', width: 120 },
     { prop: 'workshop', label: '车间', width: 120 },
@@ -1357,10 +1423,10 @@ export const warehousePageConfig: BasePageConfig<
   ],
   metrics: [
     { label: '仓库总数', resolve: (_rows, total) => total },
-    { label: '启用', resolve: (rows) => rows.filter((item) => String(item.status) === '1' || String(item.status) === '启用').length },
-    { label: '禁用', resolve: (rows) => rows.filter((item) => String(item.status) === '0' || String(item.status) === '禁用').length },
-    { label: '成品仓', resolve: (rows) => rows.filter((item) => item.type === 'FINISH').length },
-    { label: '有负责人', resolve: (rows) => rows.filter((item) => item.managerId).length },
+    { label: '启用状态', resolve: (rows) => rows.filter((item) => isEnabledStatus(item.status)).length },
+    { label: '基础完整性', resolve: (rows) => rows.filter((item) => !getWarehouseDataRisk(item)).length },
+    { label: '仓库类型', resolve: (rows) => new Set(rows.map((item) => item.type).filter(Boolean)).size },
+    { label: '数据风险', resolve: (rows) => rows.filter((item) => getWarehouseDataRisk(item)).length },
   ],
   createSearchState: () => ({ type: '', status: '', workshop: '' }),
   createFormState: () => ({
@@ -1372,6 +1438,7 @@ export const warehousePageConfig: BasePageConfig<
     factoryCode: '',
     workshop: '',
     managerId: null,
+    status: '1',
   }),
   mapFormFromRow: (row: any) => ({
     id: row.id || 0,
@@ -1382,6 +1449,7 @@ export const warehousePageConfig: BasePageConfig<
     factoryCode: row.factoryCode || '',
     workshop: row.workshop || '',
     managerId: row.managerId ?? null,
+    status: String(row.status ?? '1'),
   }),
   buildQuery: ({ page, pageSize, keyword, search }) => ({
     page,
@@ -1399,6 +1467,7 @@ export const warehousePageConfig: BasePageConfig<
     factoryCode: form.factoryCode,
     workshop: form.workshop,
     managerId: form.managerId ?? undefined,
+    status: form.status,
   }),
   formRules: {
     code: [{ required: true, message: '请输入仓库编号', trigger: 'blur' }],

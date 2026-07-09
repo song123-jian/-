@@ -1,12 +1,13 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory, createWebHistory } from 'vue-router'
 import { createAppRoutes } from './build-routes'
 import { getStoredToken } from '@/utils/auth-storage'
 import { buildLoginUrl, resolvePostLoginPath } from '@/utils/auth-route'
+import { canAccessRoles, getStoredUserRoles } from '@/utils/role-access'
 
 const viewModules = import.meta.glob('../views/**/*.vue') as Record<string, () => Promise<unknown>>
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: window.location.protocol === 'file:' ? createWebHashHistory() : createWebHistory(),
   routes: createAppRoutes(viewModules),
 })
 
@@ -21,6 +22,8 @@ router.beforeEach((to, _from, next) => {
     next()
   } else if (!token) {
     next(buildLoginUrl(to.fullPath))
+  } else if (!canAccessRoles(getStoredUserRoles(), to.meta.roles as string[] | undefined)) {
+    next('/dashboard')
   } else {
     next()
   }

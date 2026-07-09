@@ -1,10 +1,38 @@
 <template>
   <div class="login-page">
     <main class="login-shell">
-      <section class="login-panel">
+      <section class="login-brand" aria-label="系统概览">
+        <div class="brand-head">
+          <div class="brand-mark">注</div>
+          <div class="brand-title-wrap">
+            <p class="brand-kicker">云库质量追溯管理端</p>
+            <h1 class="brand-title">注塑厂管理系统</h1>
+          </div>
+        </div>
+
+        <p class="brand-copy">
+          围绕订单、生产、质量、设备、工资和云库运维建立统一入口，支撑管理端上线前的稳定交付。
+        </p>
+
+        <div class="login-system-grid">
+          <div v-for="item in systemTiles" :key="item.title" class="system-tile">
+            <span class="tile-label">{{ item.label }}</span>
+            <strong>{{ item.title }}</strong>
+            <small>{{ item.desc }}</small>
+          </div>
+        </div>
+
+        <div class="brand-footer">
+          <span class="status-dot" :class="{ 'is-warning': !isSupabaseConfigured }"></span>
+          <span>{{ isSupabaseConfigured ? 'Supabase 云库已配置' : '等待 Supabase 环境配置' }}</span>
+        </div>
+      </section>
+
+      <section class="login-card" aria-label="登录表单">
         <header class="login-header">
-          <h1 class="login-title">注塑厂管理系统</h1>
-          <p class="login-subtitle">Supabase 云端登录</p>
+          <p class="login-kicker">管理员登录</p>
+          <h2 class="login-title">进入管理端</h2>
+          <p class="login-subtitle">使用已授权账号访问业务页面和运维工具</p>
         </header>
 
         <el-alert
@@ -63,6 +91,7 @@
               type="primary"
               size="large"
               native-type="submit"
+              :icon="User"
               :loading="loading"
               :disabled="!isSupabaseConfigured"
               class="login-btn"
@@ -103,6 +132,13 @@ const loading = ref(false)
 const authError = ref('')
 const redirectQuery = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('redirect') : null
 const redirectPath = redirectQuery ? resolvePostLoginPath(redirectQuery) : ''
+
+const systemTiles = [
+  { label: '质量', title: '过程追溯', desc: '检验、异常、闭环证据统一归档' },
+  { label: '现场', title: '生产执行', desc: '派工、报工、设备状态集中呈现' },
+  { label: '经营', title: '销售采购', desc: '订单、交付、应收应付贯通' },
+  { label: '运维', title: '云库保障', desc: '备份恢复、权限和清理集中管理' },
+] as const
 
 const loginForm = reactive({
   username: '',
@@ -149,47 +185,177 @@ async function handleLogin() {
 <style scoped lang="scss">
 .login-page {
   min-height: 100vh;
-  padding: 24px;
+  padding: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(238, 242, 246, 0.92) 42%),
+    #eef2f6;
 }
 
 .login-shell {
-  width: 100%;
-  display: flex;
-  justify-content: center;
+  width: min(100%, 1040px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  gap: 24px;
+  align-items: stretch;
 }
 
-.login-panel {
-  width: min(100%, 440px);
-  padding: 36px 32px 28px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+.login-brand,
+.login-card {
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-card);
+  box-shadow: var(--ui-shadow-panel);
+}
+
+.login-brand {
+  min-height: 560px;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  background: #172033;
+  color: #fff;
+  overflow: hidden;
+}
+
+.brand-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.brand-mark {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
   border-radius: 8px;
-  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #0f766e;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.brand-title-wrap {
+  min-width: 0;
+}
+
+.brand-kicker,
+.login-kicker {
+  margin: 0 0 6px;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.brand-title {
+  margin: 0;
+  color: #fff;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.brand-copy {
+  max-width: 580px;
+  margin: 34px 0 0;
+  color: #d9e2ee;
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.login-system-grid {
+  margin-top: 36px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.system-tile {
+  min-height: 118px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 1px solid rgba(226, 232, 240, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tile-label {
+  color: #7dd3fc;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.system-tile strong {
+  margin-top: 10px;
+  color: #fff;
+  font-size: 17px;
+  line-height: 24px;
+  letter-spacing: 0;
+}
+
+.system-tile small {
+  margin-top: 8px;
+  color: #b8c4d4;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.brand-footer {
+  margin-top: auto;
+  padding-top: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+
+  &.is-warning {
+    background: #f59e0b;
+    box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.14);
+  }
+}
+
+.login-card {
+  padding: 34px 30px 26px;
+  background: #fff;
 }
 
 .login-header {
-  margin-bottom: 20px;
+  margin-bottom: 22px;
 }
 
 .login-title {
   margin: 0;
-  font-size: 28px;
-  line-height: 1.2;
   color: #111827;
-  font-weight: 700;
-  text-align: center;
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: 0;
 }
 
 .login-subtitle {
   margin: 10px 0 0;
+  color: #64748b;
   font-size: 14px;
-  line-height: 1.5;
-  color: #6b7280;
-  text-align: center;
+  line-height: 1.6;
 }
 
 .login-alert {
@@ -204,6 +370,7 @@ async function handleLogin() {
 
 .login-btn {
   width: 100%;
+  min-height: 42px;
 }
 
 .login-status {
@@ -212,8 +379,8 @@ async function handleLogin() {
   align-items: center;
   justify-content: center;
   gap: 10px;
+  color: #64748b;
   font-size: 12px;
-  color: #6b7280;
 }
 
 .login-status-text {
@@ -222,24 +389,64 @@ async function handleLogin() {
 
 .login-redirect {
   margin: 12px 0 0;
+  color: #8b95a1;
   text-align: center;
   font-size: 12px;
-  color: #8b95a1;
   line-height: 1.5;
   word-break: break-all;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 920px) {
   .login-page {
-    padding: 16px;
+    align-items: flex-start;
+    padding: 20px;
   }
 
-  .login-panel {
-    padding: 24px 18px 20px;
+  .login-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .login-brand {
+    min-height: 0;
+    padding: 28px;
+  }
+}
+
+@media (max-width: 560px) {
+  .login-page {
+    padding: 12px;
+  }
+
+  .login-brand,
+  .login-card {
+    padding: 20px;
+  }
+
+  .brand-head {
+    align-items: flex-start;
+  }
+
+  .brand-title {
+    font-size: 24px;
+  }
+
+  .brand-copy {
+    margin-top: 22px;
+    font-size: 14px;
+  }
+
+  .login-system-grid {
+    grid-template-columns: 1fr;
+    margin-top: 22px;
   }
 
   .login-title {
-    font-size: 24px;
+    font-size: 23px;
+  }
+
+  .login-status {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>

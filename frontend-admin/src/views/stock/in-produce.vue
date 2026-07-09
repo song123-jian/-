@@ -41,6 +41,15 @@
       </el-form-item>
     </SearchBar>
 
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      :title="errorMessage"
+      show-icon
+      :closable="false"
+    />
+
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading" empty-text="暂无成品入库记录">
         <el-table-column prop="moveNo" label="入库单号" min-width="170" show-overflow-tooltip />
@@ -200,6 +209,7 @@ import {
   getProductionInboundUnitCost,
   getQualifiedProductionQty,
   getRemainingProductionInboundQty,
+  isProductionInboundOrderStatus,
   toProductionNumber,
 } from '@/utils/production-inbound'
 
@@ -240,6 +250,7 @@ const searchKeyword = ref('')
 const searchWarehouseId = ref<number | null>(null)
 const searchProductId = ref<number | null>(null)
 const searchDate = ref<string[]>([])
+const errorMessage = ref('')
 const dialogVisible = ref(false)
 const submitting = ref(false)
 const formRef = ref<FormInstance>()
@@ -290,7 +301,7 @@ const inboundedQtyByOrder = computed(() => {
 })
 
 const inboundableProdOrderOptions = computed(() =>
-  prodOrderOptions.value.filter((item) => ['RUNNING', 'PAUSED', 'FINISHED'].includes(normalizeStatus(item.status)) && remainingQtyOf(item) > 0)
+  prodOrderOptions.value.filter((item) => isProductionInboundOrderStatus(item.status) && remainingQtyOf(item) > 0)
 )
 
 const qualifiedQty = computed(() => qualifiedQtyOf(selectedProdOrder.value))
@@ -340,6 +351,10 @@ function pad(value: number) {
 function createInboundNo() {
   const now = new Date()
   return `RK-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}${String(now.getMilliseconds()).padStart(3, '0')}`
+}
+
+function failureText(error: any, fallback: string) {
+  return error?.message || error?.data?.message || fallback
 }
 
 function optionText(item?: OptionItem | null) {
@@ -431,11 +446,12 @@ async function loadOptions() {
     productOptions.value = productRes.data?.records || productRes.data?.list || []
     warehouseOptions.value = warehouseRes.data?.records || warehouseRes.data?.list || []
     inboundRows.value = inboundRes.data?.records || inboundRes.data?.list || []
-  } catch {
+  } catch (error: any) {
     prodOrderOptions.value = []
     productOptions.value = []
     warehouseOptions.value = []
     inboundRows.value = []
+    ElMessage.error(failureText(error, '成品入库基础选项加载失败，请检查生产工单、产品、仓库和入库记录。'))
   }
 }
 
@@ -449,14 +465,16 @@ async function refreshInboundRows() {
       relatedOrderType: 'PROD_ORDER',
     })
     inboundRows.value = res.data?.records || res.data?.list || []
-  } catch {
+  } catch (error: any) {
     inboundRows.value = []
+    ElMessage.error(failureText(error, '成品入库记录刷新失败，请检查库存台账。'))
   }
 }
 
 async function fetchData() {
   loading.value = true
   try {
+    errorMessage.value = ''
     const res: any = await getStockLedger({
       page: pagination.page,
       pageSize: pagination.pageSize,
@@ -472,9 +490,11 @@ async function fetchData() {
     const rows = res.data?.records || res.data?.list || []
     tableData.value = rows
     pagination.total = res.data?.total || rows.length
-  } catch {
+  } catch (error: any) {
     tableData.value = []
     pagination.total = 0
+    errorMessage.value = failureText(error, '成品入库记录加载失败，请检查 Supabase 连接、库存台账和成品入库配置。')
+    ElMessage.error(errorMessage.value)
   } finally {
     loading.value = false
   }
@@ -526,8 +546,8 @@ async function handleSubmit() {
     dialogVisible.value = false
     await refreshInboundRows()
     fetchData()
-  } catch {
-    // 交给全局拦截器提示
+  } catch (error: any) {
+    ElMessage.error(failureText(error, '成品入库提交失败，请检查工单状态、合格产量、领料数量和入库数量。'))
   } finally {
     submitting.value = false
   }
@@ -571,6 +591,10 @@ onMounted(async () => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.page-alert {
+  margin-bottom: 12px;
 }
 
 .inbound-summary {

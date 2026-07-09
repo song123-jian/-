@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import {
   DEFAULT_SYSTEM_CONFIG,
@@ -9,6 +10,8 @@ import {
   toSystemConfigBoolean,
   validateSystemConfig,
 } from '../frontend-admin/src/utils/system-config.ts'
+
+const read = (path) => readFileSync(path, 'utf8')
 
 describe('system config normalization', () => {
   it('normalizes database strings into a stable page model', () => {
@@ -124,5 +127,25 @@ describe('system config persistence payload', () => {
       updated_at: '2026-07-04T00:00:00.000Z',
     })
     assert.equal(rows.at(-1).config_key, 'mold_lifetime_warning_ratio')
+  })
+})
+
+describe('system config destructive maintenance controls', () => {
+  it('exposes one-click business data clearing behind confirmation text and preserves login/config tables', () => {
+    const configPage = read('frontend-admin/src/views/system/config.vue')
+    const systemApi = read('frontend-admin/src/api/system.ts')
+    const supabaseRequest = read('frontend-admin/src/api/supabaseRequest.ts')
+
+    assert.equal(configPage.includes('危险操作'), true)
+    assert.equal(configPage.includes('一键清除所有数据'), true)
+    assert.equal(configPage.includes('清除所有业务数据'), true)
+    assert.equal(configPage.includes('ElMessageBox.prompt'), true)
+    assert.equal(systemApi.includes('clearAllBusinessData'), true)
+    assert.equal(systemApi.includes('/system/clear-business-data'), true)
+    assert.equal(supabaseRequest.includes('CLEAR_BUSINESS_DATA_CONFIRM_TEXT'), true)
+    assert.equal(supabaseRequest.includes("if (path === 'system/clear-business-data') return clearBusinessData(data || {})"), true)
+    assert.equal(supabaseRequest.includes("preservedTables: [...PRESERVED_BUSINESS_CLEAR_TABLES]"), true)
+    assert.equal(supabaseRequest.includes("'sys_user'"), true)
+    assert.equal(supabaseRequest.includes("'sys_config'"), true)
   })
 })

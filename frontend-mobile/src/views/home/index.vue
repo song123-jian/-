@@ -19,6 +19,7 @@
       <van-grid :column-num="4" :border="false">
         <van-grid-item icon="todo-list-o" text="待办中心" @click="goTo('/m/todo')" />
         <van-grid-item icon="scan" text="扫码报工" @click="goTo('/m/report')" />
+        <van-grid-item icon="warning-o" text="异常上报" @click="goTo('/m/abnormal-report')" />
         <van-grid-item icon="replay" text="离线任务" @click="goTo('/m/offline-tasks')" />
         <van-grid-item icon="setting-o" text="注塑专业" @click="goTo('/m/injection')" />
         <van-grid-item icon="chart-trending-o" text="我的产量" @click="goTo('/m/my-output')" />
@@ -84,6 +85,8 @@ import { useRouter } from 'vue-router'
 import { useUserStore } from '../../store/user'
 import { getCurrentShiftTasks } from '../../api/prodReport'
 import { getUnreadCount } from '../../api/notification'
+import { getPendingQcOrders } from '../../api/qcRecord'
+import { getPendingInventoryTasks, getPendingTransfers } from '../../api/stock'
 import { getActionableOfflineActionTasks, getActionableOfflineReports } from '../../utils/offline'
 import { getInjectionMobileTasks } from '../../api/injection'
 import { buildOfflineTaskCenter } from '../../utils/offline-task-center'
@@ -96,12 +99,18 @@ const unreadCount = ref(0)
 
 /** 当班任务列表 */
 const tasks = ref<any[]>([])
+const qcOrders = ref<any[]>([])
+const inventoryTasks = ref<any[]>([])
+const transferTasks = ref<any[]>([])
 const offlineReports = ref<any[]>([])
 const offlineActionTasks = ref<any[]>([])
 const injectionTasks = ref<any[]>([])
 const offlineTasks = computed(() => buildOfflineTaskCenter(offlineReports.value, offlineActionTasks.value).tasks)
 const todoItems = computed(() => buildMobileTodoItems({
   reportTasks: tasks.value,
+  qcOrders: qcOrders.value,
+  inventoryTasks: inventoryTasks.value,
+  transferTasks: transferTasks.value,
   offlineTasks: offlineTasks.value,
   injectionTasks: injectionTasks.value,
 }))
@@ -138,11 +147,26 @@ async function loadOfflineTasks() {
   }
 }
 
+function unwrapRecords(res: any) {
+  const data = res?.data?.records || res?.data?.list || res?.data || res?.records || res || []
+  return Array.isArray(data) ? data : [data].filter(Boolean)
+}
+
+async function loadActionableTasks() {
+  const [qcRes, inventoryRes, transferRes] = await Promise.allSettled([
+    getPendingQcOrders(),
+    getPendingInventoryTasks(),
+    getPendingTransfers(),
+  ])
+  qcOrders.value = qcRes.status === 'fulfilled' ? unwrapRecords(qcRes.value) : []
+  inventoryTasks.value = inventoryRes.status === 'fulfilled' ? unwrapRecords(inventoryRes.value) : []
+  transferTasks.value = transferRes.status === 'fulfilled' ? unwrapRecords(transferRes.value) : []
+}
+
 async function loadInjectionTasks() {
   try {
     const res = await getInjectionMobileTasks() as any
-    const data = res?.data || res || []
-    injectionTasks.value = Array.isArray(data) ? data : []
+    injectionTasks.value = unwrapRecords(res)
   } catch {
     injectionTasks.value = []
   }
@@ -162,6 +186,7 @@ onMounted(() => {
   loadTasks()
   loadUnreadCount()
   loadOfflineTasks()
+  loadActionableTasks()
   loadInjectionTasks()
 })
 </script>

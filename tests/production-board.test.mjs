@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import {
   buildProductionBoardSummary,
@@ -14,6 +15,11 @@ import {
   normalizeProductionBoardSummary,
   productionRatioPercent,
 } from '../frontend-admin/src/utils/production-board.ts'
+
+const source = [
+  readFileSync('frontend-admin/src/views/report/production-board.vue', 'utf8'),
+  readFileSync('frontend-admin/src/utils/production-board.ts', 'utf8'),
+].join('\n')
 
 const summary = {
   periodMode: 'ACCOUNTING_MONTHS',
@@ -79,6 +85,60 @@ describe('production board normalization', () => {
     assert.equal(normalized.orderProgresses[0].completionRate, 100)
     assert.equal(normalized.topDefects[0].defectType, '未分类')
     assert.equal(normalized.topDefects[0].qty, 3.33)
+  })
+})
+
+describe('production board page delivery target', () => {
+  it('keeps the page aligned with production dashboard decision fields', () => {
+    for (const marker of [
+      '生产看板',
+      '生产期间',
+      '快捷月数',
+      '口径：生产报工按 start_time 归集',
+      '本期总产量',
+      '良品数量',
+      '不良率',
+      '运行机台',
+      '工单达成',
+      '在制工单',
+      '逾期工单',
+      '班次产量',
+      '机台状态',
+      '机台实时状态',
+      '工单进度',
+      '不良类型排行',
+    ]) {
+      assert.equal(source.includes(marker), true)
+    }
+  })
+
+  it('keeps visible failure feedback and nonblank chart fallbacks', () => {
+    for (const marker of [
+      '生产看板加载失败',
+      'errorMessage',
+      'section-alert',
+      'ElMessage.error',
+      '暂无机台数据',
+      '暂无工单数据',
+      '暂无不良数据',
+      '暂无数据',
+    ]) {
+      assert.equal(source.includes(marker), true)
+    }
+  })
+
+  it('keeps dashboard data sourced from the unified production board API and helpers', () => {
+    for (const marker of [
+      'getProductionBoard',
+      'buildProductionBoardCards',
+      'buildProductionBoardRiskItems',
+      'buildProductionShiftChartRows',
+      'buildProductionMachineChartRows',
+      'normalizeProductionBoardSummary',
+      'validateFinanceStatementRange',
+    ]) {
+      assert.equal(source.includes(marker), true)
+    }
   })
 })
 

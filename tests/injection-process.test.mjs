@@ -5,6 +5,7 @@ import {
   buildInjectionRecordPayload,
   canStartProductionFromInjectionGates,
   getInjectionNextActions,
+  summarizeSiteExecutionGate,
   validateInjectionRecord,
 } from '../frontend-admin/src/utils/injection-professional.ts'
 
@@ -30,6 +31,30 @@ describe('注塑专业工艺与首件闭环', () => {
     assert.deepEqual(blocked.blockers, ['首件未允许量产'])
     const allowed = canStartProductionFromInjectionGates({ processCardStatus: 'ACTIVE', firstArticleStatus: 'APPROVED_PRODUCTION', startupStatus: 'PASSED' })
     assert.equal(allowed.allowed, true)
+  })
+
+  it('现场执行门禁汇总覆盖工艺卡、首件、齐套和配料烘料', () => {
+    const blocked = summarizeSiteExecutionGate({
+      prodOrderId: 9,
+      processCardStatus: 'ACTIVE',
+      firstArticleStatus: 'APPROVED_PRODUCTION',
+      startupStatus: 'FAILED',
+      materialMixStatus: 'SUBMITTED',
+    })
+
+    assert.equal(blocked.allowed, false)
+    assert.equal(blocked.total, 4)
+    assert.equal(blocked.passed, 2)
+    assert.deepEqual(blocked.blockers, ['齐套检查失败', '配料烘料未审核'])
+
+    const allowed = summarizeSiteExecutionGate({
+      processCardStatus: 'ACTIVE',
+      firstArticleStatus: 'APPROVED_PRODUCTION',
+      startupStatus: 'PASSED',
+      materialMixStatus: 'APPROVED',
+    })
+    assert.equal(allowed.allowed, true)
+    assert.equal(allowed.passed, 4)
   })
 
   it('状态流转覆盖提交、审核、分派、开始、完成和关闭', () => {

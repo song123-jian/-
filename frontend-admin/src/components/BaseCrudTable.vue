@@ -17,13 +17,13 @@
           :label="column.label"
           :width="column.width"
           :min-width="column.minWidth"
+          :fixed="column.fixed"
+          :align="column.align"
           show-overflow-tooltip
         >
           <template #default="{ row }">
             <template v-if="column.kind === 'tag'">
-              <el-tag :type="resolveTag(column, row[column.prop]).type" effect="plain">
-                {{ resolveTag(column, row[column.prop]).label }}
-              </el-tag>
+              <StatusTag v-bind="resolveTag(column, row[column.prop])" />
             </template>
             <template v-else-if="column.kind === 'progress'">
               <el-progress :percentage="column.progress ? column.progress(row) : 0" :stroke-width="10" />
@@ -44,19 +44,13 @@
             </template>
           </template>
         </el-table-column>
-        <el-table-column :label="actionLabel" fixed="right" :width="config.actionWidth" align="center" class-name="action-column">
+        <el-table-column :label="actionLabel" fixed="right" :width="resolvedActionWidth" align="center" class-name="action-column">
           <template #default="{ row }">
-            <div class="row-actions">
-              <el-button
-                v-for="action in config.rowActions"
-                :key="action.key"
-                link
-                :type="action.type || 'primary'"
-                @click="$emit('row-action', action.key, row)"
-              >
-                {{ typeof action.label === 'function' ? action.label(row) : action.label }}
-              </el-button>
-            </div>
+            <RowActions
+              :actions="resolveRowActions(row)"
+              :max-visible="2"
+              @command="$emit('row-action', $event, row)"
+            />
           </template>
         </el-table-column>
       </el-table>
@@ -76,10 +70,13 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { BasePageConfig, TableColumn } from '@/views/base/base-data-schema'
 import { resolveTagMeta } from '@/views/base/base-data-schema'
+import RowActions, { type RowActionItem } from './RowActions.vue'
+import StatusTag from './StatusTag.vue'
 
-defineProps<{
+const props = defineProps<{
   config: BasePageConfig<any, any>
   rows: any[]
   loading: boolean
@@ -96,6 +93,16 @@ defineEmits<{
 
 function resolveTag(column: TableColumn, value: any) {
   return column.tagMap ? resolveTagMeta(column.tagMap, value) : resolveTagMeta({}, value)
+}
+
+const resolvedActionWidth = computed(() => Math.min(Number(props.config.actionWidth || 150), 170))
+
+function resolveRowActions(row: any): RowActionItem[] {
+  return props.config.rowActions.map((action) => ({
+    key: action.key,
+    label: typeof action.label === 'function' ? action.label(row) : action.label,
+    type: action.type || 'primary',
+  }))
 }
 
 function resolveCell(column: TableColumn, row: any) {
@@ -116,20 +123,6 @@ function resolveCell(column: TableColumn, row: any) {
   width: 100%;
 }
 
-.row-actions {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 2px 8px;
-  min-height: 24px;
-
-  :deep(.el-button) {
-    margin-left: 0;
-    padding: 0;
-  }
-}
-
 .pagination {
   margin-top: 12px;
   display: flex;
@@ -139,9 +132,9 @@ function resolveCell(column: TableColumn, row: any) {
 .table-image {
   width: 44px;
   height: 44px;
-  border-radius: 6px;
-  border: 1px solid #e6e8eb;
-  background: #f8fafc;
+  border-radius: var(--ui-radius-control);
+  border: 1px solid var(--ui-color-border-soft);
+  background: var(--ui-color-surface-muted);
   vertical-align: middle;
 }
 </style>

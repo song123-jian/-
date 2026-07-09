@@ -1,5 +1,32 @@
 import { normalizeSalaryProcessName } from './salary-price.ts'
 
+export const PROD_REPORT_ORDER_STATUSES = ['SCHEDULED', 'RUNNING', 'PAUSED'] as const
+
+export type ProdReportOrderStatus = (typeof PROD_REPORT_ORDER_STATUSES)[number]
+
+export function normalizeProdReportStatus(value?: string | null) {
+  return String(value || '').toUpperCase()
+}
+
+export function isProdReportOrderStatus(value?: string | null) {
+  return PROD_REPORT_ORDER_STATUSES.includes(normalizeProdReportStatus(value) as ProdReportOrderStatus)
+}
+
+export function toProdReportNumber(value: unknown) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : 0
+}
+
+export function getProdReportGoodQty(row?: Record<string, any> | null) {
+  return Math.max(toProdReportNumber(row?.qty) - toProdReportNumber(row?.badQty ?? row?.bad_qty), 0)
+}
+
+export function getProdReportBadRate(row?: Record<string, any> | null) {
+  const qty = toProdReportNumber(row?.qty)
+  if (qty <= 0) return 0
+  return Number(((toProdReportNumber(row?.badQty ?? row?.bad_qty) / qty) * 100).toFixed(1))
+}
+
 export function normalizeProdReportProcessName(value?: string | null) {
   return normalizeSalaryProcessName(value)
 }

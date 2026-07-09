@@ -79,6 +79,7 @@ describe('finance receivable row and summary', () => {
       totalAmount: 350,
       receivedAmount: 70,
       receivableAmount: 280,
+      overdueAmount: 80,
       orderCount: 3,
       openOrderCount: 2,
       overdueOrderCount: 2,

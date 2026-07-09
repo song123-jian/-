@@ -16,7 +16,7 @@ const ACTION_TASKS_STORAGE_KEY = 'inject_erp_offline_action_tasks'
 export type SyncStatus = 'pending' | 'syncing' | 'synced' | 'failed'
 
 /** 通用离线任务来源 */
-export type OfflineActionSource = 'qc' | 'inventory' | 'transfer'
+export type OfflineActionSource = 'qc' | 'inventory' | 'transfer' | 'andon'
 
 /** 离线报工记录 */
 export interface OfflineReport {
@@ -315,6 +315,11 @@ async function submitOfflineActionTask(task: OfflineActionTask) {
   if (task.source === 'transfer') {
     const { confirmTransfer } = await import('../api/stock')
     await confirmTransfer(task.payload as any)
+    return
+  }
+  if (task.source === 'andon') {
+    const { createInjectionRecord } = await import('../api/injection')
+    await createInjectionRecord('andon-events', task.payload as any)
   }
 }
 

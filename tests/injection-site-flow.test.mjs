@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   buildAndonFromFailedStartup,
+  buildAndonFromFirstArticleRejection,
+  buildAndonFromMaterialMixRejection,
+  buildAndonFromSiteGateFailure,
   buildInjectionRecordPayload,
   buildStartupCheckResult,
   calculateInjectionOee,
@@ -18,6 +21,28 @@ describe('注塑现场闭环', () => {
     const andon = buildAndonFromFailedStartup({ id: 8, ...result })
     assert.equal(andon.title, '开工齐套检查未通过')
     assert.equal(andon.status, 'OPEN')
+  })
+
+  it('首件驳回、配料异常和门禁失败可派生安灯异常', () => {
+    const firstArticle = buildAndonFromFirstArticleRejection({ id: 12, status: 'REJECTED', remark: '尺寸超差' })
+    assert.equal(firstArticle.title, '首件确认驳回')
+    assert.equal(firstArticle.sourceType, 'FIRST_ARTICLE')
+
+    const materialMix = buildAndonFromMaterialMixRejection({ id: 13, status: 'FAILED', remark: '烘料不足' })
+    assert.equal(materialMix.title, '配料烘料异常')
+    assert.equal(materialMix.sourceType, 'MATERIAL_MIX')
+
+    const gate = buildAndonFromSiteGateFailure({
+      prodOrderId: 9,
+      processCardStatus: 'ACTIVE',
+      firstArticleStatus: 'REJECTED',
+      startupStatus: 'FAILED',
+      materialMixStatus: 'APPROVED',
+    })
+    assert.equal(gate.title, '现场开工门禁未通过')
+    assert.equal(gate.level, 'CRITICAL')
+    assert.match(gate.description, /首件确认未通过/)
+    assert.match(gate.description, /齐套检查失败/)
   })
 
   it('配料回料比例和烘料时间必须有效', () => {

@@ -15,15 +15,7 @@
       </el-form-item>
     </SearchBar>
 
-    <el-row :gutter="16" class="summary-row">
-      <el-col v-for="item in summaryCards" :key="item.label" :xs="12" :md="6">
-        <div class="summary-card" :class="item.tone">
-          <span>{{ item.label }}</span>
-          <strong>{{ item.value }}</strong>
-          <small>{{ item.note }}</small>
-        </div>
-      </el-col>
-    </el-row>
+    <MetricStrip :items="summaryCards" testid="notification-center-metrics" />
 
     <el-card shadow="hover">
       <el-table :data="tableData" row-key="id" stripe v-loading="loading" empty-text="暂无消息">
@@ -71,6 +63,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import SearchBar from '@/components/SearchBar.vue'
+import MetricStrip, { type MetricStripItem } from '@/components/MetricStrip.vue'
 import { formatDateTime } from '@/utils'
 import { getNotificationList, markNotificationRead } from '@/api/notification'
 import {
@@ -95,11 +88,11 @@ const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
 
 const pageSummary = computed(() => buildNotificationSummary(tableData.value))
 const unreadItems = computed(() => tableData.value.filter((item) => !item.isRead))
-const summaryCards = computed(() => [
-  { label: '当前页消息', value: pageSummary.value.total, note: `共 ${pagination.total} 条匹配记录`, tone: 'info' },
-  { label: '未读', value: pageSummary.value.unread, note: '需要处理或确认', tone: pageSummary.value.unread ? 'danger' : 'success' },
-  { label: '严重', value: pageSummary.value.error, note: '异常/阻断类消息', tone: pageSummary.value.error ? 'danger' : 'info' },
-  { label: '警告', value: pageSummary.value.warning, note: '预警和待复核事项', tone: pageSummary.value.warning ? 'warning' : 'info' },
+const summaryCards = computed<MetricStripItem[]>(() => [
+  { label: '当前页消息', value: pageSummary.value.total, meta: `共 ${pagination.total} 条匹配记录`, tone: 'neutral' },
+  { label: '未读', value: pageSummary.value.unread, meta: '需要处理或确认', tone: pageSummary.value.unread ? 'danger' : 'success' },
+  { label: '严重', value: pageSummary.value.error, meta: '异常/阻断类消息', tone: pageSummary.value.error ? 'danger' : 'neutral' },
+  { label: '警告', value: pageSummary.value.warning, meta: '预警和待复核事项', tone: pageSummary.value.warning ? 'warning' : 'neutral' },
 ])
 
 async function fetchData() {
@@ -197,60 +190,6 @@ onMounted(() => {
 .page-container {
   .el-card {
     margin-top: 16px;
-  }
-}
-
-.summary-row {
-  margin-top: 16px;
-}
-
-.summary-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-height: 92px;
-  padding: 14px 16px;
-  border: 1px solid #e6e8eb;
-  border-radius: 8px;
-  background: #fff;
-
-  span,
-  small {
-    color: #8b95a1;
-    font-size: 12px;
-  }
-
-  strong {
-    color: #1f2937;
-    font-size: 24px;
-    line-height: 1;
-  }
-
-  &.danger {
-    border-color: #f3d1d1;
-    background: #fff8f8;
-
-    strong {
-      color: #c45656;
-    }
-  }
-
-  &.warning {
-    border-color: #f3d9a7;
-    background: #fffaf0;
-
-    strong {
-      color: #b88230;
-    }
-  }
-
-  &.success {
-    border-color: #c8e6c9;
-    background: #f7fff8;
-
-    strong {
-      color: #529b2e;
-    }
   }
 }
 

@@ -11,23 +11,16 @@
       </el-button>
     </PageHeader>
 
-    <section class="kpi-grid">
-      <article class="kpi-card">
-        <span>备件种类</span>
-        <strong>{{ summary.total }}</strong>
-        <small>当前备件档案数量</small>
-      </article>
-      <article class="kpi-card kpi-card--danger">
-        <span>低于安全库存</span>
-        <strong>{{ summary.lowStock }}</strong>
-        <small>需要采购或调拨补充</small>
-      </article>
-      <article class="kpi-card kpi-card--success">
-        <span>启用备件</span>
-        <strong>{{ summary.active }}</strong>
-        <small>可用于维修领用</small>
-      </article>
-    </section>
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      :title="errorMessage"
+      show-icon
+      :closable="false"
+    />
+
+    <MetricStrip class="metric-section" :items="metricCards" testid="spare-parts-metrics" />
 
     <el-card shadow="hover">
       <template #header>
@@ -59,8 +52,9 @@
           </template>
         </el-table-column>
         <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
+            <el-button v-if="isLowStock(row)" type="warning" link @click="createReplenishTodo(row)">补货待办</el-button>
             <el-button type="primary" link @click="openEdit(row)">编辑</el-button>
             <el-button type="danger" link @click="removeRow(row)">删除</el-button>
           </template>
@@ -118,7 +112,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitForm">保存</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitForm">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -128,11 +122,14 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh } from '@element-plus/icons-vue'
+import MetricStrip from '@/components/MetricStrip.vue'
 import PageHeader from '@/components/PageHeader.vue'
-import { createInjectionRecord, deleteInjectionRecord, getInjectionList, updateInjectionRecord } from '@/api/injection'
+import { createInjectionRecord, deleteInjectionRecord, getInjectionList, runInjectionAction, updateInjectionRecord } from '@/api/injection'
 
 const RESOURCE = 'spare-parts'
 const loading = ref(false)
+const submitting = ref(false)
+const errorMessage = ref('')
 const rows = ref<any[]>([])
 const keyword = ref('')
 const dialogVisible = ref(false)
@@ -155,6 +152,12 @@ const summary = computed(() => ({
   active: rows.value.filter((row) => row.status === 'ACTIVE').length,
 }))
 
+const metricCards = computed(() => [
+  { label: '备件种类', value: summary.value.total, meta: '当前备件档案数量', tone: 'primary' as const },
+  { label: '低于安全库存', value: summary.value.lowStock, meta: '需要采购或调拨补充', tone: 'danger' as const },
+  { label: '启用备件', value: summary.value.active, meta: '可用于维修领用', tone: 'success' as const },
+])
+
 function isLowStock(row: any) {
   return Number(row.qty || 0) <= Number(row.safeStock || 0)
 }
@@ -172,11 +175,20 @@ function resetForm(row: any = {}) {
   })
 }
 
+function failureText(error: any, fallback: string) {
+  return error?.message || error?.response?.data?.message || fallback
+}
+
 async function fetchData() {
   loading.value = true
+  errorMessage.value = ''
   try {
     const res: any = await getInjectionList(RESOURCE, { page: 1, pageSize: 200, keyword: keyword.value || undefined })
     rows.value = res.data?.records || res.data || []
+  } catch (error: any) {
+    rows.value = []
+    errorMessage.value = failureText(error, '备件库存加载失败，请检查 Supabase 连接和 spare_part 表结构。')
+    ElMessage.error(errorMessage.value)
   } finally {
     loading.value = false
   }
@@ -214,54 +226,45 @@ async function submitForm() {
     status: form.status,
     remark: form.remark,
   }
-  if (editingId.value) await updateInjectionRecord(RESOURCE, editingId.value, payload)
-  else await createInjectionRecord(RESOURCE, payload)
-  ElMessage.success('保存成功')
-  dialogVisible.value = false
-  fetchData()
+  submitting.value = true
+  try {
+    if (editingId.value) await updateInjectionRecord(RESOURCE, editingId.value, payload)
+    else await createInjectionRecord(RESOURCE, payload)
+    ElMessage.success('保存成功')
+    dialogVisible.value = false
+    await fetchData()
+  } catch (error: any) {
+    ElMessage.error(failureText(error, '备件保存失败，请检查编码、库存字段和 Supabase 写入权限。'))
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function createReplenishTodo(row: any) {
+  try {
+    await runInjectionAction(RESOURCE, Number(row.id), 'replenish')
+    ElMessage.success('已生成补货待办')
+  } catch (error: any) {
+    ElMessage.error(failureText(error, '补货待办生成失败，请检查流程表和 Supabase 写入权限。'))
+  }
 }
 
 async function removeRow(row: any) {
-  await ElMessageBox.confirm(`确认删除备件 ${row.name || row.code || row.id}？`, '删除备件', { type: 'warning' })
-  await deleteInjectionRecord(RESOURCE, Number(row.id))
-  ElMessage.success('删除成功')
-  fetchData()
+  try {
+    await ElMessageBox.confirm(`确认删除备件 ${row.name || row.code || row.id}？`, '删除备件', { type: 'warning' })
+    await deleteInjectionRecord(RESOURCE, Number(row.id))
+    ElMessage.success('删除成功')
+    await fetchData()
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(failureText(error, '备件删除失败，请检查 Supabase 删除权限或关联维修记录。'))
+  }
 }
 
 onMounted(fetchData)
 </script>
 
 <style scoped lang="scss">
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 12px;
-}
-
-.kpi-card {
-  display: grid;
-  gap: 6px;
-  min-height: 92px;
-  padding: 14px;
-  border: 1px solid #dfe5ec;
-  border-left: 4px solid #409eff;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.kpi-card--danger { border-left-color: #f56c6c; }
-.kpi-card--success { border-left-color: #67c23a; }
-
-.kpi-card span,
-.kpi-card small {
-  color: #64748b;
-}
-
-.kpi-card strong {
-  color: #1f2933;
-  font-size: 26px;
-}
-
 .card-header {
   display: flex;
   align-items: center;
@@ -271,5 +274,9 @@ onMounted(fetchData)
 
 .search-input {
   width: 260px;
+}
+
+.page-alert {
+  margin-bottom: 12px;
 }
 </style>

@@ -24,6 +24,7 @@ desktop.ini
 !README.txt
 dump.rdb
 output/
+frontend-admin/release/
 
 # 本地环境文件
 .env

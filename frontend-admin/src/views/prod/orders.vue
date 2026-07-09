@@ -20,6 +20,15 @@
       </el-form-item>
     </SearchBar>
 
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      :title="errorMessage"
+      show-icon
+      :closable="false"
+    />
+
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading" empty-text="暂无生产工单">
         <el-table-column prop="id" label="编号" width="80" />
@@ -107,6 +116,7 @@
         </el-table-column>
         <el-table-column label="操作" fixed="right" width="300">
           <template #default="{ row }">
+            <el-button type="info" link @click="handleReadiness(row)">齐套</el-button>
             <el-button type="primary" link @click="handleEdit(row)" :disabled="isClosed(row.status)">编辑</el-button>
             <el-button v-if="canDispatch(row)" type="success" link @click="handleStatusAction(row, 'dispatch')">
               派工
@@ -256,16 +266,59 @@
         <el-button type="primary" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="readinessVisible" title="投产齐套检查" width="860px">
+      <template v-if="readinessResult">
+        <MetricStrip :items="readinessMetrics" testid="production-readiness-metrics" />
+        <el-alert
+          v-if="!readinessResult.canStart"
+          class="readiness-alert"
+          type="warning"
+          show-icon
+          :closable="false"
+          :title="readinessResult.blockers.concat(readinessResult.warnings).join('；')"
+        />
+        <el-table :data="readinessResult.checks" stripe v-loading="readinessLoading" empty-text="暂无检查项">
+          <el-table-column prop="label" label="检查项" width="120" />
+          <el-table-column prop="severity" label="结果" width="100">
+            <template #default="{ row }">
+              <el-tag :type="readinessSeverityTag(row.severity)" effect="plain">
+                {{ getProductionReadinessSeverityText(row.severity) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="message" label="结论" min-width="220" show-overflow-tooltip />
+          <el-table-column prop="detail" label="依据" min-width="180" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.detail || '-' }}</template>
+          </el-table-column>
+        </el-table>
+      </template>
+      <el-empty v-else-if="!readinessLoading" description="请选择工单后查看齐套检查" />
+
+      <template #footer>
+        <el-button @click="readinessVisible = false">关闭</el-button>
+        <el-button
+          v-if="readinessResult && !readinessResult.canStart"
+          type="warning"
+          :loading="readinessAbnormalSaving"
+          @click="createReadinessAbnormal"
+        >
+          生成异常
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import MetricStrip from '@/components/MetricStrip.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import SearchBar from '@/components/SearchBar.vue'
 import { formatDateTime, formatMoney } from '@/utils'
+import { createInjectionRecord, getInjectionList } from '@/api/injection'
 import { getMachineList } from '@/api/machine'
 import { getMoldList } from '@/api/mold'
 import { getProductList } from '@/api/product'
@@ -293,6 +346,13 @@ import {
   getProductionInboundStatus,
   toProductionNumber,
 } from '@/utils/production-inbound'
+import { getStockList } from '@/api/stock'
+import {
+  buildProductionReadinessFromLists,
+  getProductionReadinessSeverityText,
+  getProductionReadinessStatusText,
+  type ProductionReadinessResult,
+} from '@/utils/production-readiness'
 
 type OptionItem = {
   id: number
@@ -313,10 +373,16 @@ const loading = ref(false)
 const tableData = ref<any[]>([])
 const searchKeyword = ref('')
 const searchStatus = ref('')
+const errorMessage = ref('')
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增工单')
 const formRef = ref<FormInstance>()
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
+const readinessVisible = ref(false)
+const readinessLoading = ref(false)
+const readinessAbnormalSaving = ref(false)
+const readinessOrder = ref<any>(null)
+const readinessResult = ref<ProductionReadinessResult | null>(null)
 
 const saleOrderOptions = ref<OptionItem[]>([])
 const productOptions = ref<OptionItem[]>([])
@@ -427,6 +493,16 @@ const statusActionText: Record<StatusAction, string> = {
   cancel: '取消',
 }
 
+const readinessMetrics = computed(() => {
+  const result = readinessResult.value
+  return [
+    { label: '齐套结论', value: result ? result.statusText : '-', meta: result?.orderNo || '未选择工单', tone: result?.canStart ? 'success' as const : 'danger' as const },
+    { label: '通过率', value: result?.score || 0, valueType: 'percent' as const, meta: '按检查项通过数计算', tone: 'primary' as const },
+    { label: '阻断项', value: result?.blockers.length || 0, meta: '必须先处理', tone: 'danger' as const },
+    { label: '待确认', value: result?.warnings.length || 0, meta: '建议开工前复核', tone: 'warning' as const },
+  ]
+})
+
 function parseDateTime(value?: string) {
   const text = String(value || '').trim()
   if (!text) return null
@@ -441,6 +517,10 @@ function pad(value: number) {
 function createOrderNo() {
   const now = new Date()
   return `PROD-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+}
+
+function failureText(error: any, fallback: string) {
+  return error?.message || error?.data?.message || fallback
 }
 
 function normalizeStatus(value?: string): OrderStatus {
@@ -614,6 +694,56 @@ function inboundStatusText(row: any) {
   return map[inboundStatus(row)] || '-'
 }
 
+function readinessSeverityTag(severity: string) {
+  if (severity === 'passed') return 'success'
+  if (severity === 'blocked') return 'danger'
+  return 'warning'
+}
+
+function unwrapRecords(res: any) {
+  const data = res?.data?.records || res?.data?.list || res?.data || []
+  return Array.isArray(data) ? data : [data].filter(Boolean)
+}
+
+async function loadReadinessResult(row: any) {
+  readinessLoading.value = true
+  const order = normalizeOrder(row)
+  readinessOrder.value = order
+  try {
+    const [processCardRes, firstArticleRes, startupRes, materialMixRes, stockRes] = await Promise.allSettled([
+      getInjectionList('process-cards', { page: 1, pageSize: 300 }),
+      getInjectionList('trial-mold-records', { page: 1, pageSize: 300 }),
+      getInjectionList('startup-checks', { page: 1, pageSize: 300 }),
+      getInjectionList('material-mix-orders', { page: 1, pageSize: 300 }),
+      getStockList({ page: 1, pageSize: 500 }),
+    ])
+    readinessResult.value = buildProductionReadinessFromLists({
+      order,
+      products: productOptions.value,
+      machines: machineOptions.value,
+      molds: moldOptions.value,
+      processCards: processCardRes.status === 'fulfilled' ? unwrapRecords(processCardRes.value) : [],
+      firstArticles: firstArticleRes.status === 'fulfilled' ? unwrapRecords(firstArticleRes.value) : [],
+      startupChecks: startupRes.status === 'fulfilled' ? unwrapRecords(startupRes.value) : [],
+      materialMixOrders: materialMixRes.status === 'fulfilled' ? unwrapRecords(materialMixRes.value) : [],
+      stockRows: stockRes.status === 'fulfilled' ? unwrapRecords(stockRes.value) : [],
+    })
+    const failed = [processCardRes, firstArticleRes, startupRes, materialMixRes, stockRes].some((item) => item.status === 'rejected')
+    if (failed) {
+      ElMessage.warning('部分齐套依据加载失败，当前结论已按已获取数据生成，请复核 Supabase 连接。')
+    }
+    return readinessResult.value
+  } finally {
+    readinessLoading.value = false
+  }
+}
+
+async function handleReadiness(row: any) {
+  readinessVisible.value = true
+  readinessResult.value = null
+  await loadReadinessResult(row)
+}
+
 function machineText(row: any) {
   return row.machineName || optionText(machineOptions.value, row.machineId)
 }
@@ -686,17 +816,19 @@ async function loadOptions() {
     productOptions.value = productRes.data?.records || productRes.data?.list || []
     machineOptions.value = machineRes.data?.records || machineRes.data?.list || []
     moldOptions.value = moldRes.data?.records || moldRes.data?.list || []
-  } catch {
+  } catch (error: any) {
     saleOrderOptions.value = []
     productOptions.value = []
     machineOptions.value = []
     moldOptions.value = []
+    ElMessage.error(failureText(error, '生产工单基础选项加载失败，请检查产品、机台、模具和销售订单资料。'))
   }
 }
 
 async function fetchData() {
   loading.value = true
   try {
+    errorMessage.value = ''
     const res: any = await getProdOrderList({
       page: pagination.page,
       pageSize: pagination.pageSize,
@@ -706,9 +838,11 @@ async function fetchData() {
     const rows = res.data?.list || res.data?.records || []
     tableData.value = rows.map(normalizeOrder)
     pagination.total = res.data?.total || rows.length
-  } catch {
+  } catch (error: any) {
     tableData.value = []
     pagination.total = 0
+    errorMessage.value = failureText(error, '生产工单加载失败，请检查 Supabase 连接、生产工单表和基础资料配置。')
+    ElMessage.error(errorMessage.value)
   } finally {
     loading.value = false
   }
@@ -785,6 +919,38 @@ function buildPayload() {
   }
 }
 
+async function ensureReadinessBeforeStart(row: any) {
+  const result = await loadReadinessResult(row)
+  if (!result.canStart) {
+    readinessVisible.value = true
+    ElMessage.warning(`工单${getProductionReadinessStatusText(result.status)}，请先处理齐套阻断项`)
+    return false
+  }
+  return true
+}
+
+async function createReadinessAbnormal() {
+  if (!readinessResult.value || !readinessOrder.value) return
+  readinessAbnormalSaving.value = true
+  try {
+    const orderNo = readinessResult.value.orderNo
+    const reasons = readinessResult.value.blockers.concat(readinessResult.value.warnings).join('；')
+    await createInjectionRecord('andon-events', {
+      sourceType: 'PRODUCTION_READINESS',
+      sourceId: readinessResult.value.orderId,
+      level: readinessResult.value.blockers.length ? 'CRITICAL' : 'WARNING',
+      title: `投产齐套未通过：${orderNo}`,
+      description: reasons || '投产齐套检查未通过',
+      status: 'OPEN',
+    })
+    ElMessage.success('已生成现场异常，可在异常闭环中心继续处理')
+  } catch (error: any) {
+    ElMessage.error(failureText(error, '齐套异常生成失败'))
+  } finally {
+    readinessAbnormalSaving.value = false
+  }
+}
+
 async function handleSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
@@ -798,13 +964,17 @@ async function handleSubmit() {
     }
     dialogVisible.value = false
     fetchData()
-  } catch {
-    // 交给全局拦截器提示
+  } catch (error: any) {
+    ElMessage.error(failureText(error, form.id ? '生产工单更新失败' : '生产工单创建失败'))
   }
 }
 
 async function handleStatusAction(row: any, action: StatusAction) {
   if (!validateAction(row, action)) return
+  if (action === 'start') {
+    const readinessPassed = await ensureReadinessBeforeStart(row)
+    if (!readinessPassed) return
+  }
   const text = statusActionText[action]
   try {
     await ElMessageBox.confirm(`确定${text}工单 ${row.orderNo || row.id} 吗？`, '提示', { type: 'warning' })
@@ -815,8 +985,8 @@ async function handleStatusAction(row: any, action: StatusAction) {
     await statusActionApi[action](row.id)
     ElMessage.success(`${text}成功`)
     fetchData()
-  } catch {
-    // 交给全局拦截器提示
+  } catch (error: any) {
+    ElMessage.error(failureText(error, `生产工单${text}失败`))
   }
 }
 
@@ -830,8 +1000,8 @@ async function handleDelete(row: any) {
     await deleteProdOrder(row.id)
     ElMessage.success('删除成功')
     fetchData()
-  } catch {
-    // 交给全局拦截器提示
+  } catch (error: any) {
+    ElMessage.error(failureText(error, '生产工单删除失败'))
   }
 }
 
@@ -853,6 +1023,14 @@ onMounted(async () => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.page-alert {
+  margin-bottom: 12px;
+}
+
+.readiness-alert {
+  margin: 12px 0;
 }
 
 .progress-cell {

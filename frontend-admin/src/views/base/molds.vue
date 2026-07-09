@@ -1,5 +1,5 @@
 <template>
-  <MasterCrudPage :title="config.title" :metrics="metrics">
+  <MasterCrudPage :title="config.title" :subtitle="config.subtitle" :metrics="metrics">
     <template #toolbar>
       <el-button
         v-for="action in config.toolbarActions"
@@ -16,7 +16,13 @@
     </template>
 
     <template #search>
-      <SearchBar :keyword="searchKeyword" @search="handleSearch" @reset="handleReset">
+      <SearchBar
+        :keyword="searchKeyword"
+        title="筛选模具"
+        description="按模具关键字、状态和适配产品筛选模具资料。"
+        @search="handleSearch"
+        @reset="handleReset"
+      >
         <template #default>
           <el-form-item v-for="field in config.searchFields" :key="field.prop" :label="field.label">
             <el-select

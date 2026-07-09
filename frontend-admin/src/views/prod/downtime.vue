@@ -7,6 +7,15 @@
       </el-button>
     </PageHeader>
 
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      :title="errorMessage"
+      show-icon
+      :closable="false"
+    />
+
     <SearchBar @search="handleSearch" @reset="handleReset">
       <el-form-item label="机台">
         <el-select v-model="searchMachineId" filterable clearable placeholder="全部" style="width: 180px">
@@ -133,7 +142,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit">确定</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
   </div>
@@ -153,6 +162,8 @@ import { createDowntimeRecord, deleteDowntimeRecord, getDowntimeRecordList, upda
 type MachineOption = { id: number; name?: string }
 
 const loading = ref(false)
+const submitting = ref(false)
+const errorMessage = ref('')
 const tableData = ref<any[]>([])
 const machineOptions = ref<MachineOption[]>([])
 const searchKeyword = ref('')
@@ -184,17 +195,23 @@ function formatValue(value: string | null | undefined) {
   return formatDateTime(value)
 }
 
+function failureText(error: any, fallback: string) {
+  return error?.message || error?.response?.data?.message || fallback
+}
+
 async function loadOptions() {
   try {
     const res: any = await getMachineList({ page: 1, pageSize: 200 })
     machineOptions.value = res.data?.records || res.data?.list || []
-  } catch {
+  } catch (error: any) {
     machineOptions.value = []
+    ElMessage.error(failureText(error, '停机记录基础选项加载失败，请检查机台资料。'))
   }
 }
 
 async function fetchData() {
   loading.value = true
+  errorMessage.value = ''
   try {
     const res: any = await getDowntimeRecordList({
       page: pagination.page,
@@ -207,9 +224,11 @@ async function fetchData() {
     })
     tableData.value = res.data?.records || res.data?.list || []
     pagination.total = res.data?.total || 0
-  } catch {
+  } catch (error: any) {
     tableData.value = []
     pagination.total = 0
+    errorMessage.value = failureText(error, '停机记录加载失败，请检查 Supabase 连接、停机记录表和筛选条件。')
+    ElMessage.error(errorMessage.value)
   } finally {
     loading.value = false
   }
@@ -265,6 +284,7 @@ async function handleSubmit() {
     ElMessage.warning('停机结束时间不能早于开始时间')
     return
   }
+  submitting.value = true
   try {
     const payload = {
       machineId: form.machineId,
@@ -283,8 +303,10 @@ async function handleSubmit() {
     }
     dialogVisible.value = false
     fetchData()
-  } catch {
-    // 交给全局提示
+  } catch (error: any) {
+    ElMessage.error(failureText(error, form.id ? '停机记录更新失败，请检查机台、原因和时间范围。' : '停机记录创建失败，请检查机台、原因和时间范围。'))
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -294,8 +316,9 @@ async function handleDelete(row: any) {
     await deleteDowntimeRecord(row.id)
     ElMessage.success('删除成功')
     fetchData()
-  } catch {
-    // 交给全局提示
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(failureText(error, '停机记录删除失败，请检查记录状态或数据库权限。'))
   }
 }
 
@@ -310,5 +333,9 @@ onMounted(async () => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.page-alert {
+  margin-bottom: 12px;
 }
 </style>

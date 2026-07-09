@@ -44,6 +44,25 @@ export type InjectionModuleDefinition = {
 
 export type InjectionAction = 'submit' | 'approve' | 'reject' | 'assign' | 'start' | 'finish' | 'close' | 'print' | 'generate'
 
+export type SiteExecutionGateKey = 'processCard' | 'firstArticle' | 'startup' | 'materialMix'
+
+export type SiteExecutionGateInput = {
+  prodOrderId?: number
+  processCardStatus?: string
+  firstArticleStatus?: string
+  startupStatus?: string
+  materialMixStatus?: string
+}
+
+export type SiteExecutionGateCheck = {
+  key: SiteExecutionGateKey
+  label: string
+  status: string
+  passed: boolean
+  state: 'passed' | 'pending' | 'blocked'
+  message: string
+}
+
 const commonStatusOptions = [
   { label: '草稿', value: 'DRAFT' },
   { label: '已提交', value: 'SUBMITTED' },
@@ -79,7 +98,12 @@ const levelOptions = [
 
 const numberField = (prop: string, label: string, required = false): InjectionFormField => ({ prop, label, type: 'number', required })
 const textField = (prop: string, label: string, required = false): InjectionFormField => ({ prop, label, type: 'text', required })
-const textareaField = (prop: string, label: string): InjectionFormField => ({ prop, label, type: 'textarea' })
+const textareaField = (prop: string, label: string, required = false): InjectionFormField => ({
+  prop,
+  label,
+  type: 'textarea',
+  ...(required ? { required: true } : {}),
+})
 
 export const INJECTION_MODULES: InjectionModuleDefinition[] = [
   {
@@ -240,7 +264,24 @@ export const INJECTION_MODULES: InjectionModuleDefinition[] = [
     codePrefix: 'CC',
     statusOptions: [{ label: '已登记', value: 'REGISTERED' }, { label: '分析中', value: 'ANALYZING' }, { label: '改善中', value: 'IMPROVING' }, { label: '验证中', value: 'VERIFYING' }, { label: '已关闭', value: 'CLOSED' }],
     listFields: [textField('complaintNo', '客诉号'), textField('customerId', '客户'), textField('severity', '严重度'), textField('status', '状态')],
-    formFields: [textField('complaintNo', '客诉号'), numberField('customerId', '客户ID', true), numberField('productId', '产品ID'), numberField('batchId', '批次ID'), textField('severity', '严重度'), textareaField('defectDesc', '不良描述'), textareaField('correctiveAction', '纠正措施'), textareaField('preventiveAction', '预防措施')],
+    formFields: [
+      textField('complaintNo', '客诉号'),
+      numberField('customerId', '客户ID', true),
+      numberField('productId', '产品ID'),
+      numberField('batchId', '批次ID'),
+      textField('severity', '严重度'),
+      textareaField('defectDesc', '不良描述', true),
+      textareaField('correctiveAction', '纠正措施'),
+      textareaField('preventiveAction', '预防措施'),
+      textareaField('d1Team', 'D1 团队'),
+      textareaField('d2Problem', 'D2 问题描述'),
+      textareaField('d3Containment', 'D3 临时围堵'),
+      textareaField('d4RootCause', 'D4 根因分析'),
+      textareaField('d5CorrectiveAction', 'D5 永久纠正'),
+      textareaField('d6Implementation', 'D6 实施验证'),
+      textareaField('d7Prevention', 'D7 预防再发'),
+      textareaField('d8Closure', 'D8 关闭确认'),
+    ],
     mobileRequiredFields: ['customerId', 'defectDesc'],
   },
   {
@@ -285,7 +326,7 @@ export const INJECTION_MODULES: InjectionModuleDefinition[] = [
     codePrefix: 'PR',
     statusOptions: [{ label: '草稿', value: 'DRAFT' }, { label: '已提交', value: 'SUBMITTED' }, { label: '已审核', value: 'APPROVED' }, { label: '已转采购', value: 'CONVERTED' }, { label: '已关闭', value: 'CLOSED' }],
     listFields: [textField('requisitionNo', '请购单'), textField('materialId', '物料'), textField('requestedQty', '请购量'), textField('status', '状态')],
-    formFields: [textField('requisitionNo', '请购单号'), numberField('materialId', '物料ID', true), numberField('shortageQty', '缺料量'), numberField('requestedQty', '请购量', true), numberField('supplierId', '建议供应商ID'), { prop: 'expectedDate', label: '期望到货', type: 'date' }, textareaField('remark', '备注')],
+    formFields: [textField('requisitionNo', '请购单号'), numberField('materialId', '物料ID', true), numberField('shortageQty', '缺料量'), numberField('requestedQty', '请购量', true), numberField('supplierId', '建议供应商ID'), textField('sourceMrpNo', '来源MRP'), { prop: 'expectedDate', label: '期望到货', type: 'date' }, textareaField('remark', '备注')],
     mobileRequiredFields: ['materialId', 'requestedQty'],
   },
 ]
@@ -369,6 +410,9 @@ export function validateInjectionRecord(moduleKey: InjectionModuleKey, input: Re
   if (moduleKey === 'mold-maintenance-plan' && toNumber(input.maintenanceCycle) <= 0) return '保养周期模次必须大于0'
   if (moduleKey === 'oee-record' && toNumber(input.runningMinutes) > toNumber(input.plannedMinutes)) return '运行分钟不能大于计划分钟'
   if (moduleKey === 'purchase-requisition' && toNumber(input.requestedQty) <= 0) return '请购量必须大于0'
+  if (moduleKey === 'customer-complaint' && normalizeText(input.status).toUpperCase() === 'CLOSED' && !isEightDComplete(input)) {
+    return '客诉8D关闭前必须完整填写 D1-D8'
+  }
   return ''
 }
 
@@ -413,6 +457,94 @@ export function canStartProductionFromInjectionGates(input: { processCardStatus?
   return { allowed: blockers.length === 0, blockers }
 }
 
+const siteGateDefinitions: Array<{
+  key: SiteExecutionGateKey
+  label: string
+  passStatuses: string[]
+  blockedStatuses: string[]
+  pendingMessage: string
+  blockedMessage: string
+}> = [
+  {
+    key: 'processCard',
+    label: '工艺卡',
+    passStatuses: ['ACTIVE'],
+    blockedStatuses: ['INACTIVE', 'REJECTED', 'CLOSED'],
+    pendingMessage: '工艺卡未启用',
+    blockedMessage: '工艺卡不可用',
+  },
+  {
+    key: 'firstArticle',
+    label: '首件确认',
+    passStatuses: ['APPROVED_PRODUCTION'],
+    blockedStatuses: ['REJECTED', 'FAILED'],
+    pendingMessage: '首件未允许量产',
+    blockedMessage: '首件确认未通过',
+  },
+  {
+    key: 'startup',
+    label: '齐套检查',
+    passStatuses: ['PASSED'],
+    blockedStatuses: ['FAILED', 'REJECTED'],
+    pendingMessage: '齐套检查未通过',
+    blockedMessage: '齐套检查失败',
+  },
+  {
+    key: 'materialMix',
+    label: '配料烘料',
+    passStatuses: ['APPROVED', 'CLOSED', 'FINISHED'],
+    blockedStatuses: ['REJECTED', 'FAILED'],
+    pendingMessage: '配料烘料未审核',
+    blockedMessage: '配料烘料异常',
+  },
+]
+
+function gateStatus(input: SiteExecutionGateInput, key: SiteExecutionGateKey) {
+  const prop = `${key}Status` as keyof SiteExecutionGateInput
+  return normalizeText(input[prop]).toUpperCase()
+}
+
+export function buildSiteExecutionGateChecks(input: SiteExecutionGateInput): SiteExecutionGateCheck[] {
+  return siteGateDefinitions.map((definition) => {
+    const status = gateStatus(input, definition.key)
+    if (definition.passStatuses.includes(status)) {
+      return {
+        key: definition.key,
+        label: definition.label,
+        status,
+        passed: true,
+        state: 'passed',
+        message: `${definition.label}已通过`,
+      }
+    }
+    const state = status && definition.blockedStatuses.includes(status) ? 'blocked' : 'pending'
+    return {
+      key: definition.key,
+      label: definition.label,
+      status,
+      passed: false,
+      state,
+      message: state === 'blocked' ? definition.blockedMessage : definition.pendingMessage,
+    }
+  })
+}
+
+export function summarizeSiteExecutionGate(input: SiteExecutionGateInput) {
+  const checks = buildSiteExecutionGateChecks(input)
+  const blockers = checks.filter((item) => !item.passed).map((item) => item.message)
+  const blocked = checks.filter((item) => item.state === 'blocked').length
+  const pending = checks.filter((item) => item.state === 'pending').length
+  return {
+    allowed: blockers.length === 0,
+    total: checks.length,
+    passed: checks.filter((item) => item.passed).length,
+    blocked,
+    pending,
+    blockers,
+    checks,
+  }
+}
+
 export function buildAndonFromFailedStartup(check: Record<string, any>) {
   const result = buildStartupCheckResult(check)
   if (result.passed) return null
@@ -423,6 +555,48 @@ export function buildAndonFromFailedStartup(check: Record<string, any>) {
     level: 'WARNING',
     title: '开工齐套检查未通过',
     description: result.failedItemsText,
+    status: 'OPEN',
+  }
+}
+
+export function buildAndonFromFirstArticleRejection(record: Record<string, any>) {
+  const status = normalizeText(record.status).toUpperCase()
+  if (status !== 'REJECTED') return null
+  return {
+    eventNo: buildInjectionCode('AE'),
+    sourceType: 'FIRST_ARTICLE',
+    sourceId: record.id || record.trialId || 0,
+    level: 'WARNING',
+    title: '首件确认驳回',
+    description: normalizeText(record.remark || record.firstArticleResult) || '首件未允许量产，扫码报工已被门禁拦截。',
+    status: 'OPEN',
+  }
+}
+
+export function buildAndonFromMaterialMixRejection(record: Record<string, any>) {
+  const status = normalizeText(record.status).toUpperCase()
+  if (status !== 'REJECTED' && status !== 'FAILED') return null
+  return {
+    eventNo: buildInjectionCode('AE'),
+    sourceType: 'MATERIAL_MIX',
+    sourceId: record.id || record.mixId || 0,
+    level: 'WARNING',
+    title: '配料烘料异常',
+    description: normalizeText(record.remark) || '配料烘料未通过，扫码报工已被门禁拦截。',
+    status: 'OPEN',
+  }
+}
+
+export function buildAndonFromSiteGateFailure(input: SiteExecutionGateInput) {
+  const summary = summarizeSiteExecutionGate(input)
+  if (summary.allowed) return null
+  return {
+    eventNo: buildInjectionCode('AE'),
+    sourceType: 'SITE_EXECUTION_GATE',
+    sourceId: input.prodOrderId || 0,
+    level: summary.blocked > 0 ? 'CRITICAL' : 'WARNING',
+    title: '现场开工门禁未通过',
+    description: summary.blockers.join('、'),
     status: 'OPEN',
   }
 }

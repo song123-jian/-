@@ -37,8 +37,17 @@
       </el-form-item>
     </SearchBar>
 
+    <MetricStrip :items="adjustAuditCards" testid="salary-adjust-audit" />
+
     <el-card shadow="hover">
-      <el-table :data="tableData" stripe v-loading="loading" empty-text="暂无奖惩记录">
+      <el-table
+        :data="tableData"
+        stripe
+        v-loading="loading"
+        show-summary
+        :summary-method="adjustSummaryMethod"
+        empty-text="暂无奖惩记录"
+      >
         <el-table-column prop="id" label="编号" width="80" />
         <el-table-column prop="workerName" label="员工" min-width="120" />
         <el-table-column prop="type" label="类型" width="95" align="center">
@@ -117,9 +126,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import MetricStrip from '@/components/MetricStrip.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import SearchBar from '@/components/SearchBar.vue'
 import { formatDateTime, formatMoney } from '@/utils'
@@ -131,6 +141,7 @@ import {
   isSalaryAdjustSettled,
   validateSalaryAdjustInput,
 } from '@/utils/salary-monthly'
+import { buildSalaryAdjustAuditCards } from '@/utils/salary-audit'
 
 type OptionItem = { id: number; realName?: string; username?: string }
 
@@ -141,7 +152,7 @@ const userOptions = ref<OptionItem[]>([])
 const searchWorkerId = ref<number | null>(null)
 const searchType = ref('')
 const searchStatus = ref('')
-const searchDate = ref<string[]>([])
+const searchDate = ref<string[]>(currentMonthRange())
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增奖惩')
 const formRef = ref<FormInstance>()
@@ -155,6 +166,7 @@ const form = reactive({
   reason: '',
   status: 'DRAFT',
 })
+const adjustAuditCards = computed(() => buildSalaryAdjustAuditCards(tableData.value))
 const formRules: FormRules = {
   workerId: [{ required: true, message: '请选择员工', trigger: 'change' }],
   type: [{ required: true, message: '请选择类型', trigger: 'change' }],
@@ -177,6 +189,13 @@ const formRules: FormRules = {
 function todayDate() {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+function currentMonthRange() {
+  const now = new Date()
+  const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  const end = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return [start, end]
 }
 
 function userLabel(item: OptionItem) {
@@ -224,9 +243,19 @@ function handleReset() {
   searchWorkerId.value = null
   searchType.value = ''
   searchStatus.value = ''
-  searchDate.value = []
+  searchDate.value = currentMonthRange()
   pagination.page = 1
   fetchData()
+}
+
+function adjustSummaryMethod({ columns, data }: { columns: any[]; data: any[] }) {
+  const bonusAmount = data.reduce((sum, item) => sum + (item.type === 'bonus' ? Number(item.amount || 0) : 0), 0)
+  const penaltyAmount = data.reduce((sum, item) => sum + (item.type === 'penalty' ? Number(item.amount || 0) : 0), 0)
+  return columns.map((column, index) => {
+    if (index === 0) return '合计'
+    if (column.property === 'amount') return `净额 ¥${moneyText(bonusAmount - penaltyAmount)}`
+    return ''
+  })
 }
 function handleAdd() {
   dialogTitle.value = '新增奖惩'

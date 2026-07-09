@@ -1,7 +1,7 @@
 <template>
   <div class="page-container">
     <PageHeader title="月工资汇总">
-      <el-button type="success" :loading="settling" :disabled="loading" @click="handleSettle">
+      <el-button type="success" :loading="settling" :disabled="loading || settling || !salaryAudit.canSettle" @click="handleSettle">
         <el-icon><Check /></el-icon>月度结算
       </el-button>
     </PageHeader>
@@ -11,6 +11,25 @@
         <el-date-picker v-model="searchMonth" type="month" placeholder="选择月份" value-format="YYYY-MM" />
       </el-form-item>
     </SearchBar>
+
+    <MetricStrip :items="monthlyAuditCards" testid="salary-monthly-audit" />
+
+    <el-alert
+      v-if="salaryAudit.blockingCount > 0"
+      class="audit-alert"
+      type="error"
+      show-icon
+      :closable="false"
+      :title="getSalaryAuditBlockMessage(salaryAudit)"
+    />
+    <el-alert
+      v-else-if="salaryAudit.warningCount > 0"
+      class="audit-alert"
+      type="warning"
+      show-icon
+      :closable="false"
+      :title="`本月存在 ${salaryAudit.pendingDailyCount} 条待结日工资、${salaryAudit.pendingAdjustCount} 条待结奖惩，月度结算会统一锁定。`"
+    />
 
     <el-card shadow="hover">
       <el-table
@@ -46,6 +65,13 @@
         <el-table-column prop="payableAmount" label="应发合计" min-width="130" align="right">
           <template #default="{ row }">¥{{ moneyText(row.payableAmount ?? row.totalAmount) }}</template>
         </el-table-column>
+        <el-table-column label="审计" fixed="right" width="105" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="rowAuditBlockingCount(row) > 0" type="danger" effect="plain">阻断</el-tag>
+            <el-tag v-else-if="row.status !== 'SETTLED'" type="warning" effect="plain">待结</el-tag>
+            <el-tag v-else type="success" effect="plain">正常</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" fixed="right" width="110" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === 'SETTLED' ? 'success' : 'warning'" effect="plain">
@@ -65,18 +91,37 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import MetricStrip from '@/components/MetricStrip.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import SearchBar from '@/components/SearchBar.vue'
-import { getMonthlySalaryList, settleMonthlySalary } from '@/api/salary'
+import { getDailySalaryList, getMonthlySalaryList, getSalaryAdjustList, settleMonthlySalary } from '@/api/salary'
 import { formatMoney } from '@/utils'
+import { getSalaryMonthBounds } from '@/utils/salary-monthly'
+import {
+  buildSalaryAuditIssues,
+  buildSalaryAuditSummary,
+  canSettleSalary,
+  getSalaryAuditBlockMessage,
+} from '@/utils/salary-audit'
 
 const loading = ref(false)
 const settling = ref(false)
 const tableData = ref<any[]>([])
+const dailyAuditRows = ref<any[]>([])
+const adjustAuditRows = ref<any[]>([])
 const searchMonth = ref(currentMonth())
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
+
+const salaryAudit = computed(() => buildSalaryAuditSummary(dailyAuditRows.value, tableData.value, adjustAuditRows.value))
+const monthlyAuditCards = computed(() => [
+  { label: '员工数', value: salaryAudit.value.workerCount, meta: `待结员工 ${salaryAudit.value.pendingWorkerCount}`, tone: 'primary' as const },
+  { label: '待结日工资', value: salaryAudit.value.pendingDailyCount, meta: `明细 ${salaryAudit.value.dailyCount}`, tone: salaryAudit.value.pendingDailyCount ? 'warning' as const : 'success' as const },
+  { label: '待结奖惩', value: salaryAudit.value.pendingAdjustCount, meta: `记录 ${salaryAudit.value.adjustCount}`, tone: salaryAudit.value.pendingAdjustCount ? 'warning' as const : 'success' as const },
+  { label: '阻断项', value: salaryAudit.value.blockingCount, meta: `缺单价 ${salaryAudit.value.missingPriceCount} / 异常 ${salaryAudit.value.zeroAmountCount}`, tone: salaryAudit.value.blockingCount ? 'danger' as const : 'success' as const },
+  { label: '应发合计', value: salaryAudit.value.payableAmount, valueType: 'money' as const, meta: `计件 ¥${moneyText(salaryAudit.value.pieceAmount)}`, tone: 'primary' as const },
+])
 
 function currentMonth() {
   const now = new Date()
@@ -90,10 +135,23 @@ function moneyText(value: unknown) {
 async function fetchData() {
   loading.value = true
   try {
-    const res: any = await getMonthlySalaryList({ page: pagination.page, pageSize: pagination.pageSize, month: searchMonth.value })
+    const month = searchMonth.value || currentMonth()
+    const scope = getSalaryMonthBounds(month)
+    const [res, dailyRes, adjustRes]: any[] = await Promise.all([
+      getMonthlySalaryList({ page: pagination.page, pageSize: pagination.pageSize, month }),
+      getDailySalaryList({ page: 1, pageSize: 1000, startDate: scope.startDate, endDate: scope.endDate }),
+      getSalaryAdjustList({ page: 1, pageSize: 1000, startDate: scope.startDate, endDate: scope.endDate }),
+    ])
     tableData.value = res.data?.list || []
+    dailyAuditRows.value = dailyRes.data?.list || dailyRes.data?.records || []
+    adjustAuditRows.value = adjustRes.data?.list || adjustRes.data?.records || []
     pagination.total = res.data?.total || 0
-  } catch { /* */ } finally { loading.value = false }
+  } catch {
+    tableData.value = []
+    dailyAuditRows.value = []
+    adjustAuditRows.value = []
+    pagination.total = 0
+  } finally { loading.value = false }
 }
 
 function handleSearch() { pagination.page = 1; fetchData() }
@@ -116,6 +174,10 @@ function salarySummaryMethod({ columns, data }: { columns: any[]; data: any[] })
 
 async function handleSettle() {
   const month = searchMonth.value || currentMonth()
+  if (!canSettleSalary(salaryAudit.value)) {
+    ElMessage.warning(getSalaryAuditBlockMessage(salaryAudit.value))
+    return
+  }
   await ElMessageBox.confirm(`确定结算 ${month} 的工资明细？结算后将锁定该月日工资与奖惩记录。`, '月度工资结算', { type: 'warning' })
   settling.value = true
   try {
@@ -126,10 +188,15 @@ async function handleSettle() {
   } catch { /* */ } finally { settling.value = false }
 }
 
+function rowAuditBlockingCount(row: Record<string, any>) {
+  return buildSalaryAuditIssues(row, 'monthly').filter((item) => item.level === 'blocking').length
+}
+
 onMounted(() => { fetchData() })
 </script>
 
 <style scoped lang="scss">
+.audit-alert { margin-bottom: 12px; }
 .pagination { margin-top: 16px; display: flex; justify-content: flex-end; }
 .negative { color: var(--el-color-danger); }
 </style>

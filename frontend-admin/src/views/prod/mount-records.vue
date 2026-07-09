@@ -6,6 +6,15 @@
       </el-button>
     </PageHeader>
 
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      :title="errorMessage"
+      show-icon
+      :closable="false"
+    />
+
     <SearchBar @search="handleSearch" @reset="handleReset">
       <el-form-item label="模具">
         <el-select v-model="searchMoldId" filterable placeholder="全部" clearable style="width: 180px">
@@ -135,7 +144,7 @@
 
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit">确定</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
   </div>
@@ -160,6 +169,8 @@ type OptionItem = { id: number; name?: string; orderNo?: string; realName?: stri
 
 const userStore = useUserStore()
 const loading = ref(false)
+const submitting = ref(false)
+const errorMessage = ref('')
 const tableData = ref<any[]>([])
 const searchKeyword = ref('')
 const searchMoldId = ref<number | null>(null)
@@ -199,6 +210,10 @@ function mountTypeTag(value?: string) {
   return value === 'DISMOUNT' ? 'warning' : 'success'
 }
 
+function failureText(error: any, fallback: string) {
+  return error?.message || error?.response?.data?.message || fallback
+}
+
 async function loadOptions() {
   try {
     const [moldRes, machineRes, orderRes, userRes] = await Promise.all([
@@ -214,16 +229,18 @@ async function loadOptions() {
     if (!form.operatorId && userStore.userInfo?.id) {
       form.operatorId = userStore.userInfo.id
     }
-  } catch {
+  } catch (error: any) {
     moldOptions.value = []
     machineOptions.value = []
     orderOptions.value = []
     userOptions.value = []
+    ElMessage.error(failureText(error, '上下模基础选项加载失败，请检查模具、机台、工单和用户资料。'))
   }
 }
 
 async function fetchData() {
   loading.value = true
+  errorMessage.value = ''
   try {
     const params: Record<string, any> = {
       page: pagination.page,
@@ -240,9 +257,11 @@ async function fetchData() {
     const res: any = await getMoldMountRecordList(params)
     tableData.value = res.data?.records || []
     pagination.total = res.data?.total || 0
-  } catch {
+  } catch (error: any) {
     tableData.value = []
     pagination.total = 0
+    errorMessage.value = failureText(error, '上下模记录加载失败，请检查 Supabase 连接、上下模记录表和筛选条件。')
+    ElMessage.error(errorMessage.value)
   } finally {
     loading.value = false
   }
@@ -279,13 +298,16 @@ async function handleSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
 
+  submitting.value = true
   try {
     await createMoldMountRecord({ ...form })
     ElMessage.success('创建成功')
     dialogVisible.value = false
     fetchData()
-  } catch {
-    // 交给全局提示
+  } catch (error: any) {
+    ElMessage.error(failureText(error, '上下模记录创建失败，请检查模具、机台、操作人和操作类型。'))
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -300,5 +322,9 @@ onMounted(async () => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.page-alert {
+  margin-bottom: 12px;
 }
 </style>

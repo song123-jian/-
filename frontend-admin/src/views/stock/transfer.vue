@@ -7,6 +7,16 @@
       </el-button>
     </PageHeader>
 
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      show-icon
+      closable
+      :title="errorMessage"
+      @close="errorMessage = ''"
+    />
+
     <SearchBar :keyword="searchKeyword" @search="handleSearch" @reset="handleReset">
       <el-form-item label="调出仓库">
         <el-select v-model="searchWarehouseId" placeholder="全部" clearable filterable style="width: 180px">
@@ -40,6 +50,18 @@
       </el-form-item>
     </SearchBar>
 
+    <section class="transfer-flow" aria-label="调拨闭环">
+      <span v-for="item in transferFlowSteps" :key="item">{{ item }}</span>
+    </section>
+
+    <section class="transfer-summary" aria-label="调拨执行汇总">
+      <div v-for="item in transferSummaryItems" :key="item.label" class="summary-item" :class="item.level ? `is-${item.level}` : ''">
+        <span>{{ item.label }}</span>
+        <strong>{{ item.value }}</strong>
+        <small>{{ item.tip }}</small>
+      </div>
+    </section>
+
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading" empty-text="暂无仓库调拨记录">
         <el-table-column prop="moveNo" label="调拨单号" min-width="170" show-overflow-tooltip />
@@ -61,10 +83,17 @@
             {{ formatDateTime(row.createdAt) }}
           </template>
         </el-table-column>
+        <el-table-column prop="transferReceiveTime" label="接收时间" width="170">
+          <template #default="{ row }">
+            {{ row.transferReceiveTime ? formatDateTime(row.transferReceiveTime) : '-' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
         <el-table-column label="状态" fixed="right" width="100">
-          <template #default>
-            <el-tag type="success" effect="plain">已记账</el-tag>
+          <template #default="{ row }">
+            <el-tag :type="transferStatusTag(row)" effect="plain">
+              {{ transferStatusText(row) }}
+            </el-tag>
           </template>
         </el-table-column>
       </el-table>
@@ -207,14 +236,18 @@ import { getStockLedger, getStockList, stockTransfer } from '@/api/stock'
 import { formatDateTime, formatMoney } from '@/utils'
 import {
   buildStockTransferPayload,
+  getStockTransferStatusTag,
+  getStockTransferStatusText,
   getSuggestedTransferStock,
   getTransferAmount,
   getTransferAvailableQty,
+  getTransferRowStatus,
   getTransferStockAvailableQty,
   getTransferStockCandidates,
   getTransferStockUnitCost,
   isTransferProductEnabled,
   isTransferWarehouseEnabled,
+  summarizeStockTransferRows,
   toStockTransferNumber,
   validateStockTransferInput,
   type StockTransferStockRowLike,
@@ -247,6 +280,7 @@ type TransferForm = {
 
 const loading = ref(false)
 const tableData = ref<any[]>([])
+const errorMessage = ref('')
 const searchKeyword = ref('')
 const searchWarehouseId = ref<number | null>(null)
 const searchToWarehouseId = ref<number | null>(null)
@@ -259,6 +293,8 @@ const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
 const productOptions = ref<OptionItem[]>([])
 const warehouseOptions = ref<OptionItem[]>([])
 const stockRows = ref<StockRow[]>([])
+
+const transferFlowSteps = ['创建调拨', '扣减调出仓', '移动端接收', '完成闭环']
 
 const form = reactive<TransferForm>({
   productId: null,
@@ -310,6 +346,34 @@ const transferAmount = computed(() => getTransferAmount(form.qty || 0, unitCost.
 const availableQtyText = computed(() => `${availableQty.value.toFixed(0)} ${selectedProduct.value?.unit || ''}`.trim())
 
 const transferAmountText = computed(() => (unitCost.value > 0 ? formatMoney(transferAmount.value) : '-'))
+
+const transferSummary = computed(() => summarizeStockTransferRows(tableData.value))
+
+const transferSummaryItems = computed(() => [
+  {
+    label: '调拨单数',
+    value: transferSummary.value.recordCount,
+    tip: '当前筛选结果',
+  },
+  {
+    label: '待接收',
+    value: transferSummary.value.shippedCount,
+    tip: `待收数量 ${qtyText(transferSummary.value.remainingQty)}`,
+    level: transferSummary.value.shippedCount > 0 ? 'warning' : 'success',
+  },
+  {
+    label: '已收货',
+    value: transferSummary.value.receivedCount,
+    tip: `已收数量 ${qtyText(transferSummary.value.receivedQty)}`,
+    level: 'success',
+  },
+  {
+    label: '异常单',
+    value: transferSummary.value.exceptionCount,
+    tip: '取消/驳回需复核',
+    level: transferSummary.value.exceptionCount > 0 ? 'danger' : 'success',
+  },
+])
 
 const formRules: FormRules = {
   productId: [{ required: true, message: '请选择产品', trigger: 'change' }],
@@ -387,6 +451,18 @@ function transferStockUnitCost(row: StockRow) {
   return getTransferStockUnitCost(row)
 }
 
+function transferStatusValue(row: any) {
+  return getTransferRowStatus(row)
+}
+
+function transferStatusText(row: any) {
+  return getStockTransferStatusText(transferStatusValue(row))
+}
+
+function transferStatusTag(row: any) {
+  return getStockTransferStatusTag(transferStatusValue(row))
+}
+
 function batchStatusTag(value?: string) {
   const map: Record<string, 'success' | 'warning' | 'danger' | 'info'> = {
     NORMAL: 'success',
@@ -443,7 +519,9 @@ async function loadOptions() {
     productOptions.value = productRes.data?.records || productRes.data?.list || []
     warehouseOptions.value = warehouseRes.data?.records || warehouseRes.data?.list || []
     stockRows.value = stockRes.data?.records || stockRes.data?.list || []
-  } catch {
+  } catch (error: any) {
+    errorMessage.value = error?.message || '仓库调拨基础选项加载失败，请检查产品、仓库和库存配置。'
+    ElMessage.error(errorMessage.value)
     productOptions.value = []
     warehouseOptions.value = []
     stockRows.value = []
@@ -454,7 +532,9 @@ async function refreshStockRows() {
   try {
     const res: any = await getStockList({ page: 1, pageSize: 1000 })
     stockRows.value = res.data?.records || res.data?.list || []
-  } catch {
+  } catch (error: any) {
+    errorMessage.value = error?.message || '仓库调拨库存刷新失败，请检查库存余额。'
+    ElMessage.error(errorMessage.value)
     stockRows.value = []
   }
 }
@@ -475,7 +555,10 @@ async function fetchData() {
     const rows = res.data?.records || res.data?.list || []
     tableData.value = rows
     pagination.total = res.data?.total || rows.length
-  } catch {
+    errorMessage.value = ''
+  } catch (error: any) {
+    errorMessage.value = error?.message || '仓库调拨记录加载失败，请检查库存台账和调拨单状态。'
+    ElMessage.error(errorMessage.value)
     tableData.value = []
     pagination.total = 0
   } finally {
@@ -528,8 +611,9 @@ async function handleSubmit() {
     dialogVisible.value = false
     await refreshStockRows()
     fetchData()
-  } catch {
-    // 交给全局拦截器提示
+  } catch (error: any) {
+    errorMessage.value = error?.message || '仓库调拨提交失败，请检查调出库存、批次状态和调入仓库。'
+    ElMessage.error(errorMessage.value)
   } finally {
     submitting.value = false
   }
@@ -575,6 +659,81 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
+.page-alert {
+  margin-bottom: 12px;
+}
+
+.transfer-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.transfer-flow span {
+  position: relative;
+  min-height: 32px;
+  padding: 7px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #fff;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.transfer-flow span + span::before {
+  content: ">";
+  position: absolute;
+  left: -9px;
+  color: #909399;
+}
+
+.transfer-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.summary-item {
+  min-height: 74px;
+  padding: 12px;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.summary-item span,
+.summary-item small {
+  display: block;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.summary-item strong {
+  display: block;
+  margin: 6px 0 4px;
+  color: #303133;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.summary-item.is-warning {
+  border-color: #e6a23c;
+  background: #fdf6ec;
+}
+
+.summary-item.is-danger {
+  border-color: #f56c6c;
+  background: #fef0f0;
+}
+
+.summary-item.is-success {
+  border-color: #67c23a;
+}
+
 .pagination {
   margin-top: 16px;
   display: flex;
@@ -583,5 +742,11 @@ onMounted(async () => {
 
 .stock-preview {
   margin: 4px 0 18px;
+}
+
+@media (max-width: 768px) {
+  .transfer-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>

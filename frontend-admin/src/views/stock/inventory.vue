@@ -11,6 +11,16 @@
       </el-button>
     </PageHeader>
 
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      show-icon
+      closable
+      :title="errorMessage"
+      @close="errorMessage = ''"
+    />
+
     <SearchBar :keyword="searchKeyword" @search="handleSearch" @reset="handleReset">
       <el-form-item label="仓库">
         <el-select v-model="searchWarehouseId" placeholder="全部" clearable filterable style="width: 180px">
@@ -252,6 +262,7 @@ type InventoryForm = {
 
 const loading = ref(false)
 const tableData = ref<any[]>([])
+const errorMessage = ref('')
 const searchKeyword = ref('')
 const searchWarehouseId = ref<number | null>(null)
 const searchStatus = ref('')
@@ -361,6 +372,10 @@ function formatQty(value: any) {
   return Number(value || 0).toFixed(0)
 }
 
+function failureText(error: any, fallback: string) {
+  return String(error?.message || '').trim() || fallback
+}
+
 function resetForm() {
   Object.assign(form, {
     warehouseId: null,
@@ -378,7 +393,9 @@ async function loadOptions() {
     ])
     warehouseOptions.value = warehouseRes.data?.records || warehouseRes.data?.list || []
     productOptions.value = productRes.data?.records || productRes.data?.list || []
-  } catch {
+  } catch (error: any) {
+    errorMessage.value = failureText(error, '盘点基础选项加载失败，请检查仓库和产品配置。')
+    ElMessage.error(errorMessage.value)
     warehouseOptions.value = []
     productOptions.value = []
   }
@@ -397,7 +414,10 @@ async function fetchData() {
     const rows = res.data?.records || res.data?.list || []
     tableData.value = rows
     pagination.total = res.data?.total || rows.length
-  } catch {
+    errorMessage.value = ''
+  } catch (error: any) {
+    errorMessage.value = failureText(error, '盘点单加载失败，请检查 Supabase 连接、盘点单和库存明细。')
+    ElMessage.error(errorMessage.value)
     tableData.value = []
     pagination.total = 0
   } finally {
@@ -456,8 +476,9 @@ async function handleCreateSubmit() {
     ElMessage.success('创建成功')
     dialogVisible.value = false
     await fetchData()
-  } catch {
-    // 交给全局拦截器提示
+  } catch (error: any) {
+    errorMessage.value = failureText(error, '盘点单创建失败，请检查盘点仓库、盘点类型和抽盘产品。')
+    ElMessage.error(errorMessage.value)
   }
 }
 
@@ -477,8 +498,9 @@ async function handleSaveCount() {
     ElMessage.success('实盘已保存')
     detailVisible.value = false
     await fetchData()
-  } catch {
-    // 交给全局拦截器提示
+  } catch (error: any) {
+    errorMessage.value = failureText(error, '实盘保存失败，请检查实盘数量、差异原因和盘点状态。')
+    ElMessage.error(errorMessage.value)
   }
 }
 
@@ -504,8 +526,9 @@ async function handleStart(row: any) {
     await startStockInventory(row.id)
     ElMessage.success('已开始盘点')
     await fetchData()
-  } catch {
-    // 交给全局拦截器提示
+  } catch (error: any) {
+    errorMessage.value = failureText(error, '开始盘点失败，请检查盘点单状态。')
+    ElMessage.error(errorMessage.value)
   }
 }
 
@@ -516,8 +539,9 @@ async function handleSubmitReview(row: any) {
     await submitStockInventory(row.id)
     ElMessage.success('已提交审核')
     await fetchData()
-  } catch {
-    // 交给全局拦截器提示
+  } catch (error: any) {
+    errorMessage.value = failureText(error, '提交盘点审核失败，请检查盘点明细是否完整。')
+    ElMessage.error(errorMessage.value)
   }
 }
 
@@ -533,8 +557,9 @@ async function handleApprove(row: any) {
     await approveStockInventory(row.id)
     ElMessage.success('审核通过')
     await fetchData()
-  } catch {
-    // 交给全局拦截器提示
+  } catch (error: any) {
+    errorMessage.value = failureText(error, '盘点审核通过失败，请检查盘亏后库存、锁定量和审批状态。')
+    ElMessage.error(errorMessage.value)
   }
 }
 
@@ -544,8 +569,9 @@ async function handleReject(row: any) {
     await rejectStockInventory(row.id)
     ElMessage.success('已驳回')
     await fetchData()
-  } catch {
-    // 交给全局拦截器提示
+  } catch (error: any) {
+    errorMessage.value = failureText(error, '盘点驳回失败，请检查盘点单状态。')
+    ElMessage.error(errorMessage.value)
   }
 }
 
@@ -566,6 +592,10 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
+.page-alert {
+  margin-bottom: 12px;
+}
+
 .pagination {
   margin-top: 16px;
   display: flex;

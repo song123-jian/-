@@ -11,28 +11,16 @@
       </el-button>
     </PageHeader>
 
-    <section class="kpi-grid">
-      <article class="kpi-card">
-        <span>巡检记录</span>
-        <strong>{{ summary.total }}</strong>
-        <small>IPQC 过程检验</small>
-      </article>
-      <article class="kpi-card kpi-card--danger">
-        <span>不合格</span>
-        <strong>{{ summary.failed }}</strong>
-        <small>需进入不良品处置</small>
-      </article>
-      <article class="kpi-card kpi-card--warning">
-        <span>让步接收</span>
-        <strong>{{ summary.conditional }}</strong>
-        <small>需复核确认</small>
-      </article>
-      <article class="kpi-card kpi-card--success">
-        <span>合格率</span>
-        <strong>{{ summary.passRate }}%</strong>
-        <small>按当前筛选记录计算</small>
-      </article>
-    </section>
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      :title="errorMessage"
+      show-icon
+      :closable="false"
+    />
+
+    <MetricStrip class="metric-section" :items="metricCards" testid="process-inspection-metrics" />
 
     <SearchBar :keyword="keyword" @search="handleSearch" @reset="handleReset">
       <el-form-item label="结果">
@@ -73,13 +61,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { Plus, Refresh } from '@element-plus/icons-vue'
+import MetricStrip from '@/components/MetricStrip.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import SearchBar from '@/components/SearchBar.vue'
 import { getQcRecordList } from '@/api/qcRecord'
 
 const router = useRouter()
 const loading = ref(false)
+const errorMessage = ref('')
 const keyword = ref('')
 const result = ref('')
 const rows = ref<any[]>([])
@@ -97,6 +88,13 @@ const summary = computed(() => {
   }
 })
 
+const metricCards = computed(() => [
+  { label: '巡检记录', value: summary.value.total, meta: 'IPQC 过程检验', tone: 'primary' as const },
+  { label: '不合格', value: summary.value.failed, meta: '需进入不良品处置', tone: 'danger' as const },
+  { label: '让步接收', value: summary.value.conditional, meta: '需复核确认', tone: 'warning' as const },
+  { label: '合格率', value: summary.value.passRate, valueType: 'percent' as const, precision: 1, meta: '按当前筛选记录计算', tone: 'success' as const },
+])
+
 function resultText(value?: string) {
   if (value === 'PASS') return '合格'
   if (value === 'FAIL') return '不合格'
@@ -110,8 +108,13 @@ function resultTag(value?: string) {
   return 'warning'
 }
 
+function failureText(error: any, fallback: string) {
+  return error?.message || error?.response?.data?.message || fallback
+}
+
 async function fetchData() {
   loading.value = true
+  errorMessage.value = ''
   try {
     const res: any = await getQcRecordList({
       page: 1,
@@ -121,6 +124,10 @@ async function fetchData() {
       checkResult: result.value || undefined,
     })
     rows.value = res.data?.records || res.data || []
+  } catch (error: any) {
+    rows.value = []
+    errorMessage.value = failureText(error, '过程巡检加载失败，请检查 Supabase 连接和 IPQC 质检记录。')
+    ElMessage.error(errorMessage.value)
   } finally {
     loading.value = false
   }
@@ -138,41 +145,14 @@ function handleReset() {
 }
 
 function goRecords() {
-  router.push('/qc/records')
+  router.push({ path: '/qc/records', query: { action: 'create', checkType: 'IPQC' } })
 }
 
 onMounted(fetchData)
 </script>
 
 <style scoped lang="scss">
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 12px;
-}
-
-.kpi-card {
-  display: grid;
-  gap: 6px;
-  min-height: 92px;
-  padding: 14px;
-  border: 1px solid #dfe5ec;
-  border-left: 4px solid #409eff;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.kpi-card--danger { border-left-color: #f56c6c; }
-.kpi-card--warning { border-left-color: #e6a23c; }
-.kpi-card--success { border-left-color: #67c23a; }
-
-.kpi-card span,
-.kpi-card small {
-  color: #64748b;
-}
-
-.kpi-card strong {
-  color: #1f2933;
-  font-size: 26px;
+.page-alert {
+  margin-bottom: 12px;
 }
 </style>

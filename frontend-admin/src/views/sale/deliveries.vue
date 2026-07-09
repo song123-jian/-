@@ -1,13 +1,24 @@
 <template>
   <div class="page-container">
-    <PageHeader title="发货管理">
+    <PageHeader title="发货管理" subtitle="跟踪销售出库后的发货单、物流状态、签收进度和导出留档。">
+      <el-button plain :loading="exporting" @click="handleExport">
+        <el-icon><Download /></el-icon>
+        导出Excel
+      </el-button>
       <el-button type="primary" @click="goStockOut">
         <el-icon><TopRight /></el-icon>
         销售出库
       </el-button>
     </PageHeader>
 
-    <SearchBar :keyword="searchKeyword" @search="handleSearch" @reset="handleReset">
+    <SearchBar
+      :keyword="searchKeyword"
+      title="筛选发货记录"
+      description="按客户、仓库、产品、状态和日期筛选发货单，便于物流跟踪。"
+      keyword-placeholder="发货单、销售订单、运单号"
+      @search="handleSearch"
+      @reset="handleReset"
+    >
       <el-form-item label="客户">
         <el-select v-model="searchCustomerId" placeholder="全部" clearable filterable style="width: 190px">
           <el-option
@@ -56,6 +67,8 @@
       </el-form-item>
     </SearchBar>
 
+    <SalesMetricStrip :metrics="metricCards" />
+
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading" empty-text="暂无发货记录">
         <el-table-column type="expand" width="44">
@@ -71,8 +84,8 @@
             </el-table>
           </template>
         </el-table-column>
-        <el-table-column prop="deliveryNo" label="发货单号" min-width="170" show-overflow-tooltip />
-        <el-table-column prop="saleOrderNo" label="销售订单" min-width="170" show-overflow-tooltip />
+        <el-table-column prop="deliveryNo" label="发货单号" min-width="170" fixed="left" show-overflow-tooltip />
+        <el-table-column prop="saleOrderNo" label="销售订单" min-width="170" fixed="left" show-overflow-tooltip />
         <el-table-column prop="customerName" label="客户" min-width="150" show-overflow-tooltip />
         <el-table-column prop="productName" label="产品" min-width="190" show-overflow-tooltip />
         <el-table-column prop="totalQty" label="发货数量" width="110" align="right">
@@ -98,9 +111,9 @@
           <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
         </el-table-column>
         <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
-        <el-table-column label="操作" fixed="right" width="110">
+        <el-table-column label="操作" fixed="right" width="140" align="center">
           <template #default="{ row }">
-            <el-button type="primary" link :disabled="isDeliveryUpdateDisabled(row)" @click="handleEdit(row)">物流</el-button>
+            <RowActions :actions="deliveryRowActions(row)" @command="handleDeliveryCommand(row, $event)" />
           </template>
         </el-table-column>
       </el-table>
@@ -164,14 +177,20 @@ import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
-import { TopRight } from '@element-plus/icons-vue'
+import { Download, TopRight } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
+import RowActions, { type RowActionItem } from '@/components/RowActions.vue'
 import SearchBar from '@/components/SearchBar.vue'
+import SalesMetricStrip from '@/components/SalesMetricStrip.vue'
 import { getCustomerList } from '@/api/customer'
 import { getDeliveryList, updateDelivery } from '@/api/delivery'
 import { getProductList } from '@/api/product'
 import { getWarehouseList } from '@/api/warehouse'
 import { formatDate, formatDateTime } from '@/utils'
+import { recordBusinessAudit } from '@/utils/business-audit'
+import { printBusinessDocument } from '@/utils/business-print'
+import { exportExcelFile, type ExcelColumn } from '@/utils/export-excel'
+import { buildSaleDeliveryMetricCards } from '@/utils/sale-management'
 import {
   getSaleDeliveryStatusTag,
   getSaleDeliveryStatusText,
@@ -198,6 +217,7 @@ type DeliveryForm = {
 
 const router = useRouter()
 const loading = ref(false)
+const exporting = ref(false)
 const submitting = ref(false)
 const tableData = ref<any[]>([])
 const customerOptions = ref<OptionItem[]>([])
@@ -224,9 +244,26 @@ const editableStatusOptions = statusOptions.filter((item) => !['PENDING', 'CANCE
 
 const form = reactive<DeliveryForm>(createFormState())
 
+const deliveryExportColumns: ExcelColumn<any>[] = [
+  { label: '发货单号', prop: 'deliveryNo' },
+  { label: '销售订单', prop: 'saleOrderNo' },
+  { label: '客户', prop: 'customerName' },
+  { label: '产品', prop: 'productName' },
+  { label: '发货数量', value: (row) => qtyText(row.totalQty) },
+  { label: '出库仓库', prop: 'warehouseName' },
+  { label: '物流公司', prop: 'logisticsCompany' },
+  { label: '运单号', prop: 'trackingNo' },
+  { label: '发货日期', prop: 'deliveryDate' },
+  { label: '状态', value: (row) => getSaleDeliveryStatusText(row.status) },
+  { label: '操作人', prop: 'operatorName' },
+  { label: '创建时间', value: (row) => formatDateTime(row.createdAt) },
+  { label: '备注', prop: 'remark' },
+]
+
 const sellableProductOptions = computed(() =>
   productOptions.value.filter((item) => !['RAW', 'MATERIAL'].includes(String(item.type || '').toUpperCase()))
 )
+const metricCards = computed(() => buildSaleDeliveryMetricCards(tableData.value))
 
 const formRules: FormRules = {
   deliveryDate: [{ required: true, message: '请选择发货日期', trigger: 'change' }],
@@ -288,6 +325,18 @@ function isDeliveryUpdateDisabled(row: any) {
   return normalizeStatus(row?.status) === 'CANCELLED'
 }
 
+function deliveryRowActions(row: any): RowActionItem[] {
+  return [
+    { key: 'print', label: '打印', type: 'primary' },
+    { key: 'edit', label: '物流', type: 'primary', disabled: isDeliveryUpdateDisabled(row) },
+  ]
+}
+
+function handleDeliveryCommand(row: any, command: string) {
+  if (command === 'print') handlePrint(row)
+  if (command === 'edit') handleEdit(row)
+}
+
 async function loadOptions() {
   try {
     const [customerRes, productRes, warehouseRes] = await Promise.all([
@@ -328,6 +377,107 @@ async function fetchData() {
   } finally {
     loading.value = false
   }
+}
+
+async function handleExport() {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const res: any = await getDeliveryList({
+      page: 1,
+      pageSize: 10000,
+      keyword: searchKeyword.value || undefined,
+      customerId: searchCustomerId.value || undefined,
+      warehouseId: searchWarehouseId.value || undefined,
+      productId: searchProductId.value || undefined,
+      status: searchStatus.value || undefined,
+      startDate: searchDate.value?.[0] || undefined,
+      endDate: searchDate.value?.[1] || undefined,
+    })
+    const rows = res.data?.records || res.data?.list || []
+    const filename = `发货管理导出_${Date.now()}.xls`
+    exportExcelFile({
+      filename,
+      sheetName: '发货管理',
+      columns: deliveryExportColumns,
+      rows,
+    })
+    await recordBusinessAudit({
+      module: '发货管理',
+      action: 'EXPORT',
+      targetType: 'delivery_order',
+      targetId: 'filtered',
+      count: rows.length,
+      scope: '当前筛选',
+      filename,
+      detail: {
+        keyword: searchKeyword.value,
+        customerId: searchCustomerId.value,
+        warehouseId: searchWarehouseId.value,
+        productId: searchProductId.value,
+        status: searchStatus.value,
+        startDate: searchDate.value?.[0] || '',
+        endDate: searchDate.value?.[1] || '',
+      },
+    })
+    ElMessage.success(`已导出 ${rows.length} 条发货记录`)
+  } catch {
+    ElMessage.error('导出失败')
+  } finally {
+    exporting.value = false
+  }
+}
+
+function deliveryPrintRows(row: any) {
+  const items = Array.isArray(row.items) && row.items.length
+    ? row.items
+    : [{ productName: row.productName, qty: row.totalQty, warehouseName: row.warehouseName, moveNo: row.moveNo }]
+  return items.map((item: any) => ({
+    productCode: item.productCode || '-',
+    productName: item.productName || row.productName || '-',
+    qty: `${qtyText(item.qty || row.totalQty)} ${item.productUnit || ''}`.trim(),
+    warehouseName: item.warehouseName || row.warehouseName || '-',
+    moveNo: item.moveNo || '-',
+  }))
+}
+
+async function handlePrint(row: any) {
+  const opened = printBusinessDocument({
+    title: '发货单',
+    subtitle: row.deliveryNo || `#${row.id || ''}`,
+    sections: [
+      { label: '客户', value: row.customerName || '-' },
+      { label: '销售订单', value: row.saleOrderNo || '-' },
+      { label: '发货日期', value: row.deliveryDate || '-' },
+      { label: '状态', value: getSaleDeliveryStatusText(row.status) },
+      { label: '物流公司', value: row.logisticsCompany || '-' },
+      { label: '运单号', value: row.trackingNo || '-' },
+      { label: '操作人', value: row.operatorName || '-' },
+      { label: '创建时间', value: formatDateTime(row.createdAt) },
+    ],
+    columns: [
+      { label: '产品编码', prop: 'productCode' },
+      { label: '产品名称', prop: 'productName' },
+      { label: '发货数量', prop: 'qty', align: 'right' },
+      { label: '出库仓库', prop: 'warehouseName' },
+      { label: '出库流水', prop: 'moveNo' },
+    ],
+    rows: deliveryPrintRows(row),
+    totals: [{ label: '发货总数', value: qtyText(row.totalQty) }],
+    remark: row.remark,
+  })
+  if (!opened) {
+    ElMessage.error('打印窗口被浏览器拦截')
+    return
+  }
+  await recordBusinessAudit({
+    module: '发货管理',
+    action: 'PRINT',
+    targetType: 'delivery_order',
+    targetId: row.id || row.deliveryNo,
+    summary: `打印发货单 ${row.deliveryNo || ''}`,
+    detail: { deliveryNo: row.deliveryNo, saleOrderNo: row.saleOrderNo, customerName: row.customerName },
+  })
 }
 
 function handleSearch(formData: { keyword: string }) {
@@ -398,6 +548,10 @@ onMounted(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.sales-metric-strip {
+  margin: 12px 0;
 }
 
 .detail-table {

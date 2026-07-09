@@ -6,7 +6,7 @@
       </el-button>
     </PageHeader>
 
-    <SearchBar @search="handleSearch" @reset="handleReset">
+    <SearchBar :keyword="searchKeyword" @search="handleSearch" @reset="handleReset">
       <el-form-item label="报工类型">
         <el-select v-model="searchReportType" placeholder="全部" clearable style="width: 160px">
           <el-option
@@ -43,8 +43,59 @@
       </el-form-item>
     </SearchBar>
 
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      :title="errorMessage"
+      show-icon
+      :closable="false"
+    />
+
+    <section class="site-workbench">
+      <div class="scan-panel">
+        <div>
+          <strong>扫码报工入口</strong>
+          <span>扫描或输入工单号/工单 ID，自动带出机台和模具并执行现场门禁校验。</span>
+        </div>
+        <div class="scan-actions">
+          <el-input
+            v-model.trim="scanCode"
+            clearable
+            placeholder="扫描工单号或输入工单 ID"
+            @keyup.enter="handleScanReport"
+          />
+          <el-button type="primary" @click="handleScanReport">扫码报工</el-button>
+        </div>
+      </div>
+
+      <div class="gate-panel">
+        <div class="gate-panel__header">
+          <div>
+            <strong>现场门禁</strong>
+            <span>{{ selectedOrderGateTitle }}</span>
+          </div>
+          <el-tag :type="selectedOrderGateTag" effect="plain">{{ selectedOrderGateStatus }}</el-tag>
+        </div>
+        <div class="gate-list">
+          <div v-for="item in selectedGateSummary.checks" :key="item.key" class="gate-item">
+            <span>{{ item.label }}</span>
+            <el-tag :type="gateTagType(item.state)" effect="plain">{{ gateText(item) }}</el-tag>
+          </div>
+        </div>
+        <el-alert
+          v-if="selectedOrderGateMessage"
+          class="gate-alert"
+          :type="selectedOrderGateAlertType"
+          :title="selectedOrderGateMessage"
+          show-icon
+          :closable="false"
+        />
+      </div>
+    </section>
+
     <el-card shadow="hover">
-      <el-table :data="tableData" stripe v-loading="loading">
+      <el-table :data="tableData" stripe v-loading="loading" empty-text="暂无报工记录">
         <el-table-column prop="id" label="编号" width="80" />
         <el-table-column prop="orderNo" label="工单编号" width="150" />
         <el-table-column prop="machineName" label="机台" width="140" show-overflow-tooltip />
@@ -64,7 +115,22 @@
         </el-table-column>
         <el-table-column prop="qty" label="产量" width="100" />
         <el-table-column prop="badQty" label="不良" width="100" />
+        <el-table-column label="合格" width="100">
+          <template #default="{ row }">
+            {{ qtyText(goodQty(row)) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="不良率" width="100">
+          <template #default="{ row }">
+            {{ badRateText(row) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="shots" label="模次" width="100" />
+        <el-table-column label="工时" width="100">
+          <template #default="{ row }">
+            {{ workMinutesText(row.workMinutes) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="reporterName" label="报工人" width="120" show-overflow-tooltip />
         <el-table-column prop="createdAt" label="创建时间" width="180">
           <template #default="{ row }">
@@ -104,7 +170,7 @@
                 @change="handleOrderChange"
               >
                 <el-option
-                  v-for="item in prodOrderOptions"
+                  v-for="item in reportableProdOrderOptions"
                   :key="item.id"
                   :label="orderLabel(item)"
                   :value="item.id"
@@ -130,6 +196,38 @@
             </el-form-item>
           </el-col>
         </el-row>
+
+        <div class="report-summary">
+          <div>
+            <span>合格数量</span>
+            <strong>{{ goodQtyText }}</strong>
+          </div>
+          <div>
+            <span>不良率</span>
+            <strong>{{ badRateFormText }}</strong>
+          </div>
+          <div>
+            <span>工时分钟</span>
+            <strong>{{ workMinutesFormText }}</strong>
+          </div>
+          <div>
+            <span>工单范围</span>
+            <strong>已派工/生产中/暂停</strong>
+          </div>
+          <div>
+            <span>现场门禁</span>
+            <strong>{{ selectedOrderGateStatus }}</strong>
+          </div>
+        </div>
+
+        <el-alert
+          v-if="selectedOrderGateMessage"
+          class="gate-alert"
+          :type="selectedOrderGateAlertType"
+          :title="selectedOrderGateMessage"
+          show-icon
+          :closable="false"
+        />
 
         <el-row :gutter="16">
           <el-col :span="12">
@@ -230,14 +328,14 @@
 
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit">确定</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -247,9 +345,15 @@ import { getMachineList } from '@/api/machine'
 import { getMoldList } from '@/api/mold'
 import { getProdOrderList } from '@/api/prodOrder'
 import { createProdReport, deleteProdReport, getProdReportList, updateProdReport } from '@/api/prodReport'
+import { summarizeSiteExecutionGate, type SiteExecutionGateCheck } from '@/utils/injection-professional'
 import {
+  getProdReportBadRate,
+  getProdReportGoodQty,
+  isProdReportOrderStatus,
   normalizeProdReportProcessFilter,
   normalizeProdReportProcessName,
+  normalizeProdReportStatus,
+  toProdReportNumber,
   validateProdReportProcessName,
 } from '@/utils/production-report'
 
@@ -262,17 +366,25 @@ type OptionItem = {
   machineName?: string
   machineId?: number
   moldId?: number
+  status?: string
+  processCardStatus?: string
+  firstArticleStatus?: string
+  startupStatus?: string
+  materialMixStatus?: string
 }
 
 const loading = ref(false)
 const tableData = ref<any[]>([])
+const scanCode = ref('')
 const searchKeyword = ref('')
 const searchReportType = ref('')
 const searchProcessName = ref('')
 const searchShift = ref('')
 const searchDate = ref<string[]>([])
+const errorMessage = ref('')
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增报工')
+const submitting = ref(false)
 const formRef = ref<FormInstance>()
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
 const prodOrderOptions = ref<OptionItem[]>([])
@@ -305,6 +417,45 @@ const form = reactive({
   endTime: '',
 })
 
+const reportableProdOrderOptions = computed(() =>
+  prodOrderOptions.value.filter((item) => isProdReportOrderStatus(item.status))
+)
+
+const goodQtyValue = computed(() => Math.max(Number(form.qty || 0) - Number(form.badQty || 0), 0))
+const badRateValue = computed(() => getProdReportBadRate({ qty: form.qty, badQty: form.badQty }))
+const workMinutesValue = computed(() => calculateWorkMinutes(form.startTime, form.endTime))
+const goodQtyText = computed(() => qtyText(goodQtyValue.value))
+const badRateFormText = computed(() => `${badRateValue.value.toFixed(1)}%`)
+const workMinutesFormText = computed(() => workMinutesText(workMinutesValue.value))
+const selectedOrder = computed(() => prodOrderOptions.value.find((item) => item.id === form.prodOrderId))
+const selectedGateSummary = computed(() => summarizeSiteExecutionGate(orderGateInput(selectedOrder.value)))
+const selectedOrderHasGateFields = computed(() => hasGateFields(selectedOrder.value))
+const selectedOrderGateStatus = computed(() => {
+  if (!selectedOrder.value) return '未选择工单'
+  if (!selectedOrderHasGateFields.value) return '兼容放行'
+  return selectedGateSummary.value.allowed ? '允许报工' : '禁止报工'
+})
+const selectedOrderGateTitle = computed(() => {
+  if (!selectedOrder.value) return '选择工单后显示工艺卡、首件确认、齐套检查和配料烘料状态。'
+  return orderLabel(selectedOrder.value)
+})
+const selectedOrderGateMessage = computed(() => {
+  if (!selectedOrder.value) return ''
+  if (!selectedOrderHasGateFields.value) return '当前工单未返回现场门禁字段，按兼容模式允许报工；正式环境应补齐工艺卡、首件确认、齐套检查和配料烘料状态。'
+  if (selectedGateSummary.value.allowed) return '现场门禁已通过，可以扫码报工。'
+  return `现场门禁未通过：${selectedGateSummary.value.blockers.join('、')}`
+})
+const selectedOrderGateTag = computed(() => {
+  if (!selectedOrder.value) return 'info'
+  if (!selectedOrderHasGateFields.value) return 'warning'
+  return selectedGateSummary.value.allowed ? 'success' : 'danger'
+})
+const selectedOrderGateAlertType = computed(() => {
+  if (!selectedOrder.value) return 'info'
+  if (!selectedOrderHasGateFields.value) return 'warning'
+  return selectedGateSummary.value.allowed ? 'success' : 'error'
+})
+
 const formRules: FormRules = {
   prodOrderId: [{ required: true, message: '请选择工单', trigger: 'change' }],
   machineId: [{ required: true, message: '请选择机台', trigger: 'change' }],
@@ -328,8 +479,8 @@ const formRules: FormRules = {
     {
       validator: (_rule, value, callback) => {
         const qty = Number(value)
-        if (!Number.isFinite(qty) || qty < 0) {
-          callback(new Error('产量不能小于 0'))
+        if (!Number.isInteger(qty) || qty < 0) {
+          callback(new Error('产量必须是非负整数'))
           return
         }
         callback()
@@ -342,8 +493,8 @@ const formRules: FormRules = {
       validator: (_rule, value, callback) => {
         const badQty = Number(value || 0)
         const qty = Number(form.qty || 0)
-        if (!Number.isFinite(badQty) || badQty < 0) {
-          callback(new Error('不良数量不能小于 0'))
+        if (!Number.isInteger(badQty) || badQty < 0) {
+          callback(new Error('不良数量必须是非负整数'))
           return
         }
         if (badQty > qty) {
@@ -415,6 +566,34 @@ function parseDateTime(value?: string) {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
+function failureText(error: any, fallback: string) {
+  return error?.message || error?.data?.message || fallback
+}
+
+function calculateWorkMinutes(startValue?: string, endValue?: string) {
+  const start = parseDateTime(startValue)
+  const end = parseDateTime(endValue)
+  if (!start || !end || end < start) return 0
+  return Math.round((end.getTime() - start.getTime()) / 60000)
+}
+
+function qtyText(value: any) {
+  return toProdReportNumber(value).toFixed(0)
+}
+
+function goodQty(row: any) {
+  return getProdReportGoodQty(row)
+}
+
+function badRateText(row: any) {
+  return `${getProdReportBadRate(row).toFixed(1)}%`
+}
+
+function workMinutesText(value: any) {
+  const minutes = toProdReportNumber(value)
+  return minutes > 0 ? `${minutes.toFixed(0)} 分钟` : '-'
+}
+
 function reportTypeLabel(value?: string) {
   return reportTypeOptions.find((item) => item.value === value)?.label || value || '-'
 }
@@ -426,12 +605,49 @@ function reportTypeTag(value?: string) {
   return 'info'
 }
 
+function hasGateFields(order?: OptionItem) {
+  if (!order) return false
+  return ['processCardStatus', 'firstArticleStatus', 'startupStatus', 'materialMixStatus'].some((key) =>
+    Object.prototype.hasOwnProperty.call(order, key)
+  )
+}
+
+function orderGateInput(order?: OptionItem) {
+  return {
+    prodOrderId: order?.id,
+    processCardStatus: order?.processCardStatus,
+    firstArticleStatus: order?.firstArticleStatus,
+    startupStatus: order?.startupStatus,
+    materialMixStatus: order?.materialMixStatus,
+  }
+}
+
+function gateTagType(state: SiteExecutionGateCheck['state']) {
+  if (state === 'passed') return 'success'
+  if (state === 'blocked') return 'danger'
+  return 'warning'
+}
+
+function gateText(item: SiteExecutionGateCheck) {
+  return item.passed ? '已通过' : item.message
+}
+
 function shiftLabel(value?: string) {
   return shiftOptions.find((item) => item.value === value)?.label || value || '-'
 }
 
+function statusLabel(value?: string) {
+  const map: Record<string, string> = {
+    SCHEDULED: '已派工',
+    RUNNING: '生产中',
+    PAUSED: '已暂停',
+  }
+  return map[normalizeProdReportStatus(value)] || normalizeProdReportStatus(value)
+}
+
 function orderLabel(item: OptionItem) {
-  return [item.orderNo, item.productName].filter(Boolean).join(' - ') || item.orderNo || `#${item.id}`
+  const base = [item.orderNo, item.productName].filter(Boolean).join(' - ') || item.orderNo || `#${item.id}`
+  return `${base} / ${statusLabel(item.status)}`
 }
 
 function machineLabel(item: OptionItem) {
@@ -449,19 +665,21 @@ async function loadOptions() {
       getMachineList({ page: 1, pageSize: 200 }),
       getMoldList({ page: 1, pageSize: 200 }),
     ])
-    prodOrderOptions.value = orderRes.data?.records || []
-    machineOptions.value = machineRes.data?.records || []
-    moldOptions.value = moldRes.data?.records || []
-  } catch {
+    prodOrderOptions.value = orderRes.data?.records || orderRes.data?.list || []
+    machineOptions.value = machineRes.data?.records || machineRes.data?.list || []
+    moldOptions.value = moldRes.data?.records || moldRes.data?.list || []
+  } catch (error: any) {
     prodOrderOptions.value = []
     machineOptions.value = []
     moldOptions.value = []
+    ElMessage.error(failureText(error, '报工基础选项加载失败，请检查生产工单、机台和模具资料。'))
   }
 }
 
 async function fetchData() {
   loading.value = true
   try {
+    errorMessage.value = ''
     const params: Record<string, any> = {
       page: pagination.page,
       pageSize: pagination.pageSize,
@@ -475,11 +693,14 @@ async function fetchData() {
       params.endDate = searchDate.value[1]
     }
     const res: any = await getProdReportList(params)
-    tableData.value = res.data?.list || []
-    pagination.total = res.data?.total || 0
-  } catch {
+    const rows = res.data?.list || res.data?.records || []
+    tableData.value = rows
+    pagination.total = res.data?.total || rows.length
+  } catch (error: any) {
     tableData.value = []
     pagination.total = 0
+    errorMessage.value = failureText(error, '报工记录加载失败，请检查 Supabase 连接、报工表和生产工单配置。')
+    ElMessage.error(errorMessage.value)
   } finally {
     loading.value = false
   }
@@ -522,6 +743,7 @@ function handleAdd() {
   dialogTitle.value = '新增报工'
   resetForm()
   dialogVisible.value = true
+  nextTick(() => formRef.value?.clearValidate())
 }
 
 function handleOrderChange(orderId: number | null) {
@@ -535,6 +757,25 @@ function handleOrderChange(orderId: number | null) {
   if (order.moldId) {
     form.moldId = order.moldId
   }
+}
+
+function handleScanReport() {
+  const code = scanCode.value.trim()
+  if (!code) {
+    ElMessage.warning('请先扫描或输入工单号')
+    return
+  }
+  const normalized = code.toLowerCase()
+  const order = prodOrderOptions.value.find((item) =>
+    String(item.id) === code || String(item.orderNo || '').toLowerCase() === normalized
+  )
+  if (!order) {
+    ElMessage.warning('未找到可报工工单')
+    return
+  }
+  handleAdd()
+  form.prodOrderId = order.id
+  handleOrderChange(order.id)
 }
 
 function handleEdit(row: any) {
@@ -554,12 +795,22 @@ function handleEdit(row: any) {
     endTime: row.endTime || '',
   })
   dialogVisible.value = true
+  nextTick(() => formRef.value?.clearValidate())
 }
 
 async function handleSubmit() {
+  if (submitting.value) return
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) {
     return
+  }
+  const order = selectedOrder.value
+  if (order && hasGateFields(order)) {
+    const gate = summarizeSiteExecutionGate(orderGateInput(order))
+    if (!gate.allowed) {
+      ElMessage.error(`现场门禁未通过：${gate.blockers.join('、')}`)
+      return
+    }
   }
 
   const payload = {
@@ -574,8 +825,10 @@ async function handleSubmit() {
     shots: form.shots,
     startTime: form.startTime || undefined,
     endTime: form.endTime || undefined,
+    workMinutes: workMinutesValue.value,
   }
 
+  submitting.value = true
   try {
     if (form.id) {
       await updateProdReport(form.id, payload)
@@ -586,8 +839,10 @@ async function handleSubmit() {
     }
     dialogVisible.value = false
     fetchData()
-  } catch {
-    // 交给全局拦截器提示
+  } catch (error: any) {
+    ElMessage.error(failureText(error, form.id ? '报工记录更新失败' : '报工记录创建失败'))
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -601,8 +856,8 @@ async function handleDelete(row: any) {
     await deleteProdReport(row.id)
     ElMessage.success('删除成功')
     fetchData()
-  } catch {
-    // 交给全局拦截器提示
+  } catch (error: any) {
+    ElMessage.error(failureText(error, '报工记录删除失败'))
   }
 }
 
@@ -634,5 +889,130 @@ onMounted(async () => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.page-alert {
+  margin-bottom: 12px;
+}
+
+.site-workbench {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(340px, 1.2fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.scan-panel,
+.gate-panel {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  background: #fff;
+  padding: 14px;
+}
+
+.scan-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.scan-panel strong,
+.gate-panel strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--el-text-color-primary);
+  font-size: 15px;
+}
+
+.scan-panel span,
+.gate-panel span {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+
+.scan-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.gate-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.gate-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.gate-item {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--el-fill-color-lighter);
+}
+
+.gate-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gate-alert {
+  margin: 12px 0;
+}
+
+.report-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 18px;
+}
+
+.report-summary > div {
+  min-width: 0;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--el-fill-color-lighter);
+}
+
+.report-summary span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.report-summary strong {
+  display: block;
+  color: var(--el-text-color-primary);
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .site-workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .gate-list,
+  .report-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .scan-actions {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

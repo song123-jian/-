@@ -17,7 +17,7 @@
           />
         </el-form-item>
         <el-form-item label="快捷月数">
-          <el-input-number v-model="months" :min="1" :max="24" style="width: 140px" />
+          <el-input-number v-model="months" :min="1" :max="24" :precision="0" style="width: 140px" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSearch">
@@ -50,20 +50,7 @@
       <span>口径：生产报工按 start_time 归集，质检按 check_time 归集，工单、机台、产品与不良类型统一联动。</span>
     </div>
 
-    <div v-loading="loading" class="kpi-grid">
-      <div v-for="item in statCards" :key="item.label" class="kpi-card" :class="`kpi-card--${item.tone}`">
-        <div class="kpi-card__main">
-          <div>
-            <div class="kpi-card__label">{{ item.label }}</div>
-            <div class="kpi-card__value">{{ cardValueText(item) }}</div>
-          </div>
-          <el-icon :size="30">
-            <component :is="cardIcon(item.icon)" />
-          </el-icon>
-        </div>
-        <div class="kpi-card__meta">{{ item.meta }}</div>
-      </div>
-    </div>
+    <MetricStrip v-loading="loading" class="kpi-grid" :items="statCards" testid="production-board-metrics" />
 
     <div v-if="riskItems.length" class="risk-list">
       <el-alert
@@ -188,17 +175,11 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import * as echarts from 'echarts'
 import {
   Calendar,
-  CircleCheck,
-  DataAnalysis,
-  Goods,
-  Monitor,
-  Odometer,
-  Operation,
   Refresh,
   Search,
-  Timer,
-  WarningFilled,
 } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import MetricStrip from '@/components/MetricStrip.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { getProductionBoard } from '@/api/dashboard'
 import {
@@ -216,21 +197,9 @@ import {
   getProductionStatusText,
   normalizeProductionBoardSummary,
   productionRatioPercent,
-  type ProductionBoardCard,
   type ProductionBoardRiskItem,
   type ProductionBoardSummary,
 } from '@/utils/production-board'
-
-const iconMap = {
-  CircleCheck,
-  DataAnalysis,
-  Goods,
-  Monitor,
-  Odometer,
-  Operation,
-  Timer,
-  WarningFilled,
-}
 
 const loading = ref(false)
 const months = ref(3)
@@ -256,8 +225,8 @@ const scopeText = computed(() => {
   return `近 ${months.value} 个月`
 })
 
-function cardIcon(name: string) {
-  return iconMap[name as keyof typeof iconMap] || DataAnalysis
+function failureText(error: any, fallback: string) {
+  return error?.message || error?.data?.message || fallback
 }
 
 function numberText(value: any) {
@@ -266,11 +235,6 @@ function numberText(value: any) {
 
 function percentText(value: any) {
   return `${Number(value || 0).toFixed(1)}%`
-}
-
-function cardValueText(item: ProductionBoardCard) {
-  if (item.valueType === 'percent') return percentText(item.value)
-  return numberText(item.value)
 }
 
 function riskAlertType(level: ProductionBoardRiskItem['level']) {
@@ -405,6 +369,7 @@ async function fetchData() {
   if (rangeError) {
     summary.value = { machineStatuses: [], orderProgresses: [], shiftOutputs: [], topDefects: [] }
     errorMessage.value = rangeError
+    ElMessage.warning(rangeError)
     await nextTick()
     initCharts()
     renderCharts()
@@ -416,9 +381,10 @@ async function fetchData() {
   try {
     const res: any = await getProductionBoard(params)
     summary.value = { machineStatuses: [], orderProgresses: [], shiftOutputs: [], topDefects: [], ...(res.data || {}) }
-  } catch {
+  } catch (error: any) {
     summary.value = { machineStatuses: [], orderProgresses: [], shiftOutputs: [], topDefects: [] }
-    errorMessage.value = '生产看板加载失败，请检查 Supabase 连接、生产报工、质检记录与表结构迁移。'
+    errorMessage.value = failureText(error, '生产看板加载失败，请检查 Supabase 连接、生产报工、质检记录与表结构迁移。')
+    ElMessage.error(errorMessage.value)
   } finally {
     loading.value = false
     await nextTick()
@@ -487,65 +453,7 @@ onUnmounted(() => {
 }
 
 .kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 12px;
   margin-bottom: 16px;
-}
-
-.kpi-card {
-  min-width: 0;
-  min-height: 112px;
-  padding: 14px;
-  border: 1px solid #e4e7ed;
-  border-left: 4px solid #909399;
-  border-radius: 4px;
-  background: #fff;
-}
-
-.kpi-card--primary {
-  border-left-color: #409eff;
-}
-
-.kpi-card--success {
-  border-left-color: #67c23a;
-}
-
-.kpi-card--warning {
-  border-left-color: #e6a23c;
-}
-
-.kpi-card--danger {
-  border-left-color: #f56c6c;
-}
-
-.kpi-card__main {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.kpi-card__label {
-  color: #909399;
-  font-size: 13px;
-  line-height: 1.2;
-}
-
-.kpi-card__value {
-  margin-top: 8px;
-  color: #303133;
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
-.kpi-card__meta {
-  margin-top: 10px;
-  color: #606266;
-  font-size: 12px;
-  line-height: 1.4;
 }
 
 .risk-list {
@@ -580,12 +488,5 @@ onUnmounted(() => {
     padding: 12px 12px 0;
   }
 
-  .kpi-grid {
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  }
-
-  .kpi-card__value {
-    font-size: 20px;
-  }
 }
 </style>

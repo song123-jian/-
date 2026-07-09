@@ -7,13 +7,16 @@
       </el-button>
     </PageHeader>
 
-    <div class="kpi-grid">
-      <div v-for="item in kpiCards" :key="item.label" class="kpi-card" :class="`kpi-card--${item.tone}`">
-        <span>{{ item.label }}</span>
-        <strong>{{ item.value }}</strong>
-        <small>{{ item.meta }}</small>
-      </div>
-    </div>
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      :title="errorMessage"
+      show-icon
+      :closable="false"
+    />
+
+    <MetricStrip :items="kpiCards" testid="productization-metrics" />
 
     <el-card shadow="hover">
       <el-tabs v-model="activeTab" class="work-tabs">
@@ -159,6 +162,7 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
+import MetricStrip, { type MetricStripItem } from '@/components/MetricStrip.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { buildAuditTrailEntry, summarizeAuditEntries, type AuditDiffLevel } from '@/utils/audit-trail'
 import { buildMrpRequirementRows, summarizeMrpRequirements } from '@/utils/bom-mrp'
@@ -172,6 +176,7 @@ import { buildProductionScheduleBoard } from '@/utils/production-schedule'
 
 const activeTab = ref('mrp')
 const refreshVersion = ref(0)
+const errorMessage = ref('')
 
 const bomRows = [
   { parentProductId: 101, productName: '透明外壳', materialId: 201, materialCode: 'M-ABS', materialName: 'ABS原料', unit: 'kg', qtyPerParent: 0.025, lossRate: 0.03 },
@@ -240,17 +245,22 @@ const costSummary = computed(() => summarizeProductCosts(costRows.value))
 const auditSummary = computed(() => summarizeAuditEntries(auditEntries))
 const templateSummary = computed(() => summarizeImportTemplates(templates))
 
-const kpiCards = computed(() => [
-  { label: '缺料项', value: mrpSummary.value.shortageCount, meta: `物料 ${mrpSummary.value.materialCount} 项`, tone: mrpSummary.value.shortageCount ? 'danger' : 'success' },
-  { label: '排程冲突', value: scheduleBoard.value.summary.conflictCount, meta: `工单 ${scheduleBoard.value.summary.jobCount} 张`, tone: scheduleBoard.value.summary.conflictCount ? 'danger' : 'success' },
-  { label: '成本预警', value: costSummary.value.warningCount + costSummary.value.dangerCount, meta: `核算 ${costSummary.value.productCount} 个产品`, tone: costSummary.value.dangerCount ? 'danger' : costSummary.value.warningCount ? 'warning' : 'success' },
-  { label: '审计字段', value: auditSummary.value.diffCount, meta: `记录 ${auditSummary.value.entryCount} 条`, tone: auditSummary.value.warningCount ? 'warning' : 'success' },
-  { label: '导入模板', value: templateSummary.value.total, meta: `必填字段 ${templateSummary.value.requiredColumnCount} 个`, tone: 'primary' },
+const kpiCards = computed<MetricStripItem[]>(() => [
+  { label: '缺料项', value: mrpSummary.value.shortageCount, meta: `物料 ${mrpSummary.value.materialCount} 项`, tone: mrpSummary.value.shortageCount ? ('danger' as const) : ('success' as const) },
+  { label: '排程冲突', value: scheduleBoard.value.summary.conflictCount, meta: `工单 ${scheduleBoard.value.summary.jobCount} 张`, tone: scheduleBoard.value.summary.conflictCount ? ('danger' as const) : ('success' as const) },
+  { label: '成本预警', value: costSummary.value.warningCount + costSummary.value.dangerCount, meta: `核算 ${costSummary.value.productCount} 个产品`, tone: costSummary.value.dangerCount ? ('danger' as const) : (costSummary.value.warningCount ? ('warning' as const) : ('success' as const)) },
+  { label: '审计字段', value: auditSummary.value.diffCount, meta: `记录 ${auditSummary.value.entryCount} 条`, tone: auditSummary.value.warningCount ? ('warning' as const) : ('success' as const) },
+  { label: '导入模板', value: templateSummary.value.total, meta: `必填字段 ${templateSummary.value.requiredColumnCount} 个`, tone: 'primary' as const },
 ])
 
 function refreshView() {
   refreshVersion.value += 1
+  errorMessage.value = ''
   ElMessage.success('产品化口径已刷新')
+}
+
+function failureText(error: any, fallback: string) {
+  return error?.message || fallback
 }
 
 function qtyText(value: number, unit = '') {
@@ -302,26 +312,28 @@ function auditRiskText(value: AuditDiffLevel) {
 }
 
 function downloadTemplate(code: string) {
-  const csv = buildImportTemplateCsv(code)
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `${code}.csv`
-  link.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+  try {
+    errorMessage.value = ''
+    const csv = buildImportTemplateCsv(code)
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${code}.csv`
+    link.click()
+    window.setTimeout(() => URL.revokeObjectURL(url), 0)
+  } catch (error: any) {
+    errorMessage.value = failureText(error, '导入模板下载失败，请检查模板编码和浏览器下载权限。')
+    ElMessage.error(errorMessage.value)
+  }
 }
 </script>
 
 <style scoped lang="scss">
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+.page-alert {
+  margin-bottom: 12px;
 }
 
-.kpi-card,
 .cost-card {
   min-width: 0;
   border: 1px solid #e4e7ed;
@@ -329,41 +341,18 @@ function downloadTemplate(code: string) {
   border-radius: 6px;
   background: #fff;
 }
-
-.kpi-card {
-  display: grid;
-  gap: 6px;
-  padding: 14px;
-
-  span,
-  small {
-    color: #606266;
-    line-height: 1.3;
-  }
-
-  strong {
-    color: #303133;
-    font-size: 24px;
-    line-height: 1.2;
-  }
-}
-
-.kpi-card--primary,
 .cost-card--primary {
   border-left-color: #409eff;
 }
 
-.kpi-card--success,
 .cost-card--normal {
   border-left-color: #67c23a;
 }
 
-.kpi-card--warning,
 .cost-card--warning {
   border-left-color: #e6a23c;
 }
 
-.kpi-card--danger,
 .cost-card--danger {
   border-left-color: #f56c6c;
 }

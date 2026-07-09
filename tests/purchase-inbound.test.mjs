@@ -102,5 +102,6 @@ describe('purchase inbound page and API integration', () => {
     assert.match(requestSource, /import \{ buildPurchaseInboundPayload \} from '..\/utils\/purchase-inbound'/)
     assert.match(requestSource, /path === 'stock\/in-purchase'[\s\S]*?\{ \.\.\.data, \.\.\.buildPurchaseInboundPayload\(data \|\| \{\}\) \}/)
     assert.match(requestSource, /buildPurchaseInboundPayload\(data \|\| \{\}\)/)
+    assert.match(requestSource, /syncWorkflowByBusiness\('purchase_inbound'[\s\S]*?'create'/)
   })
 })

@@ -7,6 +7,16 @@
       </el-button>
     </PageHeader>
 
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      show-icon
+      closable
+      :title="errorMessage"
+      @close="errorMessage = ''"
+    />
+
     <SearchBar :keyword="searchKeyword" @search="handleSearch" @reset="handleReset">
       <el-form-item label="供应商">
         <el-select v-model="searchSupplierId" placeholder="全部" clearable filterable style="width: 180px">
@@ -270,6 +280,7 @@ type PurchaseInForm = {
 
 const loading = ref(false)
 const tableData = ref<any[]>([])
+const errorMessage = ref('')
 const searchKeyword = ref('')
 const searchSupplierId = ref<number | null>(null)
 const searchWarehouseId = ref<number | null>(null)
@@ -459,6 +470,10 @@ function batchStatusText(value?: string) {
   return map[String(value || '').toUpperCase()] || '未记录'
 }
 
+function failureText(error: any, fallback: string) {
+  return String(error?.message || '').trim() || fallback
+}
+
 function resetForm() {
   Object.assign(form, {
     supplierId: null,
@@ -484,7 +499,9 @@ async function loadOptions() {
     supplierOptions.value = supplierRes.data?.records || supplierRes.data?.list || []
     productOptions.value = productRes.data?.records || productRes.data?.list || []
     warehouseOptions.value = warehouseRes.data?.records || warehouseRes.data?.list || []
-  } catch {
+  } catch (error: any) {
+    errorMessage.value = failureText(error, '采购入库基础选项加载失败，请检查供应商、物料和仓库配置。')
+    ElMessage.error(errorMessage.value)
     supplierOptions.value = []
     productOptions.value = []
     warehouseOptions.value = []
@@ -509,7 +526,10 @@ async function fetchData() {
     const rows = res.data?.records || res.data?.list || []
     tableData.value = rows
     pagination.total = res.data?.total || rows.length
-  } catch {
+    errorMessage.value = ''
+  } catch (error: any) {
+    errorMessage.value = failureText(error, '采购入库记录加载失败，请检查库存台账、供应商和采购入库配置。')
+    ElMessage.error(errorMessage.value)
     tableData.value = []
     pagination.total = 0
   } finally {
@@ -562,8 +582,9 @@ async function handleSubmit() {
     ElMessage.success('采购入库成功')
     dialogVisible.value = false
     fetchData()
-  } catch {
-    // 交给全局拦截器提示
+  } catch (error: any) {
+    errorMessage.value = failureText(error, '采购入库提交失败，请检查供应商、批次日期、入库数量和采购单价。')
+    ElMessage.error(errorMessage.value)
   } finally {
     submitting.value = false
   }
@@ -595,6 +616,10 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
+.page-alert {
+  margin-bottom: 12px;
+}
+
 .pagination {
   margin-top: 16px;
   display: flex;

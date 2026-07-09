@@ -2,6 +2,15 @@
   <div class="page-container">
     <PageHeader title="不良分析" />
 
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      :title="errorMessage"
+      show-icon
+      :closable="false"
+    />
+
     <SearchBar @search="handleSearch" @reset="handleReset">
       <el-form-item label="日期范围">
         <el-date-picker
@@ -20,13 +29,19 @@
       <el-col :span="12">
         <el-card shadow="hover">
           <template #header><span>不良类型分布</span></template>
-          <div ref="defectTypeChartRef" class="chart-container"></div>
+          <div class="chart-shell">
+            <div ref="defectTypeChartRef" class="chart-container"></div>
+            <el-empty v-if="!loading && !tableData.length" description="暂无不良类型数据" />
+          </div>
         </el-card>
       </el-col>
       <el-col :span="12">
         <el-card shadow="hover">
           <template #header><span>不良趋势</span></template>
-          <div ref="defectTrendChartRef" class="chart-container"></div>
+          <div class="chart-shell">
+            <div ref="defectTrendChartRef" class="chart-container"></div>
+            <el-empty v-if="!loading && !tableData.length" description="暂无不良趋势数据" />
+          </div>
         </el-card>
       </el-col>
     </el-row>
@@ -54,11 +69,13 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import * as echarts from 'echarts'
 import dayjs from 'dayjs'
+import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import SearchBar from '@/components/SearchBar.vue'
 import { getQcRecordList } from '@/api/qcRecord'
 
 const loading = ref(false)
+const errorMessage = ref('')
 const tableData = ref<any[]>([])
 const searchKeyword = ref('')
 const searchDate = ref<string[]>([])
@@ -75,6 +92,10 @@ type QcRecordItem = {
   defectDesc?: string
   remark?: string
   createdAt?: string
+}
+
+function failureText(error: any, fallback: string) {
+  return error?.message || error?.response?.data?.message || fallback
 }
 
 function initCharts() {
@@ -148,6 +169,7 @@ function buildCharts(records: QcRecordItem[]) {
 
 async function fetchData() {
   loading.value = true
+  errorMessage.value = ''
   try {
     const params: Record<string, any> = {
       page: 1,
@@ -172,9 +194,11 @@ async function fetchData() {
       date: item.createdAt ? dayjs(item.createdAt).format('YYYY-MM-DD') : '-',
     }))
     buildCharts(records)
-  } catch {
+  } catch (error: any) {
     tableData.value = []
     buildCharts([])
+    errorMessage.value = failureText(error, '不良分析加载失败，请检查 Supabase 连接、qc_record 表和日期筛选。')
+    ElMessage.error(errorMessage.value)
   } finally {
     loading.value = false
   }
@@ -210,6 +234,20 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
+.page-alert {
+  margin-bottom: 12px;
+}
+
+.chart-shell {
+  position: relative;
+}
+
+.chart-shell :deep(.el-empty) {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.82);
+}
+
 .chart-container {
   height: 320px;
 }

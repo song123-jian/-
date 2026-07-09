@@ -153,7 +153,10 @@ export function summarizeFinanceReceivables(rows: FinanceReceivableRow[]) {
       summary.receivableAmount = roundMoney(summary.receivableAmount + row.receivableAmount)
       summary.orderCount += 1
       if (row.receivableAmount > 0) summary.openOrderCount += 1
-      if (row.overdueDays > 0) summary.overdueOrderCount += 1
+      if (row.overdueDays > 0) {
+        summary.overdueOrderCount += 1
+        summary.overdueAmount = roundMoney(summary.overdueAmount + row.receivableAmount)
+      }
       summary.maxOverdueDays = Math.max(summary.maxOverdueDays, row.overdueDays)
       return summary
     },
@@ -161,6 +164,7 @@ export function summarizeFinanceReceivables(rows: FinanceReceivableRow[]) {
       totalAmount: 0,
       receivedAmount: 0,
       receivableAmount: 0,
+      overdueAmount: 0,
       orderCount: 0,
       openOrderCount: 0,
       overdueOrderCount: 0,

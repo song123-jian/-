@@ -75,6 +75,8 @@ describe('注塑追溯、标签、8D 与请购闭环', () => {
     assert.equal(suggestion.requestedQty, 18)
     assert.equal(suggestion.sourceMrpNo, 'MRP-001')
     assert.equal(suggestion.status, 'DRAFT')
+    const purchaseModule = INJECTION_MODULES.find((item) => item.key === 'purchase-requisition')
+    assert.equal(purchaseModule?.formFields.some((field) => field.prop === 'sourceMrpNo'), true)
   })
 
   it('数据库、API 适配器和管理端路由覆盖全部 13 个注塑资源', async () => {
@@ -112,7 +114,53 @@ describe('注塑追溯、标签、8D 与请购闭环', () => {
     assert.match(adminRoutes, /title: '质量追溯'[\s\S]*injectionRoutes\.batchTrace[\s\S]*injectionRoutes\.customerComplaint/)
     assert.match(adminRoutes, /title: '采购管理'[\s\S]*injectionRoutes\.purchaseRequisition/)
     assert.match(adminRoutes, /title: '报表中心'[\s\S]*injectionRoutes\.oeeRecord/)
-    assert.equal(adminRoutes.includes('const unmatchedInjectionRoutes: AppLeafRoute[] = []'), true)
+    assert.equal(adminRoutes.includes('const unmatchedInjectionRoutes: AppLeafRoute[] = []'), false)
     assert.equal(adminRoutes.includes("if (childPath.startsWith('/')) return childPath"), true)
+  })
+
+  it('现场执行页面提示门禁作用并自动尝试派生安灯异常', async () => {
+    const modulePage = await readText('frontend-admin/src/views/injection/module.vue')
+
+    for (const marker of [
+      '齐套检查是扫码报工前置门禁',
+      '首件确认决定是否允许量产',
+      '配料烘料决定现场投产条件',
+      '安灯异常负责现场问题闭环',
+      'createDerivedAndon',
+      'buildAndonFromFailedStartup',
+      'buildAndonFromFirstArticleRejection',
+      'buildAndonFromMaterialMixRejection',
+      "createInjectionRecord('andon-events'",
+    ]) {
+      assert.equal(modulePage.includes(marker), true)
+    }
+  })
+
+  it('采购请购页可通过路由参数打开新增表单并预填缺料来源', async () => {
+    const modulePage = await readText('frontend-admin/src/views/injection/module.vue')
+
+    for (const marker of [
+      '批量请购建议',
+      '重复风险',
+      '已存在未关闭请购',
+      'purchaseRequisitionPrefillRows',
+      'fillPurchaseRequisitionSuggestion',
+      'buildPurchaseRequisitionRoutePrefill',
+      'duplicatePurchaseRequisitionText(row)',
+      'activePurchaseRequisitionDuplicateText',
+      'refreshPurchaseRequisitionDuplicateScope',
+      'findDuplicatePurchaseRequisitionRecord(form)',
+      'pageSize: 1000',
+      "queryText('items')",
+      "queryText('action') !== 'create'",
+      "'materialId', 'shortageQty', 'requestedQty', 'supplierId'",
+      "'sourceMrpNo', 'expectedDate', 'remark'",
+      'applyRoutePrefill()',
+      'clearRoutePrefill()',
+      "'batch', 'itemCount', 'items'",
+      "router.replace({ path: route.path, query })",
+    ]) {
+      assert.equal(modulePage.includes(marker), true)
+    }
   })
 })

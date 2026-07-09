@@ -54,6 +54,17 @@ import {
   validateSalaryPriceInput,
 } from '../utils/salary-price'
 import { buildBusinessWarnings, summarizeBusinessWarnings } from '../utils/business-warning'
+import { buildWorkbenchTodoItems } from '../utils/workbench-todo'
+import {
+  getWorkflowBusinessCode,
+  getWorkflowBusinessTitle,
+  getWorkflowDefinition,
+  getWorkflowTransition,
+  resolveWorkflowBusinessType,
+  type WorkflowAction,
+  type WorkflowBusinessType,
+  type WorkflowTaskPlan,
+} from '../utils/workflow-center'
 import {
   buildProductionBoardSummary,
   isActiveProductionOrderStatus,
@@ -92,6 +103,11 @@ import {
   validateSupplierMaster,
 } from '../utils/supplier-master'
 import {
+  buildMasterReferenceMessage,
+  getMasterReferenceRules,
+  type MasterReferenceHit,
+} from '../utils/master-reference'
+import {
   buildInventoryApprovalSummary,
   getInventoryBookQty,
   getInventoryDiffQty,
@@ -108,6 +124,7 @@ import {
   INJECTION_MODULES,
   buildInjectionRecordPayload,
   getInjectionModuleByResource,
+  isEightDComplete,
   validateInjectionRecord,
   type InjectionModuleKey,
 } from '../utils/injection-professional'
@@ -142,6 +159,7 @@ const routeConfigs: RouteConfig[] = [
   { resource: 'warehouse-locations', table: 'warehouse_location', searchColumns: ['code', 'name', 'area'] },
   { resource: 'stock-inventories', table: 'stock_inventory', searchColumns: ['inventory_no', 'remark'] },
   { resource: 'stock-transfers', table: 'stock_transfer', searchColumns: ['transfer_no', 'remark'] },
+  { resource: 'workflows/tasks', table: 'workflow_task', searchColumns: ['task_no', 'business_code', 'title', 'assignee_name'] },
   { resource: 'machine-inspection-records', table: 'machine_inspection_record' },
   { resource: 'mold-maintenance-records', table: 'mold_maintenance_record' },
   { resource: 'mold-mount-records', table: 'mold_mount_record' },
@@ -179,6 +197,65 @@ const routeConfigs: RouteConfig[] = [
   { resource: 'stock', table: 'stock' },
 ]
 
+const sortedRouteConfigs = [...routeConfigs].sort((a, b) => b.resource.length - a.resource.length)
+
+export const CLEAR_BUSINESS_DATA_CONFIRM_TEXT = '清除所有业务数据'
+
+const CLEAR_BUSINESS_DATA_TABLES = [
+  'workflow_log',
+  'workflow_task',
+  'workflow_instance',
+  'stock_inventory_item',
+  'stock_inventory',
+  'stock_transfer_item',
+  'stock_transfer',
+  'delivery_order_item',
+  'delivery_order',
+  'payment_record',
+  'expense_record',
+  'qc_record',
+  'prod_report',
+  'downtime_record',
+  'mold_mount_record',
+  'mold_maintenance_record',
+  'machine_inspection_record',
+  'salary_adjust',
+  'salary_daily',
+  'piece_price',
+  'trial_mold_record',
+  'material_mix_order',
+  'batch_trace_link',
+  'startup_check',
+  'process_card',
+  'maintenance_order',
+  'mold_maintenance_plan',
+  'andon_event',
+  'label_template',
+  'customer_complaint',
+  'oee_record',
+  'process_change',
+  'purchase_requisition',
+  'stock_move',
+  'stock',
+  'material_batch',
+  'prod_order',
+  'sale_order_item',
+  'sale_order',
+  'warehouse_location',
+  'warehouse',
+  'spare_part',
+  'mold',
+  'machine',
+  'product',
+  'customer',
+  'supplier',
+  'notification',
+  'sys_operation_log',
+  'seq_number',
+] as const
+
+const PRESERVED_BUSINESS_CLEAR_TABLES = ['sys_user', 'sys_config', 'workflow_definition'] as const
+
 const tableColumns: Record<string, string[]> = {
   customer: ['id', 'code', 'name', 'short_name', 'contact', 'phone', 'address', 'tax_no', 'invoice_title', 'credit_level', 'payment_days', 'sales_user_id', 'status', 'created_at'],
   delivery_order: ['id', 'delivery_no', 'sale_order_id', 'customer_id', 'delivery_date', 'total_qty', 'logistics_company', 'tracking_no', 'status', 'operator_id', 'remark', 'created_at'],
@@ -196,7 +273,7 @@ const tableColumns: Record<string, string[]> = {
   prod_order: ['id', 'order_no', 'sale_order_id', 'sale_order_item_id', 'product_id', 'machine_id', 'mold_id', 'plan_qty', 'completed_qty', 'qualified_qty', 'bad_qty', 'raw_material_qty', 'picked_material_qty', 'picked_material_amount', 'inbounded_qty', 'inbounded_amount', 'plan_start', 'plan_end', 'actual_start', 'actual_end', 'status', 'priority', 'remark', 'created_by', 'created_at', 'updated_at'],
   prod_report: ['id', 'prod_order_id', 'user_id', 'machine_id', 'mold_id', 'report_type', 'process_name', 'shift', 'qty', 'bad_qty', 'shots', 'start_time', 'end_time', 'work_minutes', 'sync_status', 'created_at'],
   product: ['id', 'code', 'name', 'spec', 'type', 'unit', 'piece_price', 'cavity_yield', 'cycle_time_sec', 'safe_stock', 'weight_g', 'raw_material_id', 'raw_material_usage', 'color', 'customer_id', 'image_url', 'status', 'created_at'],
-  qc_record: ['id', 'prod_order_id', 'product_id', 'check_type', 'check_result', 'defect_type', 'defect_desc', 'defect_qty', 'sample_qty', 'checker_id', 'check_time', 'image_urls', 'remark', 'created_at'],
+  qc_record: ['id', 'prod_order_id', 'product_id', 'check_type', 'check_result', 'defect_type', 'defect_desc', 'defect_qty', 'sample_qty', 'checker_id', 'check_time', 'image_urls', 'disposal_status', 'disposal_assignee', 'disposal_close_reason', 'disposal_updated_at', 'remark', 'created_at'],
   salary_adjust: ['id', 'user_id', 'adjust_type', 'amount', 'adjust_date', 'reason', 'status', 'confirmed_by', 'confirmed_at', 'created_by', 'created_at'],
   salary_daily: ['id', 'user_id', 'work_date', 'total_qualified_qty', 'total_piece_amount', 'subsidy', 'deduction', 'total_amount', 'status', 'confirmed_by', 'confirmed_at', 'created_at'],
   sale_order: ['id', 'order_no', 'customer_id', 'order_date', 'delivery_date', 'total_amount', 'received_amount', 'received_opening_amount', 'status', 'sales_user_id', 'remark', 'created_by', 'created_at', 'updated_at'],
@@ -270,6 +347,29 @@ function toSnakePayload(value: any): any {
 
 function normalizePath(url: string) {
   return url.split('?')[0].replace(/^\/+|\/+$/g, '')
+}
+
+function normalizeEnabledStatus(value: any) {
+  const text = String(value ?? '').trim().toUpperCase()
+  if (['0', 'FALSE', 'DISABLED', '禁用', '否'].includes(text)) return '0'
+  return '1'
+}
+
+function buildWarehousePayload(payload: any) {
+  const next = { ...(payload || {}) }
+  if (Object.prototype.hasOwnProperty.call(next, 'status')) {
+    next.isEnabled = normalizeEnabledStatus(next.status) === '1' ? 1 : 0
+    delete next.status
+  }
+  return next
+}
+
+function normalizeTableRecord(route: RouteConfig, row: any) {
+  if (route.table !== 'warehouse') return row
+  return {
+    ...row,
+    status: normalizeEnabledStatus(row.status ?? row.isEnabled),
+  }
 }
 
 type StoredUserContext = {
@@ -408,6 +508,265 @@ function formatCurrentUserPayload(context: StoredUserContext, fallbackToken = ''
   }
 }
 
+function isWorkflowPersistenceUnavailable(error: any) {
+  const message = String(error?.message || error?.details || '')
+  return error?.code === 'PGRST205'
+    || error?.code === '42P01'
+    || message.includes('workflow_')
+    || message.includes('schema cache')
+}
+
+function isMissingTableError(error: any) {
+  const message = String(error?.message || error?.details || error?.hint || '').toLowerCase()
+  return error?.code === 'PGRST205'
+    || error?.code === '42P01'
+    || message.includes('could not find the table')
+    || message.includes('schema cache')
+    || message.includes('does not exist')
+}
+
+async function optionalWorkflowWrite(runner: () => Promise<void>) {
+  try {
+    await runner()
+  } catch (error) {
+    if (isWorkflowPersistenceUnavailable(error)) return
+    console.warn('[workflow] optional persistence failed', error)
+  }
+}
+
+function currentUserName() {
+  const context = getStoredUserContext()
+  return context.realName || context.userName || context.phone || context.role || '当前用户'
+}
+
+function currentUserIsManager() {
+  const context = getStoredUserContext()
+  const roles = [context.role, ...(context.roles || [])].map((item) => String(item || '').toLowerCase())
+  return roles.includes('admin') || roles.includes('boss')
+}
+
+function workflowDueAt(plan?: WorkflowTaskPlan) {
+  if (!plan?.dueDays) return null
+  const date = new Date()
+  date.setDate(date.getDate() + plan.dueDays)
+  return `${formatLocalDate(date)} 23:59:59`
+}
+
+function workflowTaskNo(businessType: WorkflowBusinessType, businessId: number, node: string) {
+  return `WF-${businessType.replace(/_/g, '').toUpperCase()}-${businessId}-${node}-${Date.now()}`
+}
+
+function salaryMonthWorkflowId(month: string) {
+  return Number(String(month || '').replace(/\D/g, '').slice(0, 6))
+}
+
+async function listWorkflowTodoRows(params?: Record<string, any>) {
+  const supabase = getSupabaseClient()
+  let query: any = supabase
+    .from('workflow_task')
+    .select('*', { count: 'exact' })
+    .in('status', ['OPEN', 'CLAIMED', 'ASSIGNED', 'PROCESSING'])
+    .order('priority', { ascending: true })
+    .order('created_at', { ascending: false })
+
+  const userId = getCurrentUserId()
+  if (userId && !currentUserIsManager()) {
+    query = query.or(`assignee_id.is.null,assignee_id.eq.${userId}`)
+  }
+
+  if (params?.businessType) query = query.eq('business_type', params.businessType)
+  if (params?.status) query = query.eq('status', params.status)
+
+  const { from, to } = pageParams(params)
+  const { data, error, count } = await query.range(from, to)
+  if (error) {
+    if (isWorkflowPersistenceUnavailable(error)) return ok({ records: [], list: [], total: 0 })
+    throw error
+  }
+  const records = toCamelDeep(data || [])
+  return ok({ records, list: records, total: count || records.length })
+}
+
+async function updateWorkflowTaskLifecycle(id: number, actionInput?: string, payload: any = {}) {
+  const action = String(actionInput || '').toLowerCase()
+  const now = new Date().toISOString()
+  const supabase = getSupabaseClient()
+  const { data: currentRaw, error: fetchError } = await supabase
+    .from('workflow_task')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+  if (fetchError) throw fetchError
+  if (!currentRaw?.id) throw new Error('未找到流程任务')
+
+  const actorId = getCurrentUserId() || null
+  const actorName = currentUserName()
+  const nextPayload: Record<string, any> = { updated_at: now }
+  if (action === 'claim') {
+    nextPayload.status = 'CLAIMED'
+    nextPayload.claimed_at = now
+    nextPayload.assignee_id = actorId
+    nextPayload.assignee_name = actorName
+  } else if (action === 'assign') {
+    nextPayload.status = 'ASSIGNED'
+    nextPayload.assignee_id = actorId
+    nextPayload.assignee_name = payload?.owner || payload?.assigneeName || actorName
+  } else if (action === 'start') {
+    nextPayload.status = 'PROCESSING'
+    nextPayload.started_at = now
+    nextPayload.assignee_id = currentRaw.assignee_id || actorId
+    nextPayload.assignee_name = currentRaw.assignee_name || actorName
+  } else if (action === 'close') {
+    nextPayload.status = 'DONE'
+    nextPayload.finished_at = now
+  } else {
+    throw new Error('不支持的流程任务动作')
+  }
+
+  const { data, error } = await supabase
+    .from('workflow_task')
+    .update(nextPayload)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+
+  await optionalWorkflowWrite(async () => {
+    await supabase.from('workflow_log').insert({
+      instance_id: currentRaw.instance_id,
+      task_id: id,
+      business_type: currentRaw.business_type,
+      business_id: currentRaw.business_id,
+      action,
+      from_status: currentRaw.status,
+      to_status: nextPayload.status || currentRaw.status,
+      actor_id: actorId,
+      note: payload?.note || payload?.owner || '',
+      created_at: now,
+    })
+  })
+  return ok(toCamelDeep(data), 'updated')
+}
+
+async function syncWorkflowByBusiness(
+  businessType: WorkflowBusinessType,
+  businessId: number,
+  actionInput: WorkflowAction | string | undefined,
+  businessRow: Record<string, any> = {},
+) {
+  const transition = getWorkflowTransition(businessType, actionInput, businessRow)
+  const definition = getWorkflowDefinition(businessType)
+  if (!transition || !definition || !businessId) return
+
+  await optionalWorkflowWrite(async () => {
+    const supabase = getSupabaseClient()
+    const now = new Date().toISOString()
+    const actorId = getCurrentUserId() || null
+    const businessCode = getWorkflowBusinessCode(businessType, businessRow)
+    const title = getWorkflowBusinessTitle(businessType, businessRow)
+    const route = definition.route
+
+    const { data: existingRaw, error: existingError } = await supabase
+      .from('workflow_instance')
+      .select('*')
+      .eq('business_type', businessType)
+      .eq('business_id', businessId)
+      .maybeSingle()
+    if (existingError) throw existingError
+
+    const instancePayload = {
+      definition_code: definition.code,
+      business_type: businessType,
+      business_id: businessId,
+      business_code: businessCode,
+      title,
+      status: transition.instanceStatus,
+      current_node: transition.currentNode,
+      route,
+      owner_id: actorId,
+      created_by: existingRaw?.created_by || actorId,
+      updated_at: now,
+      finished_at: ['APPROVED', 'COMPLETED', 'CANCELLED', 'CLOSED'].includes(transition.instanceStatus) ? now : null,
+    }
+
+    const instanceResult = existingRaw?.id
+      ? await supabase.from('workflow_instance').update(instancePayload).eq('id', existingRaw.id).select().single()
+      : await supabase.from('workflow_instance').insert({ ...instancePayload, created_at: now }).select().single()
+    if (instanceResult.error) throw instanceResult.error
+    const instance = instanceResult.data
+    const instanceId = Number(instance?.id || existingRaw?.id || 0)
+    if (!instanceId) return
+
+    if (transition.closeOpenTasks) {
+      const closeResult = await supabase
+        .from('workflow_task')
+        .update({ status: 'DONE', finished_at: now, updated_at: now })
+        .eq('instance_id', instanceId)
+        .in('status', ['OPEN', 'CLAIMED', 'ASSIGNED', 'PROCESSING'])
+      if (closeResult.error) throw closeResult.error
+    }
+
+    let taskId: number | null = null
+    if (transition.nextTask) {
+      const existingTask = await supabase
+        .from('workflow_task')
+        .select('id')
+        .eq('instance_id', instanceId)
+        .eq('node', transition.nextTask.node)
+        .in('status', ['OPEN', 'CLAIMED', 'ASSIGNED', 'PROCESSING'])
+        .maybeSingle()
+      if (existingTask.error) throw existingTask.error
+      if (!existingTask.data?.id) {
+        const taskResult = await supabase
+          .from('workflow_task')
+          .insert({
+            instance_id: instanceId,
+            task_no: workflowTaskNo(businessType, businessId, transition.nextTask.node),
+            business_type: businessType,
+            business_id: businessId,
+            business_code: businessCode,
+            title: `${transition.nextTask.title}：${businessCode}`,
+            description: transition.nextTask.description,
+            status: 'OPEN',
+            node: transition.nextTask.node,
+            priority: transition.nextTask.priority,
+            source_route: route,
+            due_at: workflowDueAt(transition.nextTask),
+            created_by: actorId,
+            created_at: now,
+            updated_at: now,
+          })
+          .select('id')
+          .single()
+        if (taskResult.error) throw taskResult.error
+        taskId = Number(taskResult.data?.id || 0) || null
+      } else {
+        taskId = Number(existingTask.data.id)
+      }
+    }
+
+    const logResult = await supabase.from('workflow_log').insert({
+      instance_id: instanceId,
+      task_id: taskId,
+      business_type: businessType,
+      business_id: businessId,
+      action: actionInput || 'create',
+      from_status: existingRaw?.status || '',
+      to_status: transition.instanceStatus,
+      actor_id: actorId,
+      note: transition.nextTask?.description || title,
+      created_at: now,
+    })
+    if (logResult.error) throw logResult.error
+  })
+}
+
+async function syncWorkflowForRoute(route: RouteConfig, id: number, actionInput: string | undefined, row: Record<string, any> = {}) {
+  const businessType = resolveWorkflowBusinessType(route.table || route.resource)
+  if (!businessType) return
+  await syncWorkflowByBusiness(businessType, id, (actionInput || 'create') as WorkflowAction, row)
+}
+
 async function saveUserRecord(id: number | undefined, payload: any) {
   const supabase = getSupabaseClient()
   const data = { ...toSnakePayload(payload) }
@@ -515,13 +874,15 @@ async function getMoldShotsStatsData(id: number) {
   })
 }
 
-async function maintainMoldData(id: number) {
+async function maintainMoldData(id: number, input: any = {}) {
   const supabase = getSupabaseClient()
   const route = resolveResourceRoute('/molds')!
   const moldResult = await getTableDetail(route, id)
   const mold = moldResult.data || {}
-  const now = new Date().toISOString()
-  const operatorId = getCurrentUserId() || null
+  const inputTime = input?.operateTime || input?.operate_time
+  const parsedTime = inputTime ? new Date(inputTime) : new Date()
+  const now = Number.isNaN(parsedTime.getTime()) ? new Date().toISOString() : parsedTime.toISOString()
+  const operatorId = Number(input?.operatorId || input?.operator_id || getCurrentUserId() || 0) || null
   const maintenanceRecord = {
     mold_id: id,
     operator_id: operatorId,
@@ -529,7 +890,7 @@ async function maintainMoldData(id: number) {
     shots_since_maintenance_before: toNumber(mold.shotsSinceMaintenance),
     maintenance_count_before: toNumber(mold.maintenanceCount),
     operate_time: now,
-    remark: 'Supabase 云端模具保养',
+    remark: String(input?.remark || '').trim() || 'Supabase 云端模具保养',
   }
   const { error: recordError } = await supabase.from('mold_maintenance_record').insert(maintenanceRecord)
   if (recordError) throw recordError
@@ -623,6 +984,12 @@ async function settleMonthlySalary(data: any) {
     scope.month,
   )
   const totalAmount = roundSalaryAmount(summaryRows.reduce((sum, row) => sum + row.payableAmount, 0))
+  await syncWorkflowByBusiness('salary_month', salaryMonthWorkflowId(scope.month), 'settle', {
+    id: salaryMonthWorkflowId(scope.month),
+    month: scope.month,
+    workerCountText: `${summaryRows.length}人`,
+    remark: `应发合计 ${totalAmount}`,
+  })
 
   return ok(
     {
@@ -1248,6 +1615,30 @@ async function deleteSalaryPriceRecord(id: number) {
   return ok(true, 'deleted')
 }
 
+function normalizeQcResult(value: any) {
+  const text = String(value || '').trim().toUpperCase()
+  if (text === '合格' || text === 'PASS' || text === 'OK' || text === 'QUALIFIED') return 'PASS'
+  if (text === '不合格' || text === 'FAIL' || text === 'FAILED' || text === 'NG') return 'FAIL'
+  if (text === '让步接收' || text === 'CONDITIONAL') return 'CONDITIONAL'
+  return text || 'PASS'
+}
+
+function assertQcRecordTraceable(data: any) {
+  const checkResult = normalizeQcResult(data?.checkResult ?? data?.check_result ?? data?.result)
+  const defectType = String(data?.defectType ?? data?.defect_type ?? '').trim()
+  const defectDesc = String(data?.defectDesc ?? data?.defect_desc ?? '').trim()
+  const defectQty = toNumber(data?.defectQty ?? data?.defect_qty ?? 0)
+  const sampleQty = toNumber(data?.sampleQty ?? data?.sample_qty ?? data?.sampleCount ?? 0)
+  if (sampleQty <= 0) throw new Error('抽样数量必须大于 0')
+  if (defectQty < 0) throw new Error('不良数量不能小于 0')
+  if (defectQty > sampleQty) throw new Error('不良数量不能超过抽样数量')
+  if (checkResult === 'FAIL') {
+    if (!defectType) throw new Error('不合格质检必须填写缺陷类型')
+    if (!defectDesc) throw new Error('不合格质检必须填写缺陷描述')
+    if (defectQty <= 0) throw new Error('不合格质检必须填写大于 0 的不良数量')
+  }
+}
+
 async function submitQcRecord(data: any) {
   const supabase = getSupabaseClient()
   const checkerId = Number(data?.checkerId || getCurrentUserId() || 0)
@@ -1264,11 +1655,13 @@ async function submitQcRecord(data: any) {
   if (!productId) {
     throw new Error('请选择有效的产品')
   }
+  assertQcRecordTraceable({ ...data, productId })
+  const checkResult = normalizeQcResult(data?.checkResult || data?.result)
   const payload = {
     prod_order_id: prodOrderId,
     product_id: productId,
     check_type: data?.checkType || data?.inspectionType || 'IPQC',
-    check_result: data?.checkResult || (data?.result === '合格' ? 'PASS' : data?.result === '不合格' ? 'FAIL' : data?.result) || 'PASS',
+    check_result: checkResult,
     defect_type: data?.defectType || '',
     defect_desc: data?.defectDesc || '',
     defect_qty: toNumber(data?.defectQty || 0),
@@ -1276,11 +1669,15 @@ async function submitQcRecord(data: any) {
     checker_id: checkerId,
     check_time: data?.checkTime || new Date().toISOString(),
     image_urls: Array.isArray(data?.imageUrls) ? data.imageUrls.join(',') : String(data?.imageUrls || data?.images || ''),
+    disposal_status: checkResult === 'FAIL' ? 'OPEN' : 'CLOSED',
+    disposal_updated_at: new Date().toISOString(),
     remark: data?.remark || '',
   }
   const { data: created, error } = await supabase.from('qc_record').insert(payload).select().single()
   if (error) throw error
-  return ok(toCamelDeep(created), 'created')
+  const row = toCamelDeep(created)
+  await syncWorkflowByBusiness('qc_record', Number(row.id || 0), 'create', row)
+  return ok(row, 'created')
 }
 
 async function buildDailySalaryRows(params?: Record<string, any>) {
@@ -1560,7 +1957,8 @@ async function buildStockRows(params?: Record<string, any>) {
         supplierName: supplier?.name || '-',
         qty,
         lockedQty: toNumber(item.lockedQty),
-        availableQty: Math.max(toNumber(item.qty) - toNumber(item.lockedQty), 0),
+        availableQty: toNumber(item.qty) - toNumber(item.lockedQty),
+        safeStock: toNumber(product?.safeStock),
         unitCost,
         inventoryAmount: roundMoney(qty * unitCost),
         updateTime: item.updatedAt || item.updated_at || '',
@@ -1668,7 +2066,7 @@ async function buildStockLedgerRows(params?: Record<string, any>) {
   const transferMap = await loadRowsByIds(
     'stock_transfer',
     rows.filter((item: any) => item.relatedOrderType === 'STOCK_TRANSFER').map((item: any) => item.relatedOrderId),
-    'id, transfer_no'
+    'id, transfer_no, status, receive_time'
   )
   const customerMap = await loadRowsByIds(
     'customer',
@@ -1738,6 +2136,8 @@ async function buildStockLedgerRows(params?: Record<string, any>) {
         prodOrderNo: order?.orderNo || '-',
         saleOrderNo: saleOrder?.orderNo || '-',
         transferNo: transfer?.transferNo || (item.relatedOrderType === 'STOCK_TRANSFER' ? item.moveNo : '-'),
+        transferStatus: transfer?.status || '',
+        transferReceiveTime: transfer?.receiveTime || '',
         saleOrderItemId: item.saleOrderItemId || saleOrderItem?.id,
         saleUnitPrice: unitPrice,
         saleAmount,
@@ -1931,7 +2331,9 @@ async function createStockInventoryDoc(data: any) {
     await supabase.from('stock_inventory').delete().eq('id', inventoryId)
     throw itemError
   }
-  return ok(toCamelDeep(created), 'created')
+  const row = toCamelDeep(created)
+  await syncWorkflowByBusiness('stock_inventory', inventoryId, 'create', row)
+  return ok(row, 'created')
 }
 
 async function loadInventory(id: number) {
@@ -1965,6 +2367,7 @@ async function startInventoryCount(id: number) {
     .update({ status: 'COUNTING', freeze_stock: 1, operator_id: inventory.operatorId || getCurrentUserId() || null })
     .eq('id', id)
   if (error) throw error
+  await syncWorkflowByBusiness('stock_inventory', id, 'start', { ...inventory, status: 'COUNTING' })
   return ok(true)
 }
 
@@ -2011,6 +2414,7 @@ async function submitInventoryReview(id: number) {
   if (reviewMessage) throw new Error(reviewMessage)
   const { error } = await getSupabaseClient().from('stock_inventory').update({ status: 'PENDING_APPROVE' }).eq('id', id)
   if (error) throw error
+  await syncWorkflowByBusiness('stock_inventory', id, 'submit', { ...inventory, status: 'PENDING_APPROVE' })
   return ok({ summary: buildInventoryApprovalSummary(items) })
 }
 
@@ -2063,6 +2467,7 @@ async function approveInventoryDoc(id: number) {
       .update({ status: 'FINISHED', freeze_stock: 0, approver_id: getCurrentUserId() || null })
       .eq('id', id)
     if (error) throw error
+    await syncWorkflowByBusiness('stock_inventory', id, 'approve', { ...inventory, status: 'FINISHED' })
     return ok({ summary: buildInventoryApprovalSummary(items) })
   } catch (error) {
     for (const moveId of createdMoveIds) {
@@ -2092,14 +2497,13 @@ async function rejectInventoryDoc(id: number) {
     .update({ status: 'COUNTING', freeze_stock: 1, approver_id: getCurrentUserId() || null })
     .eq('id', id)
   if (error) throw error
+  await syncWorkflowByBusiness('stock_inventory', id, 'reject', { ...inventory, status: 'COUNTING' })
   return ok(true)
 }
 
 export function resolveResourceRoute(url: string) {
   const path = normalizePath(url)
-  return routeConfigs
-    .slice()
-    .sort((a, b) => b.resource.length - a.resource.length)
+  return sortedRouteConfigs
     .find((route) => path === route.resource || path.startsWith(`${route.resource}/`))
 }
 
@@ -2147,8 +2551,12 @@ function applyFilters(query: any, route: RouteConfig, params?: Record<string, an
     nextQuery = nextQuery.or(searchColumns.map((column) => `${column}.ilike.%${keyword}%`).join(','))
   }
 
-  if (route.table === 'product' && params?.type && columns.includes('type')) {
+  if (params?.type && columns.includes('type')) {
     nextQuery = nextQuery.eq('type', params.type)
+  }
+
+  if (route.table === 'warehouse' && params?.status && columns.includes('is_enabled')) {
+    nextQuery = nextQuery.eq('is_enabled', normalizeEnabledStatus(params.status) === '1' ? 1 : 0)
   }
 
   for (const [key, rawValue] of Object.entries(params || {})) {
@@ -2176,7 +2584,7 @@ async function listTable(route: RouteConfig, params?: Record<string, any>) {
   query = query.order(route.defaultOrder || 'id', { ascending: false }).range(from, to)
   const { data, error, count } = await query
   if (error) throw error
-  const records = toCamelDeep(data || [])
+  const records = toCamelDeep(data || []).map((row: any) => normalizeTableRecord(route, row))
   return ok({ records, list: records, total: count || records.length })
 }
 
@@ -2247,26 +2655,6 @@ async function assertCustomerUsable(customerId: number) {
   return customer
 }
 
-async function assertCustomerCanDelete(id: number) {
-  const supabase = getSupabaseClient()
-  const checks = [
-    { table: 'product', column: 'customer_id', message: '客户已被产品档案引用，不能删除' },
-    { table: 'sale_order', column: 'customer_id', message: '客户已有销售订单，不能删除' },
-    { table: 'payment_record', column: 'customer_id', message: '客户已有回款记录，不能删除' },
-    { table: 'delivery_order', column: 'customer_id', message: '客户已有发货单，不能删除' },
-  ]
-
-  for (const item of checks) {
-    const { data, error } = await supabase
-      .from(item.table)
-      .select('id')
-      .eq(item.column, id)
-      .limit(1)
-    if (error) throw error
-    if (data?.length) throw new Error(item.message)
-  }
-}
-
 async function assertSupplierUsable(supplierId: number) {
   const { data, error } = await getSupabaseClient()
     .from('supplier')
@@ -2280,14 +2668,28 @@ async function assertSupplierUsable(supplierId: number) {
   return supplier
 }
 
-async function assertSupplierCanDelete(id: number) {
-  const { data, error } = await getSupabaseClient()
-    .from('material_batch')
-    .select('id')
-    .eq('supplier_id', id)
-    .limit(1)
-  if (error) throw error
-  if (data?.length) throw new Error('供应商已被物料批次引用，不能删除')
+async function assertMasterDataNotReferenced(route: RouteConfig, id: number) {
+  const rules = getMasterReferenceRules(route.resource || route.table)
+  if (!rules.length) return
+
+  const hits: MasterReferenceHit[] = []
+  const supabase = getSupabaseClient()
+  for (const rule of rules) {
+    const { error, count } = await supabase
+      .from(rule.table)
+      .select('id', { count: 'exact', head: true })
+      .eq(rule.column, id)
+    if (error) {
+      throw new Error(`删除前引用校验失败：无法校验${rule.label}（${rule.table}.${rule.column}）。${error.message || ''}`)
+    }
+    if (Number(count || 0) > 0) {
+      hits.push({ ...rule, count: Number(count || 0) })
+    }
+  }
+
+  if (hits.length) {
+    throw new Error(buildMasterReferenceMessage(route.resource || route.table, hits))
+  }
 }
 
 async function insertTable(route: RouteConfig, payload: any) {
@@ -2321,13 +2723,42 @@ async function insertTable(route: RouteConfig, payload: any) {
     if (message) throw new Error(message)
     payload = buildSupplierPayload(submitted)
   }
+  if (route.table === 'warehouse') {
+    payload = buildWarehousePayload(payload)
+  }
+  if (route.table === 'qc_record') {
+    const submitted = toCamelDeep(payload || {})
+    const hasTraceField = [
+      'productId',
+      'prodOrderId',
+      'checkType',
+      'checkResult',
+      'defectType',
+      'defectDesc',
+      'defectQty',
+      'sampleQty',
+    ].some((field) => submitted[field] !== undefined)
+    if (hasTraceField) {
+      assertQcRecordTraceable(submitted)
+      if (submitted.checkResult !== undefined && submitted.disposalStatus === undefined) {
+        const nextResult = normalizeQcResult(submitted.checkResult)
+        payload = {
+          ...payload,
+          disposalStatus: nextResult === 'FAIL' ? 'OPEN' : 'CLOSED',
+          disposalUpdatedAt: new Date().toISOString(),
+        }
+      }
+    }
+  }
   const { data, error } = await getSupabaseClient()
     .from(route.table)
     .insert(toSnakePayload(payload))
     .select()
     .single()
   if (error) throw error
-  return ok(toCamelDeep(data), 'created')
+  const created = toCamelDeep(data)
+  await syncWorkflowForRoute(route, Number(created.id || 0), 'create', created)
+  return ok(created, 'created')
 }
 
 async function updateTable(route: RouteConfig, id: number, payload: any) {
@@ -2388,6 +2819,43 @@ async function updateTable(route: RouteConfig, id: number, payload: any) {
     if (message) throw new Error(message)
     payload = buildSupplierPayload(submitted)
   }
+  if (route.table === 'warehouse') {
+    payload = buildWarehousePayload(payload)
+  }
+  if (route.table === 'qc_record') {
+    const submitted = toCamelDeep(payload || {})
+    const hasTraceField = [
+      'productId',
+      'prodOrderId',
+      'checkType',
+      'checkResult',
+      'defectType',
+      'defectDesc',
+      'defectQty',
+      'sampleQty',
+    ].some((field) => submitted[field] !== undefined)
+    if (hasTraceField) {
+      const { data: existingRaw, error: fetchError } = await getSupabaseClient()
+        .from('qc_record')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle()
+      if (fetchError) throw fetchError
+      if (!existingRaw?.id) throw new Error('未找到质检记录')
+      assertQcRecordTraceable({ ...toCamelDeep(existingRaw), ...submitted, id })
+      if (submitted.checkResult !== undefined && submitted.disposalStatus === undefined) {
+        const nextResult = normalizeQcResult(submitted.checkResult)
+        const previousResult = normalizeQcResult(existingRaw.check_result)
+        payload = {
+          ...payload,
+          disposalStatus: nextResult === 'FAIL'
+            ? (previousResult === 'FAIL' ? existingRaw.disposal_status || 'OPEN' : 'OPEN')
+            : 'CLOSED',
+          disposalUpdatedAt: new Date().toISOString(),
+        }
+      }
+    }
+  }
   const { data, error } = await getSupabaseClient()
     .from(route.table)
     .update(toSnakePayload(payload))
@@ -2395,16 +2863,23 @@ async function updateTable(route: RouteConfig, id: number, payload: any) {
     .select()
     .single()
   if (error) throw error
-  return ok(toCamelDeep(data), 'updated')
+  const updated = toCamelDeep(data)
+  if (route.table === 'qc_record') {
+    const disposalStatus = String(updated.disposalStatus || '').toUpperCase()
+    const action = disposalStatus === 'ASSIGNED'
+      ? 'assign'
+      : disposalStatus === 'PROCESSING'
+        ? 'start'
+        : disposalStatus === 'CLOSED'
+          ? 'close'
+          : 'create'
+    await syncWorkflowForRoute(route, id, action, updated)
+  }
+  return ok(updated, 'updated')
 }
 
 async function deleteTable(route: RouteConfig, id: number) {
-  if (route.table === 'customer') {
-    await assertCustomerCanDelete(id)
-  }
-  if (route.table === 'supplier') {
-    await assertSupplierCanDelete(id)
-  }
+  await assertMasterDataNotReferenced(route, id)
   const { error } = await getSupabaseClient().from(route.table).delete().eq('id', id)
   if (error) throw error
   return ok(true, 'deleted')
@@ -2588,6 +3063,7 @@ async function createSaleOrderDoc(payload: any) {
     await supabase.from('sale_order').delete().eq('id', saleOrderId)
     throw itemError
   }
+  await syncWorkflowByBusiness('sale_order', saleOrderId, 'create', toCamelDeep(created || {}))
   return getSaleOrderDoc(saleOrderId)
 }
 
@@ -2880,7 +3356,14 @@ async function createPaymentRecord(payload: any) {
     await supabase.from('payment_record').delete().eq('id', data?.id)
     throw error
   }
-  return ok(toCamelDeep(data), 'created')
+  const createdRow = toCamelDeep(data || {})
+  await syncWorkflowByBusiness('payment_record', Number(createdRow.id || 0), 'create', {
+    ...createdRow,
+    customerName: order.customerName || order.customerShortName || '',
+    orderNo: order.orderNo || '',
+    amount: normalizedPayload.amount,
+  })
+  return ok(createdRow, 'created')
 }
 
 function restorePaymentRecordPayload(existing: any) {
@@ -3390,7 +3873,9 @@ async function createExpenseRecord(payload: any) {
   }
   const { data: created, error } = await getSupabaseClient().from('expense_record').insert(data).select().single()
   if (error) throw error
-  return ok(toCamelDeep(created), 'created')
+  const createdRow = toCamelDeep(created || {})
+  await syncWorkflowByBusiness('expense_record', Number(createdRow.id || 0), 'create', createdRow)
+  return ok(createdRow, 'created')
 }
 
 async function updateExpenseRecord(id: number, payload: any) {
@@ -3638,6 +4123,41 @@ async function updateConfig(payload: Record<string, any>) {
   return ok(normalized, 'updated')
 }
 
+async function clearBusinessData(payload: Record<string, any> = {}) {
+  const confirmText = String(payload.confirmText || '').trim()
+  if (confirmText !== CLEAR_BUSINESS_DATA_CONFIRM_TEXT) {
+    throw new Error(`确认文本错误，请输入：${CLEAR_BUSINESS_DATA_CONFIRM_TEXT}`)
+  }
+
+  const supabase = getSupabaseClient()
+  const clearedTables: string[] = []
+  const skippedTables: Array<{ table: string; reason: string }> = []
+  const clearedAt = new Date().toISOString()
+
+  for (const table of CLEAR_BUSINESS_DATA_TABLES) {
+    const { error } = await supabase.from(table).delete().not('id', 'is', null)
+    if (error) {
+      if (isMissingTableError(error)) {
+        skippedTables.push({ table, reason: '缺表或 schema cache 未包含该表' })
+        continue
+      }
+      throw error
+    }
+    clearedTables.push(table)
+  }
+
+  return ok(
+    {
+      clearedAt,
+      clearedTables,
+      skippedTables,
+      preservedTables: [...PRESERVED_BUSINESS_CLEAR_TABLES],
+      confirmText: CLEAR_BUSINESS_DATA_CONFIRM_TEXT,
+    },
+    'cleared',
+  )
+}
+
 async function unreadCount() {
   const supabase = getSupabaseClient()
   let query = supabase.from('notification').select('id', { count: 'exact', head: true }).eq('is_read', 0)
@@ -3652,34 +4172,84 @@ async function unreadCount() {
 
 async function dashboardHome() {
   const supabase = getSupabaseClient()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayDateOnly()
   const userId = getCurrentUserId()
   let notificationQuery = supabase.from('notification').select('id').eq('is_read', 0)
   if (userId) {
     notificationQuery = notificationQuery.eq('user_id', userId)
   }
-  const [reports, orders, machines, notifications] = await Promise.all([
+  const readRows = (result: PromiseSettledResult<any>) => {
+    if (result.status !== 'fulfilled') return []
+    if (result.value?.error) return []
+    return result.value?.data ?? result.value ?? []
+  }
+  const [
+    reportsResult,
+    ordersResult,
+    machinesResult,
+    notificationsResult,
+    warningsResult,
+    andonResult,
+    qcResult,
+    inventoryResult,
+    transferResult,
+    workflowResult,
+  ] = await Promise.allSettled([
     supabase.from('prod_report').select('qty, bad_qty, created_at').gte('created_at', today),
-    supabase.from('prod_order').select('status, plan_qty, completed_qty, created_at'),
+    supabase.from('prod_order').select('id, order_no, status, plan_qty, completed_qty, plan_end, created_at'),
     supabase.from('machine').select('status'),
     notificationQuery,
+    loadBusinessWarningRows(),
+    supabase
+      .from('andon_event')
+      .select('id, event_no, title, description, source_type, status, assignee_id, created_at')
+      .order('created_at', { ascending: false })
+      .limit(80),
+    supabase
+      .from('qc_record')
+      .select('id, prod_order_id, product_id, check_result, defect_type, defect_desc, defect_qty, check_time, created_at')
+      .order('created_at', { ascending: false })
+      .limit(80),
+    supabase
+      .from('stock_inventory')
+      .select('id, inventory_no, status, warehouse_id, created_at')
+      .order('created_at', { ascending: false })
+      .limit(80),
+    supabase
+      .from('stock_transfer')
+      .select('id, transfer_no, status, from_warehouse_id, to_warehouse_id, receive_time, created_at')
+      .order('created_at', { ascending: false })
+      .limit(80),
+    listWorkflowTodoRows({ page: 1, pageSize: 80 }),
   ])
-  const reportRows = reports.data || []
-  const orderRows = orders.data || []
-  const machineRows = machines.data || []
+  const reportRows = toCamelDeep(readRows(reportsResult))
+  const orderRows = toCamelDeep(readRows(ordersResult))
+  const machineRows = toCamelDeep(readRows(machinesResult))
+  const notifications = readRows(notificationsResult)
+  const todoList = buildWorkbenchTodoItems({
+    warnings: readRows(warningsResult),
+    andonEvents: toCamelDeep(readRows(andonResult)),
+    productionOrders: orderRows,
+    qcRecords: toCamelDeep(readRows(qcResult)),
+    inventoryDocs: toCamelDeep(readRows(inventoryResult)),
+    transferDocs: toCamelDeep(readRows(transferResult)),
+    workflowTasks: workflowResult.status === 'fulfilled' ? workflowResult.value?.data?.records || [] : [],
+    today,
+  })
+  const todayProductionQty = reportRows.reduce((sum: number, item: any) => sum + Number(item.qty || 0), 0)
   return ok({
-    todayProductionQty: reportRows.reduce((sum, item: any) => sum + Number(item.qty || 0), 0),
+    todayProductionQty,
     pendingOrderQty: orderRows.filter((item: any) => ['WAITING', 'SCHEDULED', 'RUNNING', 'PAUSED'].includes(item.status)).length,
     runningMachineQty: machineRows.filter((item: any) => item.status === 'RUNNING').length,
-    unreadNotificationQty: notifications.data?.length || 0,
-    productionTrend: [{ date: today, qty: reportRows.reduce((sum, item: any) => sum + Number(item.qty || 0), 0) }],
+    unreadNotificationQty: notifications.length,
+    productionTrend: [{ date: today, qty: todayProductionQty }],
     orderStatusDistribution: Object.entries(
       orderRows.reduce((acc: Record<string, number>, item: any) => {
         acc[item.status || 'UNKNOWN'] = (acc[item.status || 'UNKNOWN'] || 0) + 1
         return acc
       }, {})
     ).map(([status, count]) => ({ status, label: status, count })),
-    todoList: [],
+    todoList,
   })
 }
 
@@ -4554,7 +5124,38 @@ async function bossDashboard(params?: Record<string, any>) {
 
 async function actionUpdate(route: RouteConfig, id: number, action?: string) {
   const injectionPayload = buildInjectionActionPayload(route, action)
-  if (injectionPayload) return updateTable(route, id, injectionPayload)
+  if (route.table === 'customer_complaint' && action === 'close') {
+    const { data, error } = await getSupabaseClient()
+      .from('customer_complaint')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle()
+    if (error) throw error
+    if (!data?.id) throw new Error('未找到客诉8D记录')
+    if (!isEightDComplete(toCamelDeep(data))) throw new Error('客诉8D关闭前必须完整填写 D1-D8')
+  }
+  if (route.table === 'customer' && action === 'approve') {
+    const result = await updateTable(route, id, { status: '1' })
+    await syncWorkflowForRoute(route, id, action, result.data || {})
+    return result
+  }
+  if (route.table === 'spare_part' && ['replenish', 'finish', 'close', 'cancel'].includes(action || '')) {
+    const { data, error } = await getSupabaseClient()
+      .from('spare_part')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle()
+    if (error) throw error
+    if (!data?.id) throw new Error('未找到备件档案')
+    const row = toCamelDeep(data)
+    await syncWorkflowForRoute(route, id, action, row)
+    return ok(row, 'updated')
+  }
+  if (injectionPayload) {
+    const result = await updateTable(route, id, injectionPayload)
+    await syncWorkflowForRoute(route, id, action, result.data || {})
+    return result
+  }
 
   const statusMap: Record<string, Record<string, any>> = {
     approve: { status: 'APPROVED' },
@@ -4576,7 +5177,9 @@ async function actionUpdate(route: RouteConfig, id: number, action?: string) {
     read: { is_read: 1 },
   }
   await assertProdOrderActionAllowed(route, id, action)
-  return updateTable(route, id, statusMap[action || ''] || {})
+  const result = await updateTable(route, id, statusMap[action || ''] || {})
+  await syncWorkflowForRoute(route, id, action, result.data || {})
+  return result
 }
 
 function buildInjectionActionPayload(route: RouteConfig, action?: string) {
@@ -4899,16 +5502,15 @@ async function createStockTransferDocument(payload: any) {
   if (payload.moveReason !== 'TRANSFER') return null
   const supabase = getSupabaseClient()
   const transferNo = payload.moveNo || `DB-${Date.now()}`
-  const receiveTime = payload.operateTime || new Date().toISOString()
   const { data: transfer, error } = await supabase
     .from('stock_transfer')
     .insert({
       transfer_no: transferNo,
       from_warehouse_id: payload.warehouseId,
       to_warehouse_id: payload.toWarehouseId,
-      status: 'RECEIVED',
+      status: 'SHIPPED',
       operator_id: payload.operatorId || null,
-      receive_time: receiveTime,
+      receive_time: null,
       remark: payload.remark || null,
     })
     .select('id')
@@ -4924,7 +5526,7 @@ async function createStockTransferDocument(payload: any) {
     to_location_id: payload.toLocationId || null,
     from_batch_id: payload.batchId || null,
     qty: payload.qty,
-    received_qty: payload.qty,
+    received_qty: 0,
     remark: payload.remark || null,
   })
   if (itemError) {
@@ -5408,7 +6010,22 @@ async function createStockMove(url: string, data: any) {
     await applySaleShipment(saleShipmentItem, payload)
     await applyProductionPicking(productionPickingContext)
     await applyProductionInbound(productionInboundContext)
-    return ok(toCamelDeep(created), 'created')
+    const createdRow = toCamelDeep(created || {})
+    if (payload.moveReason === 'IN_PURCHASE') {
+      await syncWorkflowByBusiness('purchase_inbound', Number(createdRow.id || createdMoveId || 0), 'create', {
+        ...createdRow,
+        ...toCamelDeep(data || {}),
+        moveNo: createdRow.moveNo || payload.moveNo,
+        qty: payload.qty,
+        unitCost: payload.unitCost,
+        amount: payload.amount,
+        batchId: createdBatchId || payload.batchId,
+        supplierId: data?.supplierId,
+        productId: payload.productId,
+        warehouseId: payload.warehouseId,
+      })
+    }
+    return ok(createdRow, 'created')
   } catch (error) {
     await deleteDeliveryCascade(createdDeliveryId)
     await deleteStockTransferCascade(createdTransferId)
@@ -5447,6 +6064,7 @@ async function get(url: string, config?: RequestConfig) {
   if (path === 'dashboard/quality') return qualityBoard(config?.params)
   if (path === 'warnings') return warningList()
   if (path === 'warnings/summary') return warningSummary()
+  if (path === 'workflows/todos') return listWorkflowTodoRows(config?.params)
   if (path === 'reports/oee') return oeeStats()
   if (path === 'finance/statements') return financeStatements(config?.params)
   if (path === 'finance/receivables') return financeReceivables(config?.params)
@@ -5491,7 +6109,8 @@ async function post(url: string, data?: any, config?: RequestConfig) {
     if (error) throw error
     return ok(true)
   }
-  if (route?.table === 'mold' && id && action === 'maintenance') return maintainMoldData(id)
+  if (path === 'system/clear-business-data') return clearBusinessData(data || {})
+  if (route?.table === 'mold' && id && action === 'maintenance') return maintainMoldData(id, data)
   if (path === 'qc-records/upload') return uploadFormData(data, 'qc')
   if (path.startsWith('import/')) return uploadFormData(data, `imports/${path.split('/')[1]}`)
   if (path.startsWith('integrations/')) return handleIntegrationPost(path, data)
@@ -5528,6 +6147,7 @@ async function put(url: string, data?: any) {
   if (path === 'stock-inventories' && id && action === 'submit') return submitInventoryReview(id)
   if (path === 'stock-inventories' && id && action === 'approve') return approveInventoryDoc(id)
   if (path === 'stock-inventories' && id && action === 'reject') return rejectInventoryDoc(id)
+  if (route?.table === 'workflow_task' && id && action) return updateWorkflowTaskLifecycle(id, action, data || {})
   if (!route || !id) throw new Error(`未配置 Supabase 路由：/${path}`)
   if (route.table === 'sale_order' && !action) return updateSaleOrderDoc(id, data || {})
   if (route.table === 'prod_report' && !action) return updateProdReportRecord(id, data || {})

@@ -1,13 +1,28 @@
 <template>
   <div class="page-container">
-    <PageHeader title="销售订单">
+    <PageHeader title="销售订单" subtitle="统一管理客户订单、交期、审核、发货进度和回款状态。">
+      <el-button plain :loading="exporting" @click="handleExport">
+        <el-icon><Download /></el-icon>
+        导出Excel
+      </el-button>
+      <el-button type="warning" plain @click="goRiskCenter">
+        <el-icon><WarningFilled /></el-icon>
+        交期风险
+      </el-button>
       <el-button type="primary" @click="handleAdd">
         <el-icon><Plus /></el-icon>
         新增订单
       </el-button>
     </PageHeader>
 
-    <SearchBar :keyword="searchKeyword" @search="handleSearch" @reset="handleReset">
+    <SearchBar
+      :keyword="searchKeyword"
+      title="筛选销售订单"
+      description="按客户、状态和日期范围快速定位订单，筛选条件会同步用于导出。"
+      keyword-placeholder="订单编号、客户、产品"
+      @search="handleSearch"
+      @reset="handleReset"
+    >
       <el-form-item label="客户">
         <el-select v-model="searchCustomerId" placeholder="全部" clearable filterable style="width: 190px">
           <el-option
@@ -36,12 +51,14 @@
       </el-form-item>
     </SearchBar>
 
+    <SalesMetricStrip :metrics="metricCards" />
+
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading" empty-text="暂无销售订单">
-        <el-table-column prop="orderNo" label="订单编号" min-width="170" show-overflow-tooltip />
-        <el-table-column prop="customerName" label="客户" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="orderNo" label="订单编号" min-width="170" fixed="left" show-overflow-tooltip />
+        <el-table-column prop="customerName" label="客户" min-width="150" fixed="left" show-overflow-tooltip />
         <el-table-column prop="productName" label="产品" min-width="190" show-overflow-tooltip />
-        <el-table-column label="数量" width="120">
+        <el-table-column label="数量" width="120" align="right">
           <template #default="{ row }">
             {{ Number(row.deliveredQty || 0).toFixed(0) }} / {{ Number(row.quantity || row.qty || 0).toFixed(0) }}
           </template>
@@ -66,11 +83,9 @@
         <el-table-column prop="createdAt" label="创建时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" fixed="right" width="210">
+        <el-table-column label="操作" fixed="right" width="160" align="center">
           <template #default="{ row }">
-            <el-button v-if="canEdit(row)" type="primary" link @click="handleEdit(row)">编辑</el-button>
-            <el-button v-if="canApprove(row)" type="success" link @click="handleApprove(row)">审核</el-button>
-            <el-button v-if="canDelete(row)" type="danger" link @click="handleDelete(row)">删除</el-button>
+            <RowActions :actions="saleOrderRowActions(row)" @command="handleSaleOrderCommand(row, $event)" />
           </template>
         </el-table-column>
       </el-table>
@@ -185,15 +200,22 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Plus } from '@element-plus/icons-vue'
+import { Delete, Download, Plus, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
+import RowActions, { type RowActionItem } from '@/components/RowActions.vue'
 import SearchBar from '@/components/SearchBar.vue'
+import SalesMetricStrip from '@/components/SalesMetricStrip.vue'
 import { getCustomerList } from '@/api/customer'
 import { getProductList } from '@/api/product'
 import { approveSaleOrder, createSaleOrder, deleteSaleOrder, getSaleOrderList, updateSaleOrder } from '@/api/saleOrder'
 import { formatDate, formatDateTime, formatMoney } from '@/utils'
+import { recordBusinessAudit } from '@/utils/business-audit'
+import { printBusinessDocument } from '@/utils/business-print'
+import { exportExcelFile, type ExcelColumn } from '@/utils/export-excel'
+import { buildSaleOrderMetricCards } from '@/utils/sale-management'
 import {
   buildSaleOrderPayload,
   canApproveSaleOrder,
@@ -234,7 +256,9 @@ type OrderForm = {
   items: OrderItemForm[]
 }
 
+const router = useRouter()
 const loading = ref(false)
+const exporting = ref(false)
 const tableData = ref<any[]>([])
 const customerOptions = ref<OptionItem[]>([])
 const productOptions = ref<OptionItem[]>([])
@@ -257,6 +281,21 @@ const statusOptions = [
 
 const form = reactive<OrderForm>(createFormState())
 
+const saleOrderExportColumns: ExcelColumn<any>[] = [
+  { label: '订单编号', prop: 'orderNo' },
+  { label: '客户', prop: 'customerName' },
+  { label: '产品', prop: 'productName' },
+  { label: '订购数量', value: (row) => Number(row.quantity || row.qty || 0).toFixed(0) },
+  { label: '已发数量', value: (row) => Number(row.deliveredQty || 0).toFixed(0) },
+  { label: '订单金额', value: (row) => moneyText(row.totalAmount) },
+  { label: '已回款', value: (row) => moneyText(row.receivedAmount) },
+  { label: '交货日期', prop: 'deliveryDate' },
+  { label: '订单状态', value: (row) => statusMeta(row.status).label },
+  { label: '收款状态', value: (row) => paymentMeta(row.paymentStatus).label },
+  { label: '创建时间', value: (row) => formatDateTime(row.createdAt) },
+  { label: '备注', prop: 'remark' },
+]
+
 const enabledCustomerOptions = computed(() =>
   customerOptions.value.filter((item) => item.status === undefined || String(item.status) === '1')
 )
@@ -266,6 +305,7 @@ const sellableProductOptions = computed(() =>
 )
 
 const formTotalAmount = computed(() => getSaleOrderTotalAmount(form.items))
+const metricCards = computed(() => buildSaleOrderMetricCards(tableData.value))
 
 const formRules: FormRules = {
   customerId: [{ required: true, message: '请选择客户', trigger: 'change' }],
@@ -331,6 +371,26 @@ function canApprove(row: any) {
 
 function canDelete(row: any) {
   return canDeleteSaleOrder(row)
+}
+
+function saleOrderRowActions(row: any): RowActionItem[] {
+  return [
+    { key: 'print', label: '打印', type: 'primary' },
+    { key: 'edit', label: '编辑', type: 'primary', visible: canEdit(row) },
+    { key: 'approve', label: '审核', type: 'success', visible: canApprove(row) },
+    { key: 'delete', label: '删除', type: 'danger', visible: canDelete(row) },
+  ]
+}
+
+function handleSaleOrderCommand(row: any, command: string) {
+  if (command === 'print') handlePrint(row)
+  if (command === 'edit') handleEdit(row)
+  if (command === 'approve') handleApprove(row)
+  if (command === 'delete') handleDelete(row)
+}
+
+function goRiskCenter() {
+  router.push('/sale/order-risks')
 }
 
 function resetForm(next?: Partial<OrderForm>) {
@@ -404,6 +464,108 @@ async function fetchData() {
   } finally {
     loading.value = false
   }
+}
+
+async function handleExport() {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const res: any = await getSaleOrderList({
+      page: 1,
+      pageSize: 10000,
+      keyword: searchKeyword.value || undefined,
+      customerId: searchCustomerId.value || undefined,
+      status: searchStatus.value || undefined,
+      startDate: searchDate.value?.[0] || undefined,
+      endDate: searchDate.value?.[1] || undefined,
+    })
+    const rows = res.data?.records || res.data?.list || []
+    const filename = `销售订单导出_${Date.now()}.xls`
+    exportExcelFile({
+      filename,
+      sheetName: '销售订单',
+      columns: saleOrderExportColumns,
+      rows,
+    })
+    await recordBusinessAudit({
+      module: '销售订单',
+      action: 'EXPORT',
+      targetType: 'sale_order',
+      targetId: 'filtered',
+      count: rows.length,
+      scope: '当前筛选',
+      filename,
+      detail: {
+        keyword: searchKeyword.value,
+        customerId: searchCustomerId.value,
+        status: searchStatus.value,
+        startDate: searchDate.value?.[0] || '',
+        endDate: searchDate.value?.[1] || '',
+      },
+    })
+    ElMessage.success(`已导出 ${rows.length} 条销售订单`)
+  } catch {
+    ElMessage.error('导出失败')
+  } finally {
+    exporting.value = false
+  }
+}
+
+function saleOrderPrintRows(row: any) {
+  const items = Array.isArray(row.items) && row.items.length
+    ? row.items
+    : [{ productName: row.productName, qty: row.quantity || row.qty, unitPrice: row.unitPrice, amount: row.totalAmount, remark: row.remark }]
+  return items.map((item: any) => {
+    const qty = Number(item.qty || item.quantity || 0)
+    const unitPrice = Number(item.unitPrice || 0)
+    return {
+      productName: item.productName || row.productName || '-',
+      qty: qty.toFixed(0),
+      unitPrice: unitPrice ? moneyText(unitPrice) : '-',
+      amount: moneyText(item.amount ?? qty * unitPrice),
+      remark: item.remark || '-',
+    }
+  })
+}
+
+async function handlePrint(row: any) {
+  const opened = printBusinessDocument({
+    title: '销售订单',
+    subtitle: row.orderNo || `#${row.id || ''}`,
+    sections: [
+      { label: '客户', value: row.customerName || '-' },
+      { label: '订单日期', value: row.orderDate || '-' },
+      { label: '交货日期', value: row.deliveryDate || '-' },
+      { label: '订单状态', value: statusMeta(row.status).label },
+      { label: '收款状态', value: paymentMeta(row.paymentStatus).label },
+      { label: '创建时间', value: formatDateTime(row.createdAt) },
+    ],
+    columns: [
+      { label: '产品', prop: 'productName' },
+      { label: '数量', prop: 'qty', align: 'right' },
+      { label: '单价', prop: 'unitPrice', align: 'right' },
+      { label: '金额', prop: 'amount', align: 'right' },
+      { label: '备注', prop: 'remark' },
+    ],
+    rows: saleOrderPrintRows(row),
+    totals: [
+      { label: '订单金额', value: moneyText(row.totalAmount) },
+      { label: '已回款', value: moneyText(row.receivedAmount) },
+    ],
+    remark: row.remark,
+  })
+  if (!opened) {
+    ElMessage.error('打印窗口被浏览器拦截')
+    return
+  }
+  await recordBusinessAudit({
+    module: '销售订单',
+    action: 'PRINT',
+    targetType: 'sale_order',
+    targetId: row.id || row.orderNo,
+    summary: `打印销售订单 ${row.orderNo || ''}`,
+    detail: { orderNo: row.orderNo, customerName: row.customerName, totalAmount: row.totalAmount },
+  })
 }
 
 function handleSearch(formData: { keyword: string }) {
@@ -501,6 +663,10 @@ onMounted(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.sales-metric-strip {
+  margin: 12px 0;
 }
 
 .order-items {

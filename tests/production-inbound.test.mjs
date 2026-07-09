@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import {
   getInboundedProductionAmount,
@@ -11,6 +12,8 @@ import {
   getRequiredMaterialQtyForInbound,
   isProductionInboundOrderStatus,
 } from '../frontend-admin/src/utils/production-inbound.ts'
+
+const source = readFileSync('frontend-admin/src/views/stock/in-produce.vue', 'utf8')
 
 describe('production inbound quantities', () => {
   it('uses explicit qualified quantity and stored inbound totals', () => {
@@ -44,6 +47,54 @@ describe('production inbound quantities', () => {
 
     assert.equal(getProductionInboundUnitCost(order, product), 9.8765)
     assert.equal(getProductionInboundAmount(3, order, product), 29.63)
+  })
+})
+
+describe('production inbound page delivery target', () => {
+  it('keeps the page aligned with finished-goods inbound closed-loop fields', () => {
+    for (const marker of [
+      '成品入库',
+      '新增入库',
+      '入库单号',
+      '生产工单',
+      '产品',
+      '入库数量',
+      '入库单价',
+      '入库金额',
+      '仓库',
+      '合格产量',
+      '已入库',
+      '可入库',
+      '预计金额',
+    ]) {
+      assert.equal(source.includes(marker), true)
+    }
+  })
+
+  it('keeps visible failure feedback for inbound loading and submit operations', () => {
+    for (const marker of [
+      '成品入库记录加载失败',
+      '成品入库基础选项加载失败',
+      '成品入库记录刷新失败',
+      '成品入库提交失败',
+      'errorMessage',
+      'page-alert',
+    ]) {
+      assert.equal(source.includes(marker), true)
+    }
+  })
+
+  it('keeps guards for inboundable orders and quantity boundaries', () => {
+    for (const marker of [
+      'isProductionInboundOrderStatus',
+      '入库数量必须是大于 0 的整数',
+      '入库数量不能超过可入库数量',
+      'getQualifiedProductionQty',
+      'getProductionInboundUnitCost',
+      'getProductionInboundAmount',
+    ]) {
+      assert.equal(source.includes(marker), true)
+    }
   })
 })
 

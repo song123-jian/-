@@ -92,15 +92,33 @@
         </el-form-item>
       </el-form>
     </el-card>
+
+    <el-card shadow="hover" class="danger-card">
+      <div class="danger-head">
+        <div>
+          <h3>危险操作</h3>
+          <p>用于上线前清理演示和测试业务数据。操作会保留管理员账号与系统配置，但会清除单据、库存、质量、工资、流程、日志和基础业务资料。</p>
+        </div>
+        <el-button type="danger" :loading="clearing" @click="handleClearAllData">
+          一键清除所有数据
+        </el-button>
+      </div>
+      <el-alert
+        title="执行后不可从页面撤销，请先确认云库备份或恢复点已就绪。"
+        type="warning"
+        show-icon
+        :closable="false"
+      />
+    </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
-import { getSystemConfig, updateSystemConfig } from '@/api/system'
+import { clearAllBusinessData, getSystemConfig, updateSystemConfig } from '@/api/system'
 import {
   DEFAULT_SYSTEM_CONFIG,
   buildSystemConfigPayload,
@@ -111,6 +129,8 @@ import {
 
 const formRef = ref<FormInstance>()
 const form = reactive<SystemConfigForm>({ ...DEFAULT_SYSTEM_CONFIG })
+const clearing = ref(false)
+const CLEAR_CONFIRM_TEXT = '清除所有业务数据'
 
 const formRules: FormRules = {
   factory_name: [{ required: true, message: '请输入工厂名称', trigger: 'blur' }],
@@ -148,6 +168,35 @@ function handleReset() {
   loadConfig()
 }
 
+async function handleClearAllData() {
+  try {
+    const confirmText = await ElMessageBox.prompt(
+      `请输入“${CLEAR_CONFIRM_TEXT}”确认清除。该操作会保留管理员账号和系统配置。`,
+      '一键清除所有数据',
+      {
+        confirmButtonText: '确认清除',
+        cancelButtonText: '取消',
+        inputPlaceholder: CLEAR_CONFIRM_TEXT,
+        inputValidator(value) {
+          return String(value || '').trim() === CLEAR_CONFIRM_TEXT || `必须输入：${CLEAR_CONFIRM_TEXT}`
+        },
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger',
+      },
+    )
+    clearing.value = true
+    const res: any = await clearAllBusinessData({ confirmText: String(confirmText.value || '').trim() })
+    const clearedCount = res?.data?.clearedTables?.length || 0
+    const skippedCount = res?.data?.skippedTables?.length || 0
+    ElMessage.success(`清除完成：${clearedCount} 张表已处理，${skippedCount} 张表跳过`)
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return
+    if (error?.message) ElMessage.error(error.message)
+  } finally {
+    clearing.value = false
+  }
+}
+
 onMounted(() => {
   loadConfig()
 })
@@ -156,5 +205,38 @@ onMounted(() => {
 <style scoped lang="scss">
 .config-form {
   max-width: 900px;
+}
+
+.danger-card {
+  margin-top: 16px;
+  border-color: #f3c5c5;
+}
+
+.danger-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.danger-head h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: #b42318;
+}
+
+.danger-head p {
+  margin: 0;
+  max-width: 760px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #6b7280;
+}
+
+@media (max-width: 640px) {
+  .danger-head {
+    flex-direction: column;
+  }
 }
 </style>

@@ -7,6 +7,16 @@
       </el-button>
     </PageHeader>
 
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      show-icon
+      closable
+      :title="errorMessage"
+      @close="errorMessage = ''"
+    />
+
     <SearchBar :keyword="searchKeyword" @search="handleSearch" @reset="handleReset">
       <el-form-item label="仓库">
         <el-select v-model="searchWarehouseId" placeholder="全部" clearable filterable style="width: 180px">
@@ -400,6 +410,7 @@ type SaleOutForm = {
 
 const loading = ref(false)
 const tableData = ref<any[]>([])
+const errorMessage = ref('')
 const searchKeyword = ref('')
 const searchWarehouseId = ref<number | null>(null)
 const searchProductId = ref<number | null>(null)
@@ -671,6 +682,10 @@ function batchStatusText(value?: string) {
   return map[String(value || '').toUpperCase()] || '未记录'
 }
 
+function failureText(error: any, fallback: string) {
+  return String(error?.message || '').trim() || fallback
+}
+
 function batchOptionKey(item: StockRow) {
   return getSaleShipmentStockOptionValue(item)
 }
@@ -730,7 +745,9 @@ async function loadOptions() {
     warehouseOptions.value = warehouseRes.data?.records || warehouseRes.data?.list || []
     stockRows.value = stockRes.data?.records || stockRes.data?.list || []
     outboundRows.value = outboundRes.data?.records || outboundRes.data?.list || []
-  } catch {
+  } catch (error: any) {
+    errorMessage.value = failureText(error, '销售出库基础选项加载失败，请检查销售订单、客户、产品、仓库和库存配置。')
+    ElMessage.error(errorMessage.value)
     saleOrderOptions.value = []
     saleOrderItemOptions.value = []
     customerOptions.value = []
@@ -782,7 +799,10 @@ async function fetchData() {
     const rows = res.data?.records || res.data?.list || []
     tableData.value = rows
     pagination.total = res.data?.total || rows.length
-  } catch {
+    errorMessage.value = ''
+  } catch (error: any) {
+    errorMessage.value = failureText(error, '销售出库记录加载失败，请检查库存台账、销售订单和成本字段。')
+    ElMessage.error(errorMessage.value)
     tableData.value = []
     pagination.total = 0
   } finally {
@@ -842,7 +862,8 @@ async function handleSubmit() {
     await refreshAfterSubmit()
     fetchData()
   } catch (error: any) {
-    ElMessage.error(error?.message || '销售出库失败')
+    errorMessage.value = failureText(error, '销售出库失败，请检查订单可出库数量、批次库存和物流信息。')
+    ElMessage.error(errorMessage.value)
   } finally {
     submitting.value = false
   }
@@ -907,6 +928,10 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
+.page-alert {
+  margin-bottom: 12px;
+}
+
 .pagination {
   margin-top: 16px;
   display: flex;

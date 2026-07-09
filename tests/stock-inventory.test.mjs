@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import {
   buildInventoryApprovalSummary,
@@ -154,5 +155,16 @@ describe('stock inventory summaries', () => {
       buildStockInventoryDetailCsv({ inventoryNo: 'PD-EMPTY' }, []),
       '盘点单号,产品,库位,批次,供应商,账面数量,实盘数量,差异数量,原因'
     )
+  })
+})
+
+describe('stock inventory page integration', () => {
+  it('keeps page-level failure feedback visible for inventory lifecycle actions', () => {
+    const source = readFileSync(new URL('../frontend-admin/src/views/stock/inventory.vue', import.meta.url), 'utf8')
+
+    assert.match(source, /v-if="errorMessage"/)
+    assert.match(source, /failureText\(error, '盘点单加载失败/)
+    assert.match(source, /failureText\(error, '实盘保存失败/)
+    assert.match(source, /failureText\(error, '盘点审核通过失败/)
   })
 })

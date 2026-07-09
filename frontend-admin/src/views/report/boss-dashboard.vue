@@ -1,6 +1,15 @@
 <template>
   <div class="page-container">
-    <PageHeader title="老板驾驶舱" />
+    <PageHeader title="老板驾驶舱">
+      <el-button type="primary" @click="goFinanceDashboard">
+        <el-icon><Wallet /></el-icon>
+        财务总览
+      </el-button>
+      <el-button @click="goFinanceStatements">
+        <el-icon><Document /></el-icon>
+        对账单
+      </el-button>
+    </PageHeader>
 
     <div class="dashboard-filter">
       <el-form :inline="true" class="dashboard-filter__form">
@@ -50,20 +59,7 @@
       <span>口径：销售订单、回款流水、销售出库、费用、已结工资、质检与设备状态统一归集。</span>
     </div>
 
-    <div v-loading="loading" class="kpi-grid">
-      <div v-for="item in kpiCards" :key="item.label" class="kpi-card" :class="`kpi-card--${item.tone}`">
-        <div class="kpi-card__main">
-          <div>
-            <div class="kpi-card__label">{{ item.label }}</div>
-            <div class="kpi-card__value">{{ cardValueText(item) }}</div>
-          </div>
-          <el-icon :size="30">
-            <component :is="cardIcon(item.icon)" />
-          </el-icon>
-        </div>
-        <div class="kpi-card__meta">{{ item.meta }}</div>
-      </div>
-    </div>
+    <MetricStrip v-loading="loading" class="kpi-grid" :items="kpiCards" testid="boss-dashboard-metrics" />
 
     <div v-if="riskItems.length" class="risk-list">
       <el-alert
@@ -151,20 +147,16 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import {
   Calendar,
-  Coin,
-  DataLine,
   Document,
-  Money,
-  Odometer,
   Refresh,
   Search,
-  SetUp,
-  TrendCharts,
   Wallet,
 } from '@element-plus/icons-vue'
+import MetricStrip from '@/components/MetricStrip.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { getBossDashboard } from '@/api/dashboard'
 import { formatMoney } from '@/utils'
@@ -174,7 +166,6 @@ import {
   buildBossFinanceChartRows,
   buildBossOperationGaugeRows,
   normalizeBossDashboardSummary,
-  type BossDashboardCard,
   type BossDashboardRiskLevel,
   type BossDashboardSummary,
 } from '@/utils/boss-dashboard'
@@ -184,17 +175,7 @@ import {
   validateFinanceStatementRange,
 } from '@/utils/finance-statement'
 
-const iconMap = {
-  Coin,
-  DataLine,
-  Document,
-  Money,
-  Odometer,
-  SetUp,
-  TrendCharts,
-  Wallet,
-}
-
+const router = useRouter()
 const loading = ref(false)
 const months = ref(6)
 const monthRange = ref<string[]>([])
@@ -217,10 +198,6 @@ const scopeText = computed(() => {
   return `近 ${months.value} 个月`
 })
 
-function cardIcon(name: string) {
-  return iconMap[name as keyof typeof iconMap] || DataLine
-}
-
 function moneyText(value: any) {
   return `¥${formatMoney(Number(value || 0))}`
 }
@@ -231,12 +208,6 @@ function percentText(value: any) {
 
 function numberText(value: any) {
   return Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
-}
-
-function cardValueText(item: BossDashboardCard) {
-  if (item.valueType === 'money') return moneyText(item.value)
-  if (item.valueType === 'percent') return percentText(item.value)
-  return numberText(item.value)
 }
 
 function riskAlertType(level: BossDashboardRiskLevel) {
@@ -329,6 +300,25 @@ function buildDashboardParams() {
     }
   }
   return { months: months.value }
+}
+
+function buildDashboardQuery() {
+  const params = buildDashboardParams()
+  if ('startMonth' in params) {
+    return {
+      startMonth: params.startMonth,
+      endMonth: params.endMonth,
+    }
+  }
+  return { months: String(params.months) }
+}
+
+function goFinanceDashboard() {
+  router.push({ path: '/finance/dashboard', query: buildDashboardQuery() })
+}
+
+function goFinanceStatements() {
+  router.push({ path: '/finance/statements', query: buildDashboardQuery() })
 }
 
 function applyRecentMonths() {
@@ -426,65 +416,7 @@ onUnmounted(() => {
 }
 
 .kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 12px;
   margin-bottom: 16px;
-}
-
-.kpi-card {
-  min-width: 0;
-  min-height: 112px;
-  padding: 14px;
-  border: 1px solid #e4e7ed;
-  border-left: 4px solid #909399;
-  border-radius: 4px;
-  background: #fff;
-}
-
-.kpi-card--primary {
-  border-left-color: #409eff;
-}
-
-.kpi-card--success {
-  border-left-color: #67c23a;
-}
-
-.kpi-card--warning {
-  border-left-color: #e6a23c;
-}
-
-.kpi-card--danger {
-  border-left-color: #f56c6c;
-}
-
-.kpi-card__main {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.kpi-card__label {
-  color: #909399;
-  font-size: 13px;
-  line-height: 1.2;
-}
-
-.kpi-card__value {
-  margin-top: 8px;
-  color: #303133;
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
-.kpi-card__meta {
-  margin-top: 10px;
-  color: #606266;
-  font-size: 12px;
-  line-height: 1.4;
 }
 
 .risk-list {
@@ -524,10 +456,6 @@ onUnmounted(() => {
 @media (max-width: 768px) {
   .dashboard-filter :deep(.el-date-editor.el-input__wrapper) {
     width: 100% !important;
-  }
-
-  .kpi-card__value {
-    font-size: 22px;
   }
 
   .chart-container {

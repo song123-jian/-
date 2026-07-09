@@ -13,4 +13,4 @@ export const updateMold = (id: number, data: any) => request.put(`/molds/${id}`,
 // 删除模具
 export const deleteMold = (id: number) => request.delete(`/molds/${id}`)
 // 模具保养
-export const maintainMold = (id: number) => request.post(`/molds/${id}/maintenance`)
+export const maintainMold = (id: number, data?: any) => request.post(`/molds/${id}/maintenance`, data)

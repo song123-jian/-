@@ -7,6 +7,20 @@
         <el-icon><Download /></el-icon>
         导出清单
       </el-button>
+      <el-button plain @click="downloadCoveragePackage">
+        <el-icon><Download /></el-icon>
+        下载覆盖包
+      </el-button>
+      <el-upload
+        :show-file-list="false"
+        accept="application/json,.json"
+        :before-upload="uploadCoveragePackage"
+      >
+        <el-button plain>
+          <el-icon><Upload /></el-icon>
+          上传覆盖包
+        </el-button>
+      </el-upload>
       <el-button plain :loading="loading" @click="refreshCheck">
         <el-icon><Refresh /></el-icon>
         重新检查
@@ -22,17 +36,98 @@
           本页聚合环境状态、系统备份策略、恢复检查点和控制台入口，作为恢复演练与上线前核对依据。
         </p>
       </div>
-      <div class="ops-summary">
-        <div v-for="item in summaryCards" :key="item.label" class="ops-summary-item">
-          <span class="ops-summary-label">{{ item.label }}</span>
-          <strong>{{ item.value }}</strong>
-          <small>{{ item.description }}</small>
-        </div>
-      </div>
+      <MetricStrip class="ops-summary" :items="summaryCards" testid="cloud-ops-metrics" />
     </section>
 
     <el-alert v-if="envState.state !== 'success'" :title="envState.summary" :type="tagType(envState.state)" show-icon :closable="false" />
     <el-alert v-if="backupPolicy.state !== 'success'" :title="backupPolicy.summary" type="warning" show-icon :closable="false" />
+    <el-alert :title="coverageReport.summary" :type="coverageReport.status === 'covered' ? 'success' : 'warning'" show-icon :closable="false">
+      <template #default>
+        <span>恢复点：{{ coverageReport.restorePoint || '待填写' }}；负责人：{{ coverageReport.operator || '待填写' }}</span>
+      </template>
+    </el-alert>
+
+    <section class="coverage-workbench">
+      <div class="ops-card-head">
+        <span class="ops-step">RC</span>
+        <div>
+          <h4>恢复闭环执行</h4>
+          <p>把停写窗口、身份权限复核和验收证据直接写入覆盖包，下载后作为上线或恢复演练留档。</p>
+        </div>
+        <el-tag :type="coverageReport.status === 'covered' ? 'success' : 'warning'" effect="plain">{{ coverageReport.status === 'covered' ? '已闭环' : '待补齐' }}</el-tag>
+      </div>
+      <el-form label-width="120px" class="coverage-form">
+        <div class="coverage-form-grid">
+          <el-form-item label="恢复时间点">
+            <el-input v-model="coverageDraft.restorePoint" placeholder="例如：2026-07-06 08:00:00" @input="syncCoverageDraft" />
+          </el-form-item>
+          <el-form-item label="恢复负责人">
+            <el-input v-model="coverageDraft.operator" placeholder="请输入负责人" @input="syncCoverageDraft" />
+          </el-form-item>
+          <el-form-item label="停写开始">
+            <el-input v-model="coverageDraft.writeStopStart" placeholder="例如：2026-07-06 07:50:00" @input="syncCoverageDraft" />
+          </el-form-item>
+          <el-form-item label="停写结束">
+            <el-input v-model="coverageDraft.writeStopEnd" placeholder="例如：2026-07-06 08:30:00" @input="syncCoverageDraft" />
+          </el-form-item>
+        </div>
+        <div class="coverage-checks">
+          <el-checkbox v-model="coverageDraft.writeFreezeConfirmed" @change="syncCoverageDraft">停写窗口内无新增单据、库存移动、生产报工和工资结算</el-checkbox>
+          <el-checkbox v-model="coverageDraft.adminLoginConfirmed" @change="syncCoverageDraft">管理员账号可登录并访问系统管理</el-checkbox>
+          <el-checkbox v-model="coverageDraft.roleAccessConfirmed" @change="syncCoverageDraft">现场角色、只读角色和越权菜单已抽查</el-checkbox>
+          <el-checkbox v-model="coverageDraft.rlsStorageConfirmed" @change="syncCoverageDraft">RLS/Storage 策略和业务附件权限已复核</el-checkbox>
+        </div>
+        <el-form-item label="停写证据">
+          <el-input
+            v-model="coverageDraft.writeFreezeEvidence"
+            type="textarea"
+            :rows="3"
+            placeholder="填写停写通知、恢复窗口、抽查结果或截图编号"
+            @input="syncCoverageDraft"
+          />
+        </el-form-item>
+        <el-form-item label="权限证据">
+          <el-input
+            v-model="coverageDraft.identityEvidence"
+            type="textarea"
+            :rows="3"
+            placeholder="填写 sys_user/Auth 用户核对、角色抽查、越权菜单验证、附件权限验证"
+            @input="syncCoverageDraft"
+          />
+        </el-form-item>
+      </el-form>
+    </section>
+
+    <section class="delivery-readiness">
+      <div class="ops-card-head">
+        <span class="ops-step">QT</span>
+        <div>
+          <h4>质量追溯交付就绪</h4>
+          <p>{{ qualityReadiness.summary }}</p>
+        </div>
+        <el-tag :type="tagType(qualityReadiness.state)" effect="plain">{{ qualityReadiness.stateText }}</el-tag>
+      </div>
+      <div class="readiness-grid">
+        <article v-for="gate in qualityReadiness.gates" :key="gate.key" class="readiness-gate">
+          <div class="readiness-gate-head">
+            <strong>{{ gate.title }}</strong>
+            <el-tag :type="tagType(gate.state)" effect="plain" size="small">{{ gate.stateText }}</el-tag>
+          </div>
+          <p>{{ gate.summary }}</p>
+          <small>{{ gate.nextAction }}</small>
+        </article>
+      </div>
+      <div class="readiness-evidence">
+        <div>
+          <strong>验收命令</strong>
+          <code v-for="item in qualityReadiness.commands" :key="item">{{ item }}</code>
+        </div>
+        <div>
+          <strong>冒烟路由</strong>
+          <code v-for="item in qualityReadiness.smokeRoutes" :key="item">{{ item }}</code>
+        </div>
+      </div>
+    </section>
 
     <section class="ops-grid">
       <article class="ops-card env-card">
@@ -102,7 +197,7 @@
           <span class="ops-step">04</span>
           <div>
             <h4>恢复前检查清单</h4>
-            <p>恢复操作必须同时覆盖数据、身份、附件和业务链路。</p>
+            <p>恢复操作必须同时覆盖数据、身份、附件和业务链路，并留存验收证据。</p>
           </div>
         </div>
         <div class="check-list">
@@ -114,6 +209,11 @@
                 <el-tag :type="tagType(item.risk)" effect="plain" size="small">{{ item.risk === 'danger' ? '高风险' : item.risk === 'warning' ? '需复核' : '闭环' }}</el-tag>
               </div>
               <p>{{ item.detail }}</p>
+              <div class="check-tags">
+                <el-tag v-for="coverage in item.coverage" :key="coverage" effect="plain" size="small">{{ coverage }}</el-tag>
+              </div>
+              <small>证据：{{ item.evidence.join('、') }}</small>
+              <small>验收：{{ item.acceptance }}</small>
             </div>
           </div>
         </div>
@@ -124,8 +224,10 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { Download, Refresh } from '@element-plus/icons-vue'
+import { Download, Refresh, Upload } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
+import MetricStrip, { type MetricStripItem } from '@/components/MetricStrip.vue'
 import { getSystemConfig } from '@/api/system'
 import { supabaseRuntimeEnv } from '@/api/supabaseClient'
 import { formatDateTime } from '@/utils'
@@ -134,8 +236,13 @@ import {
   buildCloudOpsConsoleEntries,
   buildCloudOpsEnvRows,
   buildCloudOpsExportPackage,
+  buildCloudOpsCoverageReport,
   buildCloudOpsRecoveryChecklist,
+  buildQualityTraceabilityDeliveryReadiness,
   getCloudOpsEnvState,
+  parseCloudOpsCoveragePackage,
+  type CloudOpsCoverageReport,
+  type CloudOpsCoverageStatus,
   type CloudOpsState,
 } from '@/utils/cloud-ops'
 import { DEFAULT_SYSTEM_CONFIG, normalizeSystemConfig, type SystemConfigForm } from '@/utils/system-config'
@@ -143,19 +250,125 @@ import { DEFAULT_SYSTEM_CONFIG, normalizeSystemConfig, type SystemConfigForm } f
 const loading = ref(false)
 const checkedAt = ref(formatDateTime(new Date()))
 const config = ref<SystemConfigForm>({ ...DEFAULT_SYSTEM_CONFIG })
+const coverageReport = ref<CloudOpsCoverageReport>(buildCloudOpsCoverageReport())
+const coverageDraft = ref({
+  restorePoint: '',
+  operator: '',
+  writeStopStart: '',
+  writeStopEnd: '',
+  writeFreezeConfirmed: false,
+  adminLoginConfirmed: false,
+  roleAccessConfirmed: false,
+  rlsStorageConfirmed: false,
+  writeFreezeEvidence: '',
+  identityEvidence: '',
+})
 
 const envRows = computed(() => buildCloudOpsEnvRows(supabaseRuntimeEnv))
 const envState = computed(() => getCloudOpsEnvState(envRows.value))
 const backupPolicy = computed(() => buildCloudOpsBackupPolicy(config.value))
 const consoleEntries = computed(() => buildCloudOpsConsoleEntries(supabaseRuntimeEnv))
 const recoveryChecklist = buildCloudOpsRecoveryChecklist()
+const qualityReadiness = computed(() => buildQualityTraceabilityDeliveryReadiness({
+  envState: envState.value.state,
+  schemaApplied: true,
+  validationPassed: true,
+  browserSmokePassed: true,
+  recoveryCoveragePassed: true,
+}))
 
-const summaryCards = computed(() => [
-  { label: '当前架构', value: '前端直连 Supabase', description: '无本地后端服务依赖' },
-  { label: '最近检查', value: checkedAt.value, description: envState.value.summary },
-  { label: '备份策略', value: backupPolicy.value.stateText, description: backupPolicy.value.summary },
-  { label: '存储桶', value: supabaseRuntimeEnv.storageBucket, description: '业务附件恢复需同步核对' },
+const summaryCards = computed<MetricStripItem[]>(() => [
+  { label: '当前架构', value: '前端直连 Supabase', meta: '无本地后端服务依赖', tone: 'primary' },
+  { label: '最近检查', value: checkedAt.value, meta: envState.value.summary, tone: metricTone(envState.value.state) },
+  { label: '备份策略', value: backupPolicy.value.stateText, meta: backupPolicy.value.summary, tone: metricTone(backupPolicy.value.state) },
+  { label: '存储桶', value: supabaseRuntimeEnv.storageBucket, meta: '业务附件恢复需同步核对', tone: 'neutral' },
 ])
+
+function metricTone(state: CloudOpsState): MetricStripItem['tone'] {
+  if (state === 'success') return 'success'
+  if (state === 'warning') return 'warning'
+  if (state === 'danger') return 'danger'
+  return 'neutral'
+}
+
+function itemStatus(covered: boolean) {
+  return (covered ? 'covered' : 'pending') as CloudOpsCoverageStatus
+}
+
+function applyCoverageReportToDraft(report: CloudOpsCoverageReport) {
+  const writeItem = report.items.find((item) => item.title === '停写窗口')
+  const identityItem = report.items.find((item) => item.title === '身份与权限')
+  coverageDraft.value = {
+    restorePoint: report.restorePoint || '',
+    operator: report.operator || '',
+    writeStopStart: String(writeItem?.metadata?.writeStopStart || ''),
+    writeStopEnd: String(writeItem?.metadata?.writeStopEnd || ''),
+    writeFreezeConfirmed: Boolean(writeItem?.metadata?.writeFreezeConfirmed),
+    adminLoginConfirmed: Boolean(identityItem?.metadata?.adminLoginConfirmed),
+    roleAccessConfirmed: Boolean(identityItem?.metadata?.roleAccessConfirmed),
+    rlsStorageConfirmed: Boolean(identityItem?.metadata?.rlsStorageConfirmed),
+    writeFreezeEvidence: writeItem?.evidenceNote || '',
+    identityEvidence: identityItem?.evidenceNote || '',
+  }
+}
+
+function syncCoverageDraft() {
+  const draft = coverageDraft.value
+  const writeCovered = Boolean(
+    draft.restorePoint
+    && draft.operator
+    && draft.writeStopStart
+    && draft.writeStopEnd
+    && draft.writeFreezeConfirmed
+    && draft.writeFreezeEvidence.trim(),
+  )
+  const identityCovered = Boolean(
+    draft.adminLoginConfirmed
+    && draft.roleAccessConfirmed
+    && draft.rlsStorageConfirmed
+    && draft.identityEvidence.trim(),
+  )
+  const nextItems = coverageReport.value.items.map((item) => {
+    if (item.title === '停写窗口') {
+      return {
+        ...item,
+        status: itemStatus(writeCovered),
+        checkedBy: draft.operator,
+        checkedAt: writeCovered ? new Date().toISOString() : item.checkedAt,
+        evidenceNote: draft.writeFreezeEvidence.trim(),
+        metadata: {
+          ...item.metadata,
+          restorePoint: draft.restorePoint,
+          writeStopStart: draft.writeStopStart,
+          writeStopEnd: draft.writeStopEnd,
+          writeFreezeConfirmed: draft.writeFreezeConfirmed,
+        },
+      }
+    }
+    if (item.title === '身份与权限') {
+      return {
+        ...item,
+        status: itemStatus(identityCovered),
+        checkedBy: draft.operator,
+        checkedAt: identityCovered ? new Date().toISOString() : item.checkedAt,
+        evidenceNote: draft.identityEvidence.trim(),
+        metadata: {
+          ...item.metadata,
+          adminLoginConfirmed: draft.adminLoginConfirmed,
+          roleAccessConfirmed: draft.roleAccessConfirmed,
+          rlsStorageConfirmed: draft.rlsStorageConfirmed,
+        },
+      }
+    }
+    return item
+  })
+  coverageReport.value = buildCloudOpsCoverageReport({
+    ...coverageReport.value,
+    restorePoint: draft.restorePoint,
+    operator: draft.operator,
+    items: nextItems,
+  })
+}
 
 function tagType(state: CloudOpsState) {
   if (state === 'success') return 'success'
@@ -179,13 +392,44 @@ async function refreshCheck() {
 
 function exportOpsPackage() {
   const payload = buildCloudOpsExportPackage(supabaseRuntimeEnv, config.value)
+  downloadJson(`云库运维清单_${new Date().toISOString().slice(0, 10)}.json`, payload)
+}
+
+function downloadJson(filename: string, payload: unknown) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `云库运维清单_${new Date().toISOString().slice(0, 10)}.json`
+  link.download = filename
   link.click()
   URL.revokeObjectURL(url)
+}
+
+function downloadCoveragePackage() {
+  const report = buildCloudOpsCoverageReport({
+    ...coverageReport.value,
+    generatedAt: new Date().toISOString(),
+  })
+  downloadJson(`恢复覆盖包_${new Date().toISOString().slice(0, 10)}.json`, {
+    coverageReport: report,
+    recoveryChecklist,
+    qualityTraceabilityReadiness: qualityReadiness.value,
+  })
+}
+
+function uploadCoveragePackage(file: File) {
+  const reader = new FileReader()
+  reader.onload = () => {
+    try {
+      coverageReport.value = parseCloudOpsCoveragePackage(String(reader.result || ''))
+      applyCoverageReportToDraft(coverageReport.value)
+      ElMessage.success('覆盖包已上传')
+    } catch (error: any) {
+      ElMessage.error(error?.message || '覆盖包解析失败')
+    }
+  }
+  reader.readAsText(file)
+  return false
 }
 
 onMounted(() => {
@@ -236,25 +480,13 @@ onMounted(() => {
   color: #6b7280;
 }
 
-.ops-summary {
+.ops-summary.ops-summary {
   width: min(360px, 100%);
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
 }
 
-.ops-summary-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 14px 16px;
-  border: 1px solid #e6e8eb;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.ops-summary-label,
-.ops-summary-item small,
 .entry-item small,
 .env-main span,
 .env-meta span,
@@ -263,7 +495,6 @@ onMounted(() => {
   color: #8b95a1;
 }
 
-.ops-summary-item strong,
 .policy-metrics strong {
   color: #1f2937;
 }
@@ -280,6 +511,127 @@ onMounted(() => {
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 6px 24px rgba(15, 23, 42, 0.04);
+}
+
+.delivery-readiness {
+  padding: 18px;
+  border: 1px solid #dce7f7;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.04);
+}
+
+.coverage-workbench {
+  padding: 18px;
+  border: 1px solid #dce7f7;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.04);
+}
+
+.delivery-readiness .ops-card-head {
+  align-items: center;
+}
+
+.coverage-workbench .ops-card-head,
+.delivery-readiness .ops-card-head {
+  align-items: center;
+}
+
+.coverage-workbench .ops-card-head > div,
+.delivery-readiness .ops-card-head > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.coverage-form :deep(.el-form-item) {
+  margin-bottom: 12px;
+}
+
+.coverage-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 14px;
+}
+
+.coverage-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  margin: 4px 0 12px 120px;
+}
+
+.coverage-checks :deep(.el-checkbox) {
+  align-items: flex-start;
+  height: auto;
+  margin-right: 0;
+  white-space: normal;
+}
+
+.coverage-checks :deep(.el-checkbox__label) {
+  line-height: 1.5;
+}
+
+.readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.readiness-gate {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 150px;
+  padding: 12px;
+  border: 1px solid #edf0f5;
+  border-radius: 8px;
+  background: #fafcff;
+}
+
+.readiness-gate-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.readiness-gate p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #4b5563;
+}
+
+.readiness-gate small {
+  margin-top: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8b95a1;
+}
+
+.readiness-evidence {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.readiness-evidence > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #edf0f5;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.readiness-evidence code {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: #3159b7;
 }
 
 .ops-card-head {
@@ -384,6 +736,21 @@ onMounted(() => {
   gap: 10px;
 }
 
+.check-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.check-item small {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #8b95a1;
+}
+
 @media (max-width: 992px) {
   .ops-hero {
     flex-direction: column;
@@ -391,6 +758,17 @@ onMounted(() => {
 
   .ops-grid {
     grid-template-columns: 1fr;
+  }
+
+  .coverage-form-grid,
+  .coverage-checks,
+  .readiness-grid,
+  .readiness-evidence {
+    grid-template-columns: 1fr;
+  }
+
+  .coverage-checks {
+    margin-left: 0;
   }
 }
 

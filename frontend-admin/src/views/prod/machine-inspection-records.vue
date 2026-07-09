@@ -6,6 +6,15 @@
       </el-button>
     </PageHeader>
 
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      :title="errorMessage"
+      show-icon
+      :closable="false"
+    />
+
     <SearchBar @search="handleSearch" @reset="handleReset">
       <el-form-item label="机台">
         <el-select v-model="searchMachineId" filterable placeholder="全部" clearable style="width: 180px">
@@ -43,7 +52,7 @@
         </el-table-column>
         <el-table-column prop="itemsChecked" label="点检项目" min-width="220" show-overflow-tooltip />
         <el-table-column prop="issues" label="异常" min-width="220" show-overflow-tooltip />
-        <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="remark" label="处理建议/备注" min-width="180" show-overflow-tooltip />
       </el-table>
 
       <el-pagination
@@ -112,7 +121,7 @@
 
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit">确定</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
   </div>
@@ -135,6 +144,8 @@ type OptionItem = { id: number; name?: string; realName?: string; username?: str
 
 const userStore = useUserStore()
 const loading = ref(false)
+const submitting = ref(false)
+const errorMessage = ref('')
 const tableData = ref<any[]>([])
 const searchMachineId = ref<number | null>(null)
 const searchInspectorId = ref<number | null>(null)
@@ -161,6 +172,10 @@ const formRules: FormRules = {
   result: [{ required: true, message: '请选择结果', trigger: 'change' }],
 }
 
+function failureText(error: any, fallback: string) {
+  return error?.message || error?.response?.data?.message || fallback
+}
+
 async function loadOptions() {
   try {
     const [machineRes, userRes] = await Promise.all([
@@ -172,14 +187,16 @@ async function loadOptions() {
     if (!form.inspectorId && userStore.userInfo?.id) {
       form.inspectorId = userStore.userInfo.id
     }
-  } catch {
+  } catch (error: any) {
     machineOptions.value = []
     userOptions.value = []
+    ElMessage.error(failureText(error, '设备点检基础选项加载失败，请检查机台和用户资料。'))
   }
 }
 
 async function fetchData() {
   loading.value = true
+  errorMessage.value = ''
   try {
     const res: any = await getMachineInspectionRecordList({
       page: pagination.page,
@@ -190,9 +207,11 @@ async function fetchData() {
     })
     tableData.value = res.data?.records || []
     pagination.total = res.data?.total || 0
-  } catch {
+  } catch (error: any) {
     tableData.value = []
     pagination.total = 0
+    errorMessage.value = failureText(error, '设备点检记录加载失败，请检查 Supabase 连接、点检记录表和筛选条件。')
+    ElMessage.error(errorMessage.value)
   } finally {
     loading.value = false
   }
@@ -225,13 +244,20 @@ function handleAdd() {
 async function handleSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
+  if (form.result === 'FAIL' && !form.issues.trim()) {
+    ElMessage.warning('异常点检必须填写异常描述')
+    return
+  }
+  submitting.value = true
   try {
     await createMachineInspectionRecord({ ...form })
     ElMessage.success('创建成功')
     dialogVisible.value = false
     fetchData()
-  } catch {
-    // 交给全局提示
+  } catch (error: any) {
+    ElMessage.error(failureText(error, '设备点检记录创建失败，请检查机台、点检人、结果和异常描述。'))
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -246,5 +272,9 @@ onMounted(async () => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.page-alert {
+  margin-bottom: 12px;
 }
 </style>

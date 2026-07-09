@@ -41,6 +41,15 @@
       </el-form-item>
     </SearchBar>
 
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      :title="errorMessage"
+      show-icon
+      :closable="false"
+    />
+
     <el-card shadow="hover">
       <el-table :data="tableData" stripe v-loading="loading" empty-text="暂无生产领料记录">
         <el-table-column prop="moveNo" label="领料单号" min-width="170" show-overflow-tooltip />
@@ -258,6 +267,7 @@ import {
   getPlannedMaterialQty,
   getRemainingMaterialQty,
   getSuggestedPickingBatch,
+  isPickingOrderStatus,
   toPickingNumber,
   type PickingStockRowLike,
 } from '@/utils/production-picking'
@@ -310,6 +320,7 @@ const searchKeyword = ref('')
 const searchWarehouseId = ref<number | null>(null)
 const searchProductId = ref<number | null>(null)
 const searchDate = ref<string[]>([])
+const errorMessage = ref('')
 const dialogVisible = ref(false)
 const submitting = ref(false)
 const formRef = ref<FormInstance>()
@@ -338,7 +349,7 @@ const materialOptions = computed(() =>
 )
 
 const activeProdOrderOptions = computed(() =>
-  prodOrderOptions.value.filter((item) => ['SCHEDULED', 'RUNNING', 'PAUSED'].includes(normalizeStatus(item.status)))
+  prodOrderOptions.value.filter((item) => isPickingOrderStatus(item.status))
 )
 
 const selectedProdOrder = computed(() =>
@@ -467,6 +478,10 @@ function createPickingNo() {
   return `LL-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}${String(now.getMilliseconds()).padStart(3, '0')}`
 }
 
+function failureText(error: any, fallback: string) {
+  return error?.message || error?.data?.message || fallback
+}
+
 function optionText(item?: OptionItem | null) {
   if (!item) return '-'
   return [item.code || item.orderNo, item.name || item.productName].filter(Boolean).join(' - ') || `#${item.id}`
@@ -568,11 +583,12 @@ async function loadOptions() {
     productOptions.value = productRes.data?.records || productRes.data?.list || []
     warehouseOptions.value = warehouseRes.data?.records || warehouseRes.data?.list || []
     stockRows.value = stockRes.data?.records || stockRes.data?.list || []
-  } catch {
+  } catch (error: any) {
     prodOrderOptions.value = []
     productOptions.value = []
     warehouseOptions.value = []
     stockRows.value = []
+    ElMessage.error(failureText(error, '生产领料基础选项加载失败，请检查生产工单、物料、仓库和库存配置。'))
   }
 }
 
@@ -580,14 +596,16 @@ async function refreshStockRows() {
   try {
     const res: any = await getStockList({ page: 1, pageSize: 1000 })
     stockRows.value = res.data?.records || res.data?.list || []
-  } catch {
+  } catch (error: any) {
     stockRows.value = []
+    ElMessage.error(failureText(error, '生产领料库存刷新失败，请检查库存数据。'))
   }
 }
 
 async function fetchData() {
   loading.value = true
   try {
+    errorMessage.value = ''
     const res: any = await getStockLedger({
       page: pagination.page,
       pageSize: pagination.pageSize,
@@ -603,9 +621,11 @@ async function fetchData() {
     const rows = res.data?.records || res.data?.list || []
     tableData.value = rows
     pagination.total = res.data?.total || rows.length
-  } catch {
+  } catch (error: any) {
     tableData.value = []
     pagination.total = 0
+    errorMessage.value = failureText(error, '生产领料记录加载失败，请检查 Supabase 连接、库存台账和生产领料配置。')
+    ElMessage.error(errorMessage.value)
   } finally {
     loading.value = false
   }
@@ -659,8 +679,8 @@ async function handleSubmit() {
     dialogVisible.value = false
     await refreshStockRows()
     fetchData()
-  } catch {
-    // 交给全局拦截器提示
+  } catch (error: any) {
+    ElMessage.error(failureText(error, '生产领料提交失败，请检查工单状态、批次库存和领料数量。'))
   } finally {
     submitting.value = false
   }
@@ -707,6 +727,10 @@ onMounted(async () => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.page-alert {
+  margin-bottom: 12px;
 }
 
 .picking-summary {

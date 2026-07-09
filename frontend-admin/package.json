@@ -1,12 +1,48 @@
 {
   "name": "inject-erp-admin",
   "version": "1.0.0",
+  "description": "注塑ERP管理端桌面版",
   "private": true,
+  "author": "ZSC",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "desktop:icon": "node scripts/generate-icon.mjs",
+    "desktop:build": "npm run desktop:icon && npm run build && electron-builder --win dir",
+    "desktop:dir": "npm run desktop:icon && npm run build && electron-builder --win dir",
+    "desktop:portable": "npm run desktop:icon && npm run build && electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.zsc.injecterp.admin",
+    "productName": "注塑ERP管理端",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "build/icon.ico",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "InjectERP-Admin-${version}-portable.${ext}"
+    },
+    "portable": {
+      "artifactName": "InjectERP-Admin-${version}-portable.${ext}"
+    }
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
@@ -24,6 +60,8 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/qrcode": "^1.5.6",
     "@vitejs/plugin-vue": "^5.0.4",
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3",
     "sass": "^1.72.0",
     "typescript": "^5.4.0",
     "unplugin-auto-import": "^0.17.5",

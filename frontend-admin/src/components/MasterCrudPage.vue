@@ -1,17 +1,17 @@
 <template>
   <div class="page-container master-page">
-    <PageHeader :title="title">
+    <PageHeader :title="title" :subtitle="subtitle">
       <template #default>
         <slot name="toolbar" />
       </template>
     </PageHeader>
 
-    <section v-if="showMetrics && metrics.length > 0" class="kpi-strip">
-      <article v-for="item in metrics" :key="item.label" class="kpi-card">
-        <div class="kpi-title">{{ item.label }}</div>
-        <div class="kpi-value">{{ item.value }}</div>
-      </article>
-    </section>
+    <MetricStrip
+      v-if="showMetrics && metrics.length > 0"
+      class="kpi-strip"
+      :items="metrics"
+      testid="master-metric-strip"
+    />
 
     <slot name="search" />
 
@@ -29,11 +29,13 @@
 </template>
 
 <script setup lang="ts">
+import MetricStrip from './MetricStrip.vue'
 import PageHeader from './PageHeader.vue'
 
 withDefaults(
   defineProps<{
     title: string
+    subtitle?: string
     metrics?: Array<{ label: string; value: string | number }>
     leftSpan?: number
     rightSpan?: number
@@ -58,32 +60,7 @@ withDefaults(
 }
 
 .kpi-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
-}
-
-.kpi-card {
-  min-height: 72px;
-  padding: 12px 14px;
-  border: 1px solid #dfe5ec;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-}
-
-.kpi-title {
-  color: #64748b;
-  font-size: 13px;
-  line-height: 18px;
-}
-
-.kpi-value {
-  margin-top: 6px;
-  color: #1f2933;
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 28px;
+  margin-bottom: 2px;
 }
 
 :deep(.pagination) {

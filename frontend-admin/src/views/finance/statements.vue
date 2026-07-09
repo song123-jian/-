@@ -55,15 +55,7 @@
       <span>应收余额按期初已收与回款流水统一口径计算；出库成本优先取销售出库流水成本，历史缺失项兜底估算并列示。</span>
     </div>
 
-    <el-row :gutter="16" class="summary-row" v-loading="loading">
-      <el-col v-for="item in summaryCards" :key="item.label" :xs="24" :sm="12" :md="8" :lg="6" :xl="6">
-        <div class="summary-card" :class="`summary-card--${item.tone}`">
-          <div class="summary-label">{{ item.label }}</div>
-          <div class="summary-value">{{ item.value }}</div>
-          <div class="summary-meta">{{ item.meta }}</div>
-        </div>
-      </el-col>
-    </el-row>
+    <MetricStrip v-loading="loading" :items="summaryCards" testid="finance-statements-metrics" />
 
     <div v-if="riskItems.length" class="risk-list">
       <el-alert
@@ -218,6 +210,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Calendar, Refresh, Search, Wallet } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
+import MetricStrip, { type MetricStripItem } from '@/components/MetricStrip.vue'
 import { getFinanceReceivables, getFinanceStatements } from '@/api/finance'
 import { formatMoney } from '@/utils'
 import {
@@ -318,34 +311,39 @@ const receivableRows = ref<FinanceReceivableRow[]>([])
 const receivableSummary = ref<FinanceReceivableSummary>({})
 const receivablePagination = reactive({ page: 1, pageSize: 20, total: 0 })
 
-const summaryCards = computed(() => [
+const summaryCards = computed<MetricStripItem[]>(() => [
   {
     label: '订单金额',
-    value: moneyText(summary.value.monthOrderAmount),
+    value: summary.value.monthOrderAmount,
+    valueType: 'money',
     meta: `${summary.value.orderCount || 0} 单`,
     tone: 'primary',
   },
   {
     label: '回款金额',
-    value: moneyText(summary.value.monthPaymentAmount),
+    value: summary.value.monthPaymentAmount,
+    valueType: 'money',
     meta: `回款率 ${percentText(summary.value.collectionRate)}`,
     tone: 'success',
   },
   {
     label: '应收余额',
-    value: moneyText(summary.value.receivableBalance),
+    value: summary.value.receivableBalance,
+    valueType: 'money',
     meta: summary.value.receivableBalance ? '需持续跟进' : '无未收余额',
     tone: 'warning',
   },
   {
     label: '费用支出',
-    value: moneyText(summary.value.monthExpenseTotal),
+    value: summary.value.monthExpenseTotal,
+    valueType: 'money',
     meta: '经营费用',
     tone: 'neutral',
   },
   {
     label: '工资总额',
-    value: moneyText(summary.value.monthSalaryTotal),
+    value: summary.value.monthSalaryTotal,
+    valueType: 'money',
     meta: summary.value.pendingSalaryCount
       ? `${summary.value.pendingSalaryCount} 条待结，${moneyText(summary.value.pendingSalaryTotal)}`
       : '已结工资汇总',
@@ -353,19 +351,22 @@ const summaryCards = computed(() => [
   },
   {
     label: '出库成本',
-    value: moneyText(summary.value.monthMaterialCost),
+    value: summary.value.monthMaterialCost,
+    valueType: 'money',
     meta: `${summary.value.costGapCount || 0} 笔缺口`,
     tone: summary.value.costGapCount ? 'warning' : 'neutral',
   },
   {
     label: '经营毛利',
-    value: moneyText(summary.value.monthGrossProfit),
+    value: summary.value.monthGrossProfit,
+    valueType: 'money',
     meta: `毛利率 ${percentText(summary.value.profitRate)}`,
     tone: Number(summary.value.monthGrossProfit || 0) < 0 ? 'danger' : 'success',
   },
   {
     label: '销售出库',
-    value: numberText(summary.value.shipmentQty),
+    value: summary.value.shipmentQty,
+    valueType: 'number',
     meta: `${summary.value.shipmentCount || 0} 笔出库`,
     tone: 'primary',
   },
@@ -583,60 +584,6 @@ onMounted(() => {
   line-height: 1.5;
 }
 
-.summary-row {
-  margin-bottom: 16px;
-}
-
-.summary-card {
-  min-height: 104px;
-  margin-bottom: 16px;
-  padding: 14px 14px 12px;
-  border: 1px solid #e4e7ed;
-  border-left: 4px solid #909399;
-  border-radius: 4px;
-  background: #fff;
-}
-
-.summary-card--primary {
-  border-left-color: #409eff;
-}
-
-.summary-card--success {
-  border-left-color: #67c23a;
-}
-
-.summary-card--warning {
-  border-left-color: #e6a23c;
-}
-
-.summary-card--danger {
-  border-left-color: #f56c6c;
-}
-
-.summary-card--neutral {
-  border-left-color: #909399;
-}
-
-.summary-label {
-  font-size: 13px;
-  color: #909399;
-  margin-bottom: 8px;
-}
-
-.summary-value {
-  font-size: 24px;
-  line-height: 1.2;
-  font-weight: 700;
-  color: #303133;
-  overflow-wrap: anywhere;
-}
-
-.summary-meta {
-  margin-top: 8px;
-  font-size: 12px;
-  color: #606266;
-}
-
 .risk-list {
   display: grid;
   grid-template-columns: 1fr;
@@ -700,10 +647,6 @@ onMounted(() => {
 @media (max-width: 768px) {
   .statement-filter :deep(.el-date-editor.el-input__wrapper) {
     width: 100% !important;
-  }
-
-  .summary-value {
-    font-size: 22px;
   }
 
   .receivable-summary {

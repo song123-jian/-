@@ -1,6 +1,6 @@
 import type { OfflineActionTask, OfflineReport, SyncStatus } from './offline'
 
-export type MobileOfflineTaskSource = 'report' | 'qc' | 'inventory' | 'transfer'
+export type MobileOfflineTaskSource = 'report' | 'qc' | 'inventory' | 'transfer' | 'andon'
 
 export type MobileOfflineTask = {
   id: string
@@ -19,6 +19,7 @@ const SOURCE_TEXT: Record<MobileOfflineTaskSource, string> = {
   qc: '质检',
   inventory: '盘点',
   transfer: '调拨',
+  andon: '异常',
 }
 
 function normalizeNumber(value: unknown) {

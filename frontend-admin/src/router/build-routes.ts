@@ -30,7 +30,7 @@ export function createAppRoutes(loaderMap: ViewLoader): RouteRecordRaw[] {
           path: dashboardRoute.path.replace(/^\//, ''),
           name: dashboardRoute.name,
           component: resolveView(loaderMap, dashboardRoute.view),
-          meta: { title: dashboardRoute.title, icon: dashboardRoute.icon },
+          meta: { title: dashboardRoute.title, icon: dashboardRoute.icon, roles: dashboardRoute.roles },
         },
       ],
     },
@@ -42,7 +42,7 @@ export function createAppRoutes(loaderMap: ViewLoader): RouteRecordRaw[] {
         path: item.path,
         name: item.name,
         component: resolveView(loaderMap, item.view),
-        meta: { title: item.title, icon: item.icon },
+        meta: { title: item.title, icon: item.icon, roles: item.roles },
       })),
     })),
     {

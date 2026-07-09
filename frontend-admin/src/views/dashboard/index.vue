@@ -72,21 +72,7 @@
     </section>
 
     <template v-else>
-    <section class="kpi-strip">
-      <article v-for="item in kpiCards" :key="item.title" class="kpi-card">
-        <div class="kpi-head">
-          <div class="kpi-title-row">
-            <el-icon class="kpi-icon" :style="{ color: item.color }">
-              <component :is="item.icon" />
-            </el-icon>
-            <span class="kpi-title">{{ item.title }}</span>
-          </div>
-          <el-tag :type="item.tagType" effect="plain" size="small">{{ item.tag }}</el-tag>
-        </div>
-        <div class="kpi-value">{{ item.value }}</div>
-        <div class="kpi-note">{{ item.note }}</div>
-      </article>
-    </section>
+    <MetricStrip :items="kpiCards" testid="home-kpi-strip" />
 
     <section class="action-strip">
       <button
@@ -273,17 +259,26 @@
           </template>
 
           <div v-if="todoList.length" class="todo-list">
-            <div v-for="item in todoList" :key="todoKey(item)" class="todo-item">
+            <div
+              v-for="item in todoList"
+              :key="todoKey(item)"
+              class="todo-item"
+              :class="{ 'todo-item--clickable': Boolean(item.route) }"
+              @click="goTodo(item)"
+            >
               <div class="todo-main">
                 <div class="todo-title-row">
-                  <span class="todo-type">{{ item.type || '待办' }}</span>
+                  <span class="todo-type">{{ todoSourceText(item) }}</span>
                   <el-tag :type="todoStatusType(item.status)" effect="plain" size="small">
                     {{ todoStatusText(item.status) }}
                   </el-tag>
                 </div>
-                <div class="todo-content">{{ item.content || '-' }}</div>
+                <div class="todo-content">{{ item.title || item.description || '-' }}</div>
+                <div v-if="item.description && item.description !== item.title" class="todo-description">
+                  {{ item.description }}
+                </div>
               </div>
-              <div class="todo-time">{{ formatDateTime(item.time) }}</div>
+              <div class="todo-time">{{ formatTodoTime(item) }}</div>
             </div>
           </div>
           <el-empty v-else description="暂无待办" />
@@ -317,6 +312,7 @@ import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { Bell, Checked, CircleCheck, DataLine, EditPen, List, Notebook, Odometer, Refresh, TrendCharts, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import MetricStrip from '@/components/MetricStrip.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { getDashboardData, getProductionBoard } from '@/api/dashboard'
 import { getDowntimeRecordList } from '@/api/downtime'
@@ -324,6 +320,11 @@ import { isSupabaseConfigured } from '@/api/supabaseClient'
 import { getOeeStats } from '@/api/report'
 import { getWarningList, getWarningSummary } from '@/api/warning'
 import { formatDate, formatDateTime } from '@/utils'
+import {
+  getWorkbenchTodoSourceText,
+  getWorkbenchTodoStatusText,
+  type WorkbenchTodoItem,
+} from '@/utils/workbench-todo'
 
 type HomeDashboard = {
   todayProductionQty?: number
@@ -339,11 +340,10 @@ type HomeDashboard = {
     label?: string
     count?: number
   }>
-  todoList?: Array<{
-    type?: string
+  todoList?: Array<Partial<WorkbenchTodoItem> & {
     content?: string
     time?: string
-    status?: string
+    path?: string
   }>
 }
 
@@ -485,7 +485,7 @@ function calcDowntimeMinutes(records: DowntimeRecord[]) {
 }
 
 function todoKey(item: TodoItem) {
-  return `${item.type || 'todo'}-${item.time || ''}-${item.content || ''}`
+  return `${item.id || item.type || 'todo'}-${item.dueAt || item.time || item.createdAt || ''}-${item.title || item.content || ''}`
 }
 
 function warningLevelText(level?: string) {
@@ -509,15 +509,33 @@ function warningCategoryType(category?: string) {
 }
 
 function todoStatusText(status?: string) {
+  if (status === 'URGENT' || status === 'PROCESSING' || status === 'PENDING') return getWorkbenchTodoStatusText(status)
   if (status === '紧急') return '紧急'
   if (status === '一般') return '一般'
   return status || '待办'
 }
 
 function todoStatusType(status?: string) {
+  if (status === 'URGENT') return 'danger'
+  if (status === 'PROCESSING') return 'warning'
+  if (status === 'PENDING') return 'info'
   if (status === '紧急') return 'danger'
   if (status === '一般') return 'warning'
   return 'info'
+}
+
+function todoSourceText(item: TodoItem) {
+  return getWorkbenchTodoSourceText(item.source || item.type || 'dashboard')
+}
+
+function formatTodoTime(item: TodoItem) {
+  const value = item.dueAt || item.createdAt || item.time
+  return value ? formatDateTime(value) : '-'
+}
+
+function goTodo(item: TodoItem) {
+  const target = item.route || item.path
+  if (target) goTo(target)
 }
 
 function orderStatusText(status?: string) {
@@ -738,67 +756,58 @@ const kpiCards = computed(() => {
   const oeeValue = Number(oeeData.value.oee || 0)
   return [
     {
-      title: '今日产出',
+      label: '今日产出',
       value: numberText(homeData.value.todayProductionQty),
-      note: '当日报工累计',
+      meta: '当日报工累计',
       icon: TrendCharts,
-      color: '#409eff',
-      tag: '生产',
-      tagType: 'primary',
+      tone: 'primary' as const,
     },
     {
-      title: '工单完成率',
-      value: percentText(completionRate),
-      note: `${productionData.value.orderProgresses?.length || 0} 条在制工单`,
+      label: '工单完成率',
+      value: completionRate,
+      valueType: 'percent' as const,
+      precision: 1,
+      meta: `${productionData.value.orderProgresses?.length || 0} 条在制工单`,
       icon: Odometer,
-      color: '#67c23a',
-      tag: '进度',
-      tagType: 'success',
+      tone: 'success' as const,
     },
     {
-      title: 'OEE',
-      value: percentText(oeeValue),
-      note: '设备综合效率',
+      label: 'OEE',
+      value: oeeValue,
+      valueType: 'percent' as const,
+      precision: 1,
+      meta: '设备综合效率',
       icon: DataLine,
-      color: '#8b5cf6',
-      tag: '效率',
-      tagType: 'warning',
+      tone: 'warning' as const,
     },
     {
-      title: '停机分钟',
-      value: `${numberText(downtimeMinutes.value)} 分钟`,
-      note: '今日停机累计',
+      label: '停机分钟',
+      value: downtimeMinutes.value,
+      unit: ' 分钟',
+      meta: '今日停机累计',
       icon: WarningFilled,
-      color: '#e6a23c',
-      tag: '停机',
-      tagType: 'warning',
+      tone: 'warning' as const,
     },
     {
-      title: '预警数',
+      label: '预警数',
       value: numberText(warningSummary.value.total),
-      note: `严重 ${warningSummary.value.error || 0} / 预警 ${warningSummary.value.warning || 0}`,
+      meta: `严重 ${warningSummary.value.error || 0} / 预警 ${warningSummary.value.warning || 0}`,
       icon: Bell,
-      color: '#f56c6c',
-      tag: '预警',
-      tagType: 'danger',
+      tone: 'danger' as const,
     },
     {
-      title: '待处理工单',
+      label: '待处理工单',
       value: numberText(homeData.value.pendingOrderQty),
-      note: '计划、生产、暂停中的工单',
+      meta: '计划、生产、暂停中的工单',
       icon: List,
-      color: '#3b82f6',
-      tag: '工单',
-      tagType: 'info',
+      tone: 'primary' as const,
     },
     {
-      title: '未读消息',
+      label: '未读消息',
       value: numberText(homeData.value.unreadNotificationQty),
-      note: '通知中心未读项',
+      meta: '通知中心未读项',
       icon: CircleCheck,
-      color: '#10b981',
-      tag: '消息',
-      tagType: 'success',
+      tone: 'success' as const,
     },
   ]
 })
@@ -837,60 +846,6 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .workbench-page {
   gap: 16px;
-}
-
-.kpi-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 12px;
-}
-
-.kpi-card {
-  background: #fff;
-  border: 1px solid #e6e8eb;
-  border-radius: 10px;
-  padding: 14px 16px;
-  min-height: 122px;
-  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.04);
-}
-
-.kpi-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.kpi-title-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.kpi-icon {
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.kpi-title {
-  font-size: 14px;
-  color: #6b7280;
-  font-weight: 500;
-}
-
-.kpi-value {
-  margin-top: 16px;
-  font-size: 26px;
-  font-weight: 700;
-  color: #111827;
-  line-height: 1.1;
-}
-
-.kpi-note {
-  margin-top: 10px;
-  font-size: 12px;
-  color: #8b95a1;
 }
 
 .action-strip {
@@ -1153,6 +1108,15 @@ onUnmounted(() => {
   background: #fafbfc;
 }
 
+.todo-item--clickable {
+  cursor: pointer;
+}
+
+.todo-item--clickable:hover {
+  border-color: #c7d2fe;
+  background: #f8fbff;
+}
+
 .todo-main {
   min-width: 0;
   flex: 1;
@@ -1177,6 +1141,13 @@ onUnmounted(() => {
   color: #4b5563;
 }
 
+.todo-description {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8b95a1;
+}
+
 .todo-time {
   flex-shrink: 0;
   font-size: 12px;
@@ -1191,7 +1162,6 @@ onUnmounted(() => {
 }
 
 @media (max-width: 1200px) {
-  .kpi-strip,
   .action-strip {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }

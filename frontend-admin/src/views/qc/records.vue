@@ -6,6 +6,15 @@
       </el-button>
     </PageHeader>
 
+    <el-alert
+      v-if="errorMessage"
+      class="page-alert"
+      type="error"
+      :title="errorMessage"
+      show-icon
+      :closable="false"
+    />
+
     <SearchBar @search="handleSearch" @reset="handleReset">
       <el-form-item label="检验结果">
         <el-select v-model="searchResult" placeholder="全部" clearable style="width: 160px">
@@ -169,7 +178,7 @@
 
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit">确定</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
   </div>
@@ -177,6 +186,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -188,7 +198,10 @@ import { getProdOrderList } from '@/api/prodOrder'
 
 type OptionItem = { id: number; orderNo?: string; name?: string }
 
+const route = useRoute()
 const loading = ref(false)
+const submitting = ref(false)
+const errorMessage = ref('')
 const tableData = ref<any[]>([])
 const searchKeyword = ref('')
 const searchResult = ref('')
@@ -248,18 +261,29 @@ function resultTagType(value?: string) {
   return 'warning'
 }
 
-async function loadOptions() {
-  const [productRes, orderRes] = await Promise.all([
-    getProductList({ page: 1, pageSize: 200 }),
-    getProdOrderList({ page: 1, pageSize: 200 }),
-  ])
+function failureText(error: any, fallback: string) {
+  return error?.message || error?.response?.data?.message || fallback
+}
 
-  productOptions.value = productRes.data?.records || []
-  prodOrderOptions.value = orderRes.data?.records || []
+async function loadOptions() {
+  try {
+    const [productRes, orderRes] = await Promise.all([
+      getProductList({ page: 1, pageSize: 200 }),
+      getProdOrderList({ page: 1, pageSize: 200 }),
+    ])
+
+    productOptions.value = productRes.data?.records || []
+    prodOrderOptions.value = orderRes.data?.records || []
+  } catch (error: any) {
+    productOptions.value = []
+    prodOrderOptions.value = []
+    ElMessage.error(failureText(error, '质检基础选项加载失败，请检查产品和生产工单资料。'))
+  }
 }
 
 async function fetchData() {
   loading.value = true
+  errorMessage.value = ''
   try {
     const params: Record<string, any> = {
       page: pagination.page,
@@ -276,9 +300,11 @@ async function fetchData() {
     const res: any = await getQcRecordList(params)
     tableData.value = res.data?.records || []
     pagination.total = res.data?.total || 0
-  } catch {
+  } catch (error: any) {
     tableData.value = []
     pagination.total = 0
+    errorMessage.value = failureText(error, '质检记录加载失败，请检查 Supabase 连接、qc_record 表和筛选条件。')
+    ElMessage.error(errorMessage.value)
   } finally {
     loading.value = false
   }
@@ -315,9 +341,10 @@ function resetForm() {
   })
 }
 
-function handleAdd() {
+function handleAdd(defaults: Partial<typeof form> = {}) {
   dialogTitle.value = '新增质检'
   resetForm()
+  Object.assign(form, defaults)
   dialogVisible.value = true
 }
 
@@ -339,10 +366,42 @@ function handleEdit(row: any) {
   dialogVisible.value = true
 }
 
+function validateTraceableForm() {
+  if (Number(form.sampleQty || 0) <= 0) {
+    ElMessage.warning('抽样数量必须大于 0')
+    return false
+  }
+  if (Number(form.defectQty || 0) < 0) {
+    ElMessage.warning('不良数量不能小于 0')
+    return false
+  }
+  if (Number(form.defectQty || 0) > Number(form.sampleQty || 0)) {
+    ElMessage.warning('不良数量不能超过抽样数量')
+    return false
+  }
+  if (form.checkResult === 'FAIL') {
+    if (!form.defectType.trim()) {
+      ElMessage.warning('不合格质检必须填写缺陷类型')
+      return false
+    }
+    if (!form.defectDesc.trim()) {
+      ElMessage.warning('不合格质检必须填写缺陷描述')
+      return false
+    }
+    if (Number(form.defectQty || 0) <= 0) {
+      ElMessage.warning('不合格质检必须填写大于 0 的不良数量')
+      return false
+    }
+  }
+  return true
+}
+
 async function handleSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
+  if (!validateTraceableForm()) return
 
+  submitting.value = true
   try {
     const payload = {
       prodOrderId: form.prodOrderId,
@@ -365,30 +424,41 @@ async function handleSubmit() {
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
-    fetchData()
-  } catch {
-    // 交给全局提示
+    await fetchData()
+  } catch (error: any) {
+    ElMessage.error(failureText(error, form.id ? '质检记录更新失败，请检查工单、产品、抽样数量和缺陷信息。' : '质检记录创建失败，请检查工单、产品、抽样数量和缺陷信息。'))
+  } finally {
+    submitting.value = false
   }
 }
 
 async function handleDelete(row: any) {
-  await ElMessageBox.confirm('确定删除该质检记录？', '提示', { type: 'warning' })
   try {
+    await ElMessageBox.confirm('确定删除该质检记录？', '提示', { type: 'warning' })
     await deleteQcRecord(row.id)
     ElMessage.success('删除成功')
-    fetchData()
-  } catch {
-    // 交给全局提示
+    await fetchData()
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(failureText(error, '质检记录删除失败，请检查记录状态或数据库权限。'))
   }
 }
 
 onMounted(async () => {
   await loadOptions()
-  fetchData()
+  await fetchData()
+  const queryCheckType = typeof route.query.checkType === 'string' ? route.query.checkType : ''
+  if (route.query.action === 'create' && queryCheckType) {
+    handleAdd({ checkType: queryCheckType })
+  }
 })
 </script>
 
 <style scoped lang="scss">
+.page-alert {
+  margin-bottom: 12px;
+}
+
 .pagination {
   margin-top: 16px;
   display: flex;

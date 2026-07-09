@@ -50,20 +50,7 @@
       <span>口径：质检记录按 check_time 归集，抽样数、不良数、产品、不良类型和检验结果统一计算。</span>
     </div>
 
-    <div v-loading="loading" class="kpi-grid">
-      <div v-for="item in statCards" :key="item.label" class="kpi-card" :class="`kpi-card--${item.tone}`">
-        <div class="kpi-card__main">
-          <div>
-            <div class="kpi-card__label">{{ item.label }}</div>
-            <div class="kpi-card__value">{{ cardValueText(item) }}</div>
-          </div>
-          <el-icon :size="30">
-            <component :is="cardIcon(item.icon)" />
-          </el-icon>
-        </div>
-        <div class="kpi-card__meta">{{ item.meta }}</div>
-      </div>
-    </div>
+    <MetricStrip v-loading="loading" class="kpi-grid" :items="statCards" testid="quality-board-metrics" />
 
     <div v-if="riskItems.length" class="risk-list">
       <el-alert
@@ -149,17 +136,11 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import * as echarts from 'echarts'
 import {
-  Bell,
   Calendar,
-  CircleCheck,
-  DataAnalysis,
-  DocumentChecked,
-  Goods,
-  Odometer,
   Refresh,
   Search,
-  WarningFilled,
 } from '@element-plus/icons-vue'
+import MetricStrip from '@/components/MetricStrip.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { getQualityBoard } from '@/api/dashboard'
 import {
@@ -172,20 +153,9 @@ import {
   buildQualityBoardRiskItems,
   clampQualityPercent,
   normalizeQualityBoardSummary,
-  type QualityBoardCard,
   type QualityBoardRiskItem,
   type QualityBoardSummary,
 } from '@/utils/quality-board'
-
-const iconMap = {
-  Bell,
-  CircleCheck,
-  DataAnalysis,
-  DocumentChecked,
-  Goods,
-  Odometer,
-  WarningFilled,
-}
 
 const loading = ref(false)
 const months = ref(3)
@@ -211,21 +181,12 @@ const scopeText = computed(() => {
   return `近 ${months.value} 个月`
 })
 
-function cardIcon(name: string) {
-  return iconMap[name as keyof typeof iconMap] || DataAnalysis
-}
-
 function numberText(value: any) {
   return Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
 }
 
 function percentText(value: any) {
   return `${Number(value || 0).toFixed(1)}%`
-}
-
-function cardValueText(item: QualityBoardCard) {
-  if (item.valueType === 'percent') return percentText(item.value)
-  return numberText(item.value)
 }
 
 function riskAlertType(level: QualityBoardRiskItem['level']) {
@@ -417,65 +378,7 @@ onUnmounted(() => {
 }
 
 .kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 12px;
   margin-bottom: 16px;
-}
-
-.kpi-card {
-  min-width: 0;
-  min-height: 112px;
-  padding: 14px;
-  border: 1px solid #e4e7ed;
-  border-left: 4px solid #909399;
-  border-radius: 4px;
-  background: #fff;
-}
-
-.kpi-card--primary {
-  border-left-color: #409eff;
-}
-
-.kpi-card--success {
-  border-left-color: #67c23a;
-}
-
-.kpi-card--warning {
-  border-left-color: #e6a23c;
-}
-
-.kpi-card--danger {
-  border-left-color: #f56c6c;
-}
-
-.kpi-card__main {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.kpi-card__label {
-  color: #909399;
-  font-size: 13px;
-  line-height: 1.2;
-}
-
-.kpi-card__value {
-  margin-top: 8px;
-  color: #303133;
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
-.kpi-card__meta {
-  margin-top: 10px;
-  color: #606266;
-  font-size: 12px;
-  line-height: 1.4;
 }
 
 .risk-list {
@@ -516,12 +419,5 @@ onUnmounted(() => {
     padding: 12px 12px 0;
   }
 
-  .kpi-grid {
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  }
-
-  .kpi-card__value {
-    font-size: 20px;
-  }
 }
 </style>
