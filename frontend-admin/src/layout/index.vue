@@ -60,6 +60,42 @@
               {{ cloudStatusText }}
             </span>
             <span class="status-pill">管理端</span>
+            <el-dropdown
+              v-if="desktopWindowManagerAvailable"
+              trigger="click"
+              @command="handleWindowManagerCommand"
+            >
+              <el-button class="window-button" size="small" type="primary" link>
+                <el-icon><Monitor /></el-icon>
+                <span>{{ windowManagerText }}</span>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="create" :disabled="!windowManagerState.canCreate">
+                    新建窗口
+                  </el-dropdown-item>
+                  <el-dropdown-item command="showAll">显示全部窗口</el-dropdown-item>
+                  <el-dropdown-item command="hideCurrent">隐藏当前窗口</el-dropdown-item>
+                  <el-dropdown-item command="resetLayout">重置窗口布局</el-dropdown-item>
+                  <el-dropdown-item divided disabled>窗口列表</el-dropdown-item>
+                  <el-dropdown-item
+                    v-for="item in windowManagerState.windows"
+                    :key="item.id"
+                    :command="`focus:${item.id}`"
+                  >
+                    {{ formatWindowLabel(item) }}
+                  </el-dropdown-item>
+                  <el-dropdown-item divided disabled>关闭按钮：{{ closeBehaviorText }}</el-dropdown-item>
+                  <el-dropdown-item
+                    v-for="item in closeBehaviorOptions"
+                    :key="item.value"
+                    :command="`closeBehavior:${item.value}`"
+                  >
+                    {{ formatCloseBehaviorOption(item.value, item.label) }}
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <el-tooltip v-if="desktopUpdaterAvailable" :content="updateStatusText" placement="bottom">
               <span class="status-pill version-pill" :class="{ 'is-update': updateAvailable }">
                 {{ desktopVersionText }}
@@ -108,6 +144,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { Component } from 'vue'
+import type { DesktopCloseBehavior, DesktopManagedWindow, DesktopWindowManagerState } from '@/types/desktop-updater'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Bell,
@@ -176,6 +213,14 @@ const latestVersion = ref('')
 const updateDownloadUrl = ref('')
 const updateMessage = ref('')
 const updateAvailable = ref(false)
+const windowManagerState = ref<DesktopWindowManagerState>({
+  maxWindows: 2,
+  count: 0,
+  canCreate: false,
+  closeBehavior: 'ask',
+  windows: [],
+})
+let removeWindowManagerListener: (() => void) | null = null
 
 const roleNameMap: Record<string, string> = {
   admin: '管理员',
@@ -185,6 +230,16 @@ const roleNameMap: Record<string, string> = {
   readonly: '只读角色',
   viewer: '只读角色',
 }
+const closeBehaviorNameMap: Record<DesktopCloseBehavior, string> = {
+  ask: '每次询问',
+  hide: '隐藏到后台',
+  quit: '退出程序',
+}
+const closeBehaviorOptions: Array<{ value: DesktopCloseBehavior; label: string }> = [
+  { value: 'ask', label: '每次询问' },
+  { value: 'hide', label: '隐藏到后台' },
+  { value: 'quit', label: '退出程序' },
+]
 
 const activeMenu = computed(() => route.path)
 const currentRoute = computed(() => route)
@@ -212,7 +267,12 @@ const currentRoleLabel = computed(() => {
 })
 const cloudStatusText = computed(() => (isSupabaseConfigured ? '云库已配置' : '云库未配置'))
 const desktopUpdaterAvailable = computed(() => Boolean(window.desktopUpdater))
+const desktopWindowManagerAvailable = computed(() => Boolean(window.desktopWindowManager))
 const desktopVersionText = computed(() => desktopVersion.value ? `v${desktopVersion.value}` : '版本')
+const windowManagerText = computed(() =>
+  `窗口 ${windowManagerState.value.count}/${windowManagerState.value.maxWindows}`
+)
+const closeBehaviorText = computed(() => closeBehaviorNameMap[windowManagerState.value.closeBehavior])
 const updateStatusText = computed(() => {
   if (updateAvailable.value && latestVersion.value) return `发现新版本 v${latestVersion.value}`
   return updateMessage.value || '点击检查在线更新'
@@ -309,6 +369,77 @@ async function loadDesktopVersionInfo() {
   }
 }
 
+function updateWindowManagerState(state?: DesktopWindowManagerState) {
+  if (!state) return
+  windowManagerState.value = state
+}
+
+async function loadWindowManagerState() {
+  if (!window.desktopWindowManager) return
+  try {
+    updateWindowManagerState(await window.desktopWindowManager.getState())
+  } catch {
+    // Window management is desktop-only; web preview can ignore this bridge.
+  }
+}
+
+function formatWindowLabel(item: DesktopManagedWindow) {
+  const slotLabel = item.slot >= 0 ? item.slot + 1 : item.id
+  const status = item.focused ? '当前' : item.visible ? '打开' : '隐藏'
+  return `窗口 ${slotLabel} · ${status}`
+}
+
+function formatCloseBehaviorOption(value: DesktopCloseBehavior, label: string) {
+  return windowManagerState.value.closeBehavior === value ? `${label}（当前）` : label
+}
+
+async function applyWindowManagerResult(
+  action: () => Promise<{ ok: boolean; message?: string; state?: DesktopWindowManagerState }>,
+  successMessage = false,
+) {
+  try {
+    const result = await action()
+    updateWindowManagerState(result.state)
+    if (!result.ok) {
+      ElMessage.warning(result.message || '窗口操作失败')
+      return
+    }
+    if (successMessage && result.message) ElMessage.success(result.message)
+  } catch {
+    ElMessage.warning('窗口管理服务不可用')
+  }
+}
+
+async function handleWindowManagerCommand(command: string | number | object) {
+  if (!window.desktopWindowManager) return
+  const text = String(command)
+  if (text === 'create') {
+    await applyWindowManagerResult(() => window.desktopWindowManager!.createWindow(), true)
+    return
+  }
+  if (text === 'showAll') {
+    await applyWindowManagerResult(() => window.desktopWindowManager!.showAllWindows(), true)
+    return
+  }
+  if (text === 'hideCurrent') {
+    await applyWindowManagerResult(() => window.desktopWindowManager!.hideCurrentWindow())
+    return
+  }
+  if (text === 'resetLayout') {
+    await applyWindowManagerResult(() => window.desktopWindowManager!.resetLayout(), true)
+    return
+  }
+  if (text.startsWith('focus:')) {
+    const windowId = Number(text.slice('focus:'.length))
+    await applyWindowManagerResult(() => window.desktopWindowManager!.focusWindow(windowId))
+    return
+  }
+  if (text.startsWith('closeBehavior:')) {
+    const behavior = text.slice('closeBehavior:'.length) as DesktopCloseBehavior
+    await applyWindowManagerResult(() => window.desktopWindowManager!.setCloseBehavior(behavior), true)
+  }
+}
+
 async function openUpdateDownload() {
   if (!window.desktopUpdater || !updateDownloadUrl.value) return
   const result = await window.desktopUpdater.openDownload(updateDownloadUrl.value)
@@ -364,10 +495,16 @@ async function checkDesktopUpdate() {
 onMounted(() => {
   loadUnreadCount()
   loadDesktopVersionInfo()
+  loadWindowManagerState()
+  if (window.desktopWindowManager) {
+    removeWindowManagerListener = window.desktopWindowManager.onStateChanged(updateWindowManagerState)
+  }
   window.addEventListener('notification-updated', handleNotificationUpdated as EventListener)
 })
 
 onUnmounted(() => {
+  removeWindowManagerListener?.()
+  removeWindowManagerListener = null
   window.removeEventListener('notification-updated', handleNotificationUpdated as EventListener)
 })
 </script>
@@ -634,6 +771,17 @@ onUnmounted(() => {
   padding: 0 4px;
   font-size: 12px;
   font-weight: 700;
+}
+
+.window-button {
+  height: 26px;
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+
+  .el-icon {
+    margin-right: 4px;
+  }
 }
 
 .status-role {

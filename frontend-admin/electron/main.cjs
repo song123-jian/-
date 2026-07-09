@@ -12,6 +12,7 @@ const MIN_WINDOW_BOUNDS = { width: 1180, height: 720 }
 const CLOSE_BEHAVIORS = new Set(['ask', 'hide', 'quit'])
 const UPDATE_URL_FILE = 'update-url.txt'
 const UPDATE_TIMEOUT_MS = 10000
+const WINDOW_MANAGER_CHANGED_CHANNEL = 'desktop:window-manager:state-changed'
 
 let desktopState = { closeBehavior: 'ask', windows: [] }
 let tray = null
@@ -289,6 +290,54 @@ function managedWindows() {
   return BrowserWindow.getAllWindows().filter((win) => !win.isDestroyed())
 }
 
+function describeManagedWindow(win) {
+  const slot = windowSlots.get(win.id)
+  return {
+    id: win.id,
+    slot: slot === undefined ? -1 : slot,
+    title: win.getTitle(),
+    visible: win.isVisible(),
+    minimized: win.isMinimized(),
+    focused: win.isFocused(),
+    bounds: win.getNormalBounds(),
+  }
+}
+
+function windowManagerState() {
+  const windows = managedWindows()
+    .map(describeManagedWindow)
+    .sort((left, right) => left.slot - right.slot || left.id - right.id)
+  return {
+    maxWindows: MAX_WINDOWS,
+    count: windows.length,
+    canCreate: windows.length < MAX_WINDOWS,
+    closeBehavior: desktopState.closeBehavior,
+    windows,
+  }
+}
+
+function notifyWindowManagerChanged() {
+  const state = windowManagerState()
+  for (const win of managedWindows()) {
+    if (!win.webContents.isDestroyed()) {
+      win.webContents.send(WINDOW_MANAGER_CHANGED_CHANNEL, state)
+    }
+  }
+  return state
+}
+
+function resolveManagedWindow(windowId) {
+  const id = Number(windowId)
+  if (!Number.isFinite(id)) return null
+  return managedWindows().find((win) => win.id === id) || null
+}
+
+function windowManagerResult(ok, message = '', extra = {}) {
+  updateTrayMenu()
+  const state = notifyWindowManagerChanged()
+  return { ok, message, state, ...extra }
+}
+
 function restoreWindow(win) {
   if (!win || win.isDestroyed()) return
   if (win.isMinimized()) win.restore()
@@ -321,14 +370,111 @@ function showExistingOrCreateWindow() {
   return createMainWindow()
 }
 
+function createManagedWindow() {
+  if (managedWindows().length >= MAX_WINDOWS) {
+    restoreWindow(managedWindows()[0])
+    return windowManagerResult(false, `最多只能打开 ${MAX_WINDOWS} 个窗口。`)
+  }
+  const win = createMainWindow()
+  return windowManagerResult(true, '已新建窗口。', { windowId: win.id })
+}
+
+function focusManagedWindow(windowId) {
+  const win = resolveManagedWindow(windowId)
+  if (!win) return windowManagerResult(false, '窗口不存在或已关闭。')
+  restoreWindow(win)
+  return windowManagerResult(true, '已切换到指定窗口。', { windowId: win.id })
+}
+
+function hideManagedWindow(event, windowId) {
+  const win = windowId === undefined
+    ? BrowserWindow.fromWebContents(event.sender)
+    : resolveManagedWindow(windowId)
+  if (!win || win.isDestroyed()) return windowManagerResult(false, '窗口不存在或已关闭。')
+  saveWindowBounds(win)
+  win.hide()
+  return windowManagerResult(true, '已隐藏窗口。', { windowId: win.id })
+}
+
+function showAllManagedWindows() {
+  const windows = managedWindows()
+  if (windows.length === 0) {
+    createMainWindow()
+  } else {
+    windows.forEach(restoreWindow)
+  }
+  return windowManagerResult(true, '已显示全部窗口。')
+}
+
+function resetManagedWindowLayout() {
+  const windows = managedWindows().sort((left, right) => {
+    const leftSlot = windowSlots.get(left.id) ?? 0
+    const rightSlot = windowSlots.get(right.id) ?? 0
+    return leftSlot - rightSlot || left.id - right.id
+  })
+  windows.forEach((win, index) => {
+    const slot = windowSlots.get(win.id) ?? index
+    win.setBounds(defaultBoundsForSlot(slot), true)
+    restoreWindow(win)
+    saveWindowBounds(win)
+  })
+  saveDesktopState()
+  return windowManagerResult(true, '已重置窗口布局。')
+}
+
+function setManagedCloseBehavior(value) {
+  desktopState.closeBehavior = normalizeCloseBehavior(value)
+  saveDesktopState()
+  return windowManagerResult(true, '已更新关闭按钮行为。')
+}
+
 function updateTrayMenu() {
   if (!tray) return
+  const state = windowManagerState()
+  const windowItems = state.windows.length > 0
+    ? state.windows.map((item) => ({
+        label: `${item.focused ? '当前 - ' : ''}窗口 ${item.slot + 1}${item.visible ? '' : '（隐藏）'}`,
+        click: () => focusManagedWindow(item.id),
+      }))
+    : [{ label: '暂无窗口', enabled: false }]
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '显示主窗口', click: () => showExistingOrCreateWindow() },
     {
       label: '新建窗口',
-      enabled: managedWindows().length < MAX_WINDOWS,
+      enabled: state.canCreate,
       click: () => restoreOrCreateWindow(),
+    },
+    {
+      label: '窗口管理',
+      submenu: [
+        ...windowItems,
+        { type: 'separator' },
+        { label: '显示全部窗口', click: () => showAllManagedWindows() },
+        { label: '重置窗口布局', click: () => resetManagedWindowLayout() },
+        {
+          label: '关闭按钮行为',
+          submenu: [
+            {
+              label: '每次询问',
+              type: 'radio',
+              checked: desktopState.closeBehavior === 'ask',
+              click: () => setManagedCloseBehavior('ask'),
+            },
+            {
+              label: '隐藏到后台',
+              type: 'radio',
+              checked: desktopState.closeBehavior === 'hide',
+              click: () => setManagedCloseBehavior('hide'),
+            },
+            {
+              label: '退出程序',
+              type: 'radio',
+              checked: desktopState.closeBehavior === 'quit',
+              click: () => setManagedCloseBehavior('quit'),
+            },
+          ],
+        },
+      ],
     },
     { type: 'separator' },
     {
@@ -354,6 +500,22 @@ function registerUpdaterIpc() {
   ipcMain.handle('desktop:get-version-info', () => desktopVersionInfo())
   ipcMain.handle('desktop:check-for-updates', () => checkForUpdates())
   ipcMain.handle('desktop:open-update-download', (_event, downloadUrl) => openUpdateDownload(downloadUrl))
+}
+
+function registerWindowManagerIpc() {
+  ipcMain.handle('desktop:window-manager:get-state', () => windowManagerState())
+  ipcMain.handle('desktop:window-manager:create', () => createManagedWindow())
+  ipcMain.handle('desktop:window-manager:focus', (_event, windowId) => focusManagedWindow(windowId))
+  ipcMain.handle('desktop:window-manager:hide-current', (event) => hideManagedWindow(event))
+  ipcMain.handle('desktop:window-manager:show-all', () => showAllManagedWindows())
+  ipcMain.handle('desktop:window-manager:reset-layout', () => resetManagedWindowLayout())
+  ipcMain.handle('desktop:window-manager:set-close-behavior', (_event, behavior) => setManagedCloseBehavior(behavior))
+  ipcMain.handle('desktop:window-manager:quit', () => {
+    isQuitting = true
+    saveAllWindowBounds()
+    app.quit()
+    return { ok: true, message: '正在退出程序。' }
+  })
 }
 
 function isInternalNavigation(url) {
@@ -455,14 +617,23 @@ function createMainWindow() {
     }
   })
 
+  const refreshWindowManager = () => {
+    updateTrayMenu()
+    notifyWindowManagerChanged()
+  }
+
   win.on('move', () => scheduleStateSave(win))
   win.on('resize', () => scheduleStateSave(win))
-  win.on('hide', updateTrayMenu)
-  win.on('show', updateTrayMenu)
+  win.on('hide', refreshWindowManager)
+  win.on('show', refreshWindowManager)
+  win.on('focus', refreshWindowManager)
+  win.on('blur', refreshWindowManager)
+  win.on('minimize', refreshWindowManager)
+  win.on('restore', refreshWindowManager)
   win.on('close', (event) => handleWindowClose(event, win))
   win.on('closed', () => {
     windowSlots.delete(win.id)
-    updateTrayMenu()
+    refreshWindowManager()
   })
 
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -484,6 +655,7 @@ if (gotSingleInstanceLock) {
     Menu.setApplicationMenu(null)
     loadDesktopState()
     registerUpdaterIpc()
+    registerWindowManagerIpc()
     createTray()
     createMainWindow()
     setTimeout(() => {
