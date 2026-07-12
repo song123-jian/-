@@ -1,13 +1,18 @@
 -- ============================================================
 -- 注塑厂综合管理系统（ERP + MES）数据库初始化脚本
--- 数据库：inject_erp
--- 字符集：utf8mb4
--- 创建日期：2026-06-17
--- 说明：包含31张业务表结构及初始数据
+-- 数据库：PostgreSQL 15+ / Supabase PostgreSQL
+-- 编码：UTF-8（无 BOM）
+-- 重建日期：2026-07-12
+-- 说明：面向全新数据库的基础 ERP、注塑专业与工作流架构
+-- 提示：全新 Supabase 项目只执行 database/supabase-cloud.sql，本文件用于基础架构审查。
 -- ============================================================
 
--- 创建数据库
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+BEGIN;
+
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions;
+SET LOCAL search_path = pg_catalog, extensions, public;
 
 -- ============================================================
 -- 1. 系统用户表
@@ -17,6 +22,7 @@ CREATE TABLE sys_user (
     username VARCHAR(50) NOT NULL UNIQUE,
     real_name VARCHAR(50) NOT NULL,
     phone VARCHAR(20),
+    auth_user_id UUID UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(64) NOT NULL,
     status SMALLINT DEFAULT 1,
@@ -828,9 +834,16 @@ CREATE TABLE IF NOT EXISTS trial_mold_record (
     trial_no VARCHAR(50) NOT NULL UNIQUE,
     prod_order_id BIGINT NOT NULL,
     process_card_id BIGINT NOT NULL,
+    project_id BIGINT,
     mold_id BIGINT,
     machine_id BIGINT,
+    trial_stage VARCHAR(32),
+    shot_count INT DEFAULT 0,
+    cycle_seconds DECIMAL(12,2),
     first_article_result VARCHAR(100),
+    defect_summary TEXT,
+    correction_action TEXT,
+    production_ready BOOLEAN DEFAULT FALSE,
     image_urls JSONB DEFAULT '[]'::jsonb,
     remark TEXT,
     status VARCHAR(64) DEFAULT 'WAIT_TRIAL',
@@ -1158,3 +1171,5 @@ CREATE INDEX IF NOT EXISTS idx_workflow_task_status_priority ON workflow_task (s
 CREATE INDEX IF NOT EXISTS idx_workflow_task_assignee ON workflow_task (assignee_id, status);
 CREATE INDEX IF NOT EXISTS idx_workflow_task_business ON workflow_task (business_type, business_id);
 CREATE INDEX IF NOT EXISTS idx_workflow_log_business ON workflow_log (business_type, business_id, created_at DESC);
+
+COMMIT;

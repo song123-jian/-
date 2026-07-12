@@ -72,19 +72,23 @@ function assertIncludesAll(source, values, context) {
 }
 
 describe('base master delivery target', () => {
-  it('registers all seven master data pages under the base menu without duplicate master shortcuts', () => {
+  it('keeps business master data under base and moves user administration to system management', () => {
     const baseStart = routeSource.indexOf("path: '/base'")
     const baseEnd = routeSource.indexOf("path: '/sale'", baseStart)
     const baseBlock = routeSource.slice(baseStart, baseEnd)
     assertIncludesAll(baseBlock, [
-      "name: 'Users'",
-      "name: 'Warehouses'",
-      "name: 'Products'",
-      "name: 'Customers'",
-      "name: 'Suppliers'",
-      "name: 'Machines'",
-      "name: 'Molds'",
+      'baseRoutes.products',
+      'baseRoutes.customers',
+      'baseRoutes.suppliers',
+      'baseRoutes.warehouses',
+      'baseRoutes.machines',
+      'baseRoutes.molds',
     ], 'base route group')
+    assert.equal(baseBlock.includes('systemRoutes.users'), false)
+
+    const systemStart = routeSource.indexOf("path: '/system'")
+    const systemBlock = routeSource.slice(systemStart)
+    assert.equal(systemBlock.includes('systemRoutes.users'), true)
 
     for (const name of ['Users', 'Warehouses', 'Products', 'Customers', 'Suppliers', 'Machines', 'Molds']) {
       const matches = routeSource.match(new RegExp(`name: '${name}'`, 'g')) || []

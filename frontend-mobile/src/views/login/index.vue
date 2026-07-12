@@ -29,18 +29,15 @@
       <van-form @submit="onSubmit" class="login-form">
         <van-cell-group inset>
           <van-field
-            v-model.trim="form.phone"
-            name="phone"
-            label="手机号"
-            placeholder="请输入手机号"
-            type="tel"
-            inputmode="tel"
-            maxlength="11"
+            v-model.trim="form.username"
+            name="username"
+            label="用户名"
+            placeholder="请输入用户名"
+            type="text"
+            inputmode="text"
+            maxlength="64"
             clearable
-            :rules="[
-              { required: true, message: '请输入手机号' },
-              { pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确' },
-            ]"
+            :rules="[{ required: true, message: '请输入用户名' }]"
           />
           <van-field
             v-model="form.password"
@@ -62,7 +59,7 @@
 
       <div class="login-status">
         <van-tag :type="isSupabaseConfigured ? 'success' : 'warning'" plain>
-          {{ isSupabaseConfigured ? 'Supabase 已连接' : 'Supabase 未配置' }}
+          {{ isSupabaseConfigured ? 'Supabase 已配置' : 'Supabase 未配置' }}
         </van-tag>
         <span>{{ isSupabaseConfigured ? '可直接登录' : '补齐环境变量后再登录' }}</span>
       </div>
@@ -82,7 +79,7 @@ const userStore = useUserStore()
 const loading = ref(false)
 const errorMessage = ref('')
 const form = reactive({
-  phone: '',
+  username: '',
   password: '',
 })
 
@@ -92,7 +89,7 @@ function normalizeLoginError(error: unknown) {
     return '请先在 .env.local 中配置 Supabase 环境变量'
   }
   if (message.toLowerCase().includes('invalid login credentials')) {
-    return '手机号或密码错误'
+    return '用户名或密码错误'
   }
   return message || '登录失败，请稍后重试'
 }
@@ -107,7 +104,7 @@ async function onSubmit() {
   loading.value = true
   try {
     await userStore.doLogin({
-      phone: form.phone,
+      username: form.username,
       password: form.password,
     })
     showToast('登录成功')

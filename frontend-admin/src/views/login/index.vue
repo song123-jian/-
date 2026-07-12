@@ -42,11 +42,21 @@
           show-icon
           :closable="false"
           title="当前未配置 Supabase 环境变量"
-          description="请先在 .env.local 中填写 VITE_SUPABASE_URL 和 VITE_SUPABASE_ANON_KEY，然后重新启动前端。"
+          description="可以点击下方“填写配置”，也可以在 frontend-admin/.env.local 中填写变量后重启前端。"
         />
 
+        <div class="config-entry">
+          <div>
+            <strong>{{ isSupabaseConfigured ? 'Supabase 已配置' : '还没有 Supabase 配置？' }}</strong>
+            <span>{{ isSupabaseConfigured ? '可在这里修改连接参数' : '在页面填写后保存即可生效' }}</span>
+          </div>
+          <el-button type="primary" plain :icon="Setting" @click="openConfigDialog">
+            {{ isSupabaseConfigured ? '修改配置' : '填写配置' }}
+          </el-button>
+        </div>
+
         <el-alert
-          v-else-if="authError"
+          v-if="authError"
           class="login-alert"
           type="error"
           show-icon
@@ -103,7 +113,7 @@
 
         <div class="login-status">
           <el-tag :type="isSupabaseConfigured ? 'success' : 'warning'" effect="plain" size="small">
-            {{ isSupabaseConfigured ? 'Supabase 已连接' : 'Supabase 未配置' }}
+            {{ isSupabaseConfigured ? 'Supabase 已配置' : 'Supabase 未配置' }}
           </el-tag>
           <span class="login-status-text">
             {{ isSupabaseConfigured ? '可直接登录并访问业务页面' : '补齐环境变量后再登录' }}
@@ -115,21 +125,104 @@
         </p>
       </section>
     </main>
+
+    <el-dialog
+      v-model="configDialogVisible"
+      class="supabase-config-dialog"
+      title="Supabase 连接配置"
+      top="4vh"
+      width="min(560px, calc(100vw - 24px))"
+      :close-on-click-modal="false"
+      @open="loadConfigForm"
+    >
+      <el-alert
+        class="config-dialog-alert"
+        type="info"
+        show-icon
+        :closable="false"
+        title="请使用 Supabase 项目设置中的 anon/public key"
+        description="部署默认配置会随程序在不同设备生效；本页修改只覆盖当前设备，且仅允许受信任项目的 publishable key。"
+      />
+      <el-form ref="configFormRef" :model="configForm" :rules="configRules" label-position="top" class="config-form">
+        <el-form-item label="项目 URL" prop="url">
+          <el-input v-model.trim="configForm.url" placeholder="https://your-project.supabase.co" autocomplete="url" />
+        </el-form-item>
+        <el-form-item label="Anon / Public Key" prop="anonKey">
+          <el-input
+            v-model="configForm.anonKey"
+            type="password"
+            show-password
+            placeholder="粘贴 anon public key"
+            autocomplete="off"
+          />
+        </el-form-item>
+        <el-form-item label="登录邮箱域名（可选）" prop="authEmailDomain">
+          <el-input v-model.trim="configForm.authEmailDomain" placeholder="your-project-ref.supabase.co" />
+        </el-form-item>
+        <el-form-item label="存储桶名称（可选）" prop="storageBucket">
+          <el-input v-model.trim="configForm.storageBucket" placeholder="erp-files" />
+        </el-form-item>
+        <el-form-item label="配置确认密码" prop="confirmationPassword">
+          <el-input
+            v-model="configForm.confirmationPassword"
+            type="password"
+            show-password
+            placeholder="请输入配置确认密码"
+            name="supabase-config-confirmation-password"
+            autocomplete="new-password"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="config-dialog-footer">
+          <el-button @click="configDialogVisible = false">取消</el-button>
+          <el-button
+            type="warning"
+            plain
+            :loading="configResetting"
+            :disabled="configSaving"
+            @click="handleResetConfig"
+          >
+            恢复部署默认
+          </el-button>
+          <el-button
+            type="primary"
+            :loading="configSaving"
+            :disabled="configResetting"
+            @click="handleSaveConfig"
+          >
+            保存并刷新
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
-import { Lock, User } from '@element-plus/icons-vue'
-import { isSupabaseConfigured } from '@/api/supabaseClient'
+import { Lock, Setting, User } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import {
+  clearSupabaseRuntimeConfig,
+  getSupabaseRuntimeConfig,
+  isSupabaseConfigured,
+  saveSupabaseRuntimeConfig,
+  type SupabaseRuntimeConfig,
+} from '@/api/supabaseClient'
 import { useUserStore } from '@/store/user'
 import { resolvePostLoginPath } from '@/utils/auth-route'
+import { getErrorMessage } from '@/utils/error-message'
 
 const userStore = useUserStore()
 const loginFormRef = ref<FormInstance>()
 const loading = ref(false)
 const authError = ref('')
+const configSaving = ref(false)
+const configResetting = ref(false)
+const configDialogVisible = ref(false)
+const configFormRef = ref<FormInstance>()
 const redirectQuery = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('redirect') : null
 const redirectPath = redirectQuery ? resolvePostLoginPath(redirectQuery) : ''
 
@@ -150,8 +243,91 @@ const loginRules: FormRules = {
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 }
 
+const configForm = reactive<SupabaseRuntimeConfig & { confirmationPassword: string }>({
+  url: '',
+  anonKey: '',
+  authEmailDomain: '',
+  storageBucket: '',
+  confirmationPassword: '',
+})
+
+const configRules: FormRules = {
+  url: [
+    { required: true, message: '请输入 Supabase 项目 URL', trigger: 'blur' },
+    {
+      validator: (_rule, value, callback) => {
+        try {
+          const parsedUrl = new URL(String(value || '').trim())
+          if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error()
+          callback()
+        } catch {
+          callback(new Error('请输入有效的 http 或 https 地址'))
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+  anonKey: [{ required: true, message: '请输入 anon/public key', trigger: 'blur' }],
+  confirmationPassword: [{ required: true, message: '请输入配置确认密码', trigger: 'blur' }],
+}
+
+function loadConfigForm() {
+  Object.assign(configForm, getSupabaseRuntimeConfig(), { confirmationPassword: '' })
+}
+
+function openConfigDialog() {
+  loadConfigForm()
+  configDialogVisible.value = true
+}
+
+async function handleSaveConfig() {
+  const valid = await configFormRef.value?.validate().catch(() => false)
+  if (!valid) return
+
+  configSaving.value = true
+  try {
+    await saveSupabaseRuntimeConfig(configForm, configForm.confirmationPassword)
+    ElMessage.success('Supabase 配置已保存，页面即将刷新')
+    window.setTimeout(() => window.location.reload(), 300)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : 'Supabase 配置保存失败')
+  } finally {
+    configSaving.value = false
+  }
+}
+
+async function handleResetConfig() {
+  if (!configForm.confirmationPassword) {
+    await configFormRef.value?.validateField('confirmationPassword').catch(() => undefined)
+    return
+  }
+
+  configResetting.value = true
+  try {
+    await clearSupabaseRuntimeConfig(configForm.confirmationPassword)
+    ElMessage.success('已恢复部署默认 Supabase 配置，页面即将刷新')
+    window.setTimeout(() => window.location.reload(), 300)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : 'Supabase 配置恢复失败')
+  } finally {
+    configResetting.value = false
+  }
+}
+
+onMounted(() => {
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('configure') === '1') {
+    openConfigDialog()
+  }
+})
+
 function normalizeLoginError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error || '')
+  const message = getErrorMessage(error, '登录失败，请稍后重试')
+  if (message.toLowerCase().includes('current_erp_user_profile') || message.toLowerCase().includes('could not find the function')) {
+    return 'Supabase 尚未完成完整初始化，请在全新项目 SQL Editor 执行 database/supabase-cloud.sql'
+  }
+  if (message.toLowerCase().includes('failed to fetch')) {
+    return '登录请求无法连接 Supabase，请检查当前网络和项目 URL'
+  }
   if (message.includes('VITE_SUPABASE_URL') || message.includes('VITE_SUPABASE_ANON_KEY')) {
     return '请先在 .env.local 中配置 Supabase 环境变量'
   }
@@ -362,6 +538,69 @@ async function handleLogin() {
   margin-bottom: 16px;
 }
 
+.config-entry {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid #dbe7f4;
+  border-radius: 8px;
+  background: #f7fbff;
+}
+
+.config-entry > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.config-entry strong {
+  color: #1f3b5b;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.config-entry span {
+  color: #6b7b8f;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.config-dialog-alert {
+  margin-bottom: 18px;
+}
+
+.config-form {
+  :deep(.el-form-item__label) {
+    padding-bottom: 5px;
+    color: #475569;
+    font-weight: 600;
+  }
+}
+
+.config-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+:global(.supabase-config-dialog.el-dialog) {
+  max-height: 92vh;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+:global(.supabase-config-dialog .el-dialog__body) {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .login-form {
   :deep(.el-input__wrapper) {
     border-radius: 8px;
@@ -447,6 +686,15 @@ async function handleLogin() {
   .login-status {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .config-entry {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .config-entry .el-button {
+    width: 100%;
   }
 }
 </style>

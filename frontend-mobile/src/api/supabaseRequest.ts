@@ -93,6 +93,8 @@ const routeConfigs: RouteConfig[] = [
   { resource: 'stock', table: 'stock' },
 ]
 
+const SYS_USER_SAFE_SELECT = 'id, username, real_name, phone, role, status, login_fail_count, lock_until, last_login_at, created_at, updated_at'
+
 const tableColumns: Record<string, string[]> = {
   customer: ['id', 'code', 'name', 'short_name', 'contact', 'phone', 'address', 'tax_no', 'invoice_title', 'credit_level', 'payment_days', 'sales_user_id', 'status', 'created_at'],
   delivery_order: ['id', 'delivery_no', 'sale_order_id', 'customer_id', 'delivery_date', 'total_qty', 'logistics_company', 'tracking_no', 'status', 'operator_id', 'remark', 'created_at'],
@@ -121,7 +123,7 @@ const tableColumns: Record<string, string[]> = {
   supplier: ['id', 'code', 'name', 'contact', 'phone', 'address', 'main_material', 'status', 'created_at'],
   sys_config: ['id', 'config_key', 'config_value', 'config_desc', 'updated_at'],
   sys_operation_log: ['id', 'user_id', 'username', 'module', 'action', 'target_type', 'target_id', 'old_value', 'new_value', 'ip', 'created_at'],
-  sys_user: ['id', 'username', 'real_name', 'phone', 'password_hash', 'role', 'status', 'login_fail_count', 'lock_until', 'last_login_at', 'created_at', 'updated_at'],
+  sys_user: ['id', 'username', 'real_name', 'phone', 'role', 'status', 'login_fail_count', 'lock_until', 'last_login_at', 'created_at', 'updated_at'],
   warehouse: ['id', 'code', 'name', 'type', 'address', 'factory_code', 'workshop', 'manager_id', 'is_enabled', 'created_at'],
   warehouse_location: ['id', 'warehouse_id', 'code', 'name', 'area', 'shelf', 'layer', 'position', 'is_enabled'],
   process_card: ['id', 'card_no', 'product_id', 'mold_id', 'machine_id', 'material_id', 'version_no', 'material_temp', 'mold_temp', 'injection_pressure', 'holding_pressure', 'cooling_seconds', 'cycle_seconds', 'clamping_force', 'back_pressure', 'change_reason', 'status', 'created_by', 'created_at', 'updated_at'],
@@ -1141,7 +1143,8 @@ function applyFilters(query: any, route: RouteConfig, params?: Record<string, an
 async function listTable(route: RouteConfig, params?: Record<string, any>) {
   const supabase = getSupabaseClient()
   const { from, to } = pageParams(params)
-  let query: any = supabase.from(route.table).select('*', { count: 'exact' })
+  const selectColumns = route.table === 'sys_user' ? SYS_USER_SAFE_SELECT : '*'
+  let query: any = supabase.from(route.table).select(selectColumns, { count: 'exact' })
   query = applyFilters(query, route, params)
   query = query.order(route.defaultOrder || 'id', { ascending: false }).range(from, to)
   const { data, error, count } = await query
@@ -1151,7 +1154,8 @@ async function listTable(route: RouteConfig, params?: Record<string, any>) {
 }
 
 async function getTableDetail(route: RouteConfig, id: number) {
-  const { data, error } = await getSupabaseClient().from(route.table).select('*').eq('id', id).single()
+  const selectColumns = route.table === 'sys_user' ? SYS_USER_SAFE_SELECT : '*'
+  const { data, error } = await getSupabaseClient().from(route.table).select(selectColumns).eq('id', id).single()
   if (error) throw error
   return ok(toCamelDeep(data))
 }
@@ -1207,9 +1211,10 @@ function loginEmail(loginName: string) {
 async function findUserProfile(loginName?: string, authUserId?: string) {
   const supabase = getSupabaseClient()
   const columns = 'id, username, real_name, phone, role, status'
-  if (authUserId && tableColumns.sys_user.includes('auth_user_id')) {
-    const result = await supabase.from('sys_user').select(columns).eq('auth_user_id', authUserId).maybeSingle()
-    if (!result.error && result.data) return result.data
+  if (authUserId) {
+    const result = await supabase.rpc('current_erp_user_profile')
+    if (result.error) throw result.error
+    return result.data || undefined
   }
   if (loginName) {
     const result = await supabase
@@ -1252,17 +1257,17 @@ async function login(data: any) {
     email: loginEmail(loginName),
     password,
   })
-  if (!authResult.error && authResult.data.session) {
-    const profile = await findUserProfile(loginName, authResult.data.user?.id)
-    return ok(authPayload(profile || authResult.data.user?.user_metadata || {}, authResult.data.session.access_token))
+  if (authResult.error) throw authResult.error
+  if (!authResult.data.session || !authResult.data.user?.id) {
+    throw new Error('Supabase Auth 未返回有效登录会话')
   }
 
-  const rpcResult = await supabase.rpc('erp_login', {
-    login_name: loginName,
-    login_password: password,
-  })
-  if (rpcResult.error) throw authResult.error || rpcResult.error
-  return ok(authPayload(rpcResult.data))
+  const profile = await findUserProfile(loginName, authResult.data.user.id)
+  if (!profile) {
+    await supabase.auth.signOut()
+    throw new Error('Supabase Auth 用户尚未绑定系统账号，请先完成 auth.users 与 sys_user 的 UUID 绑定')
+  }
+  return ok(authPayload(profile, authResult.data.session.access_token))
 }
 
 async function currentUser() {
@@ -1273,8 +1278,10 @@ async function currentUser() {
   const supabase = getSupabaseClient()
   const { data } = await supabase.auth.getUser()
   const authUser = data.user
+  if (!authUser?.id) throw new Error('请先登录')
   const profile = await findUserProfile(authUser?.email?.split('@')[0], authUser?.id)
-  return ok(authPayload(profile || authUser?.user_metadata || {}, (await supabase.auth.getSession()).data.session?.access_token))
+  if (!profile) throw new Error('Supabase Auth 用户尚未绑定系统账号')
+  return ok(authPayload(profile, (await supabase.auth.getSession()).data.session?.access_token))
 }
 
 async function uploadFile(file: File, prefix = 'uploads') {

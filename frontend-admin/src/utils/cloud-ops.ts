@@ -1,4 +1,5 @@
 import { DEFAULT_SYSTEM_CONFIG, normalizeSystemConfig, type SystemConfigForm } from './system-config.ts'
+import { resolveSupabaseAuthEmailDomain } from './supabase-runtime-config.ts'
 
 export const CLOUD_OPS_REQUIRED_ENV_KEYS = [
   'VITE_SUPABASE_URL',
@@ -10,6 +11,7 @@ export const CLOUD_OPS_REQUIRED_ENV_KEYS = [
 export type CloudOpsState = 'success' | 'warning' | 'danger' | 'info'
 
 export type CloudOpsEnvInput = {
+  url?: string
   hasUrl?: boolean
   hasAnonKey?: boolean
   hasAuthEmailDomain?: boolean
@@ -128,6 +130,7 @@ function text(value: unknown) {
 }
 
 export function buildCloudOpsEnvRows(input: CloudOpsEnvInput = {}): CloudOpsEnvRow[] {
+  const authEmailDomain = resolveSupabaseAuthEmailDomain(input.url, input.authEmailDomain)
   const rows: CloudOpsEnvRow[] = [
     {
       key: 'VITE_SUPABASE_URL',
@@ -150,11 +153,11 @@ export function buildCloudOpsEnvRows(input: CloudOpsEnvInput = {}): CloudOpsEnvR
     {
       key: 'VITE_SUPABASE_AUTH_EMAIL_DOMAIN',
       required: false,
-      configured: Boolean(input.hasAuthEmailDomain),
-      state: input.hasAuthEmailDomain ? 'success' : 'warning',
-      stateText: input.hasAuthEmailDomain ? stateText('success') : stateText('warning'),
-      valueText: text(input.authEmailDomain) || 'inject-erp.example.com',
-      description: '员工账号转邮箱登录时使用的默认域名。',
+      configured: Boolean(authEmailDomain),
+      state: authEmailDomain ? 'success' : 'warning',
+      stateText: authEmailDomain ? stateText('success') : stateText('warning'),
+      valueText: authEmailDomain || '等待 VITE_SUPABASE_URL 推导',
+      description: '员工账号转邮箱登录时使用的域名；未显式配置时自动采用项目 URL 的 hostname。',
     },
     {
       key: 'VITE_SUPABASE_STORAGE_BUCKET',
@@ -231,12 +234,17 @@ export function buildCloudOpsConsoleEntries(input: CloudOpsEnvInput = {}): Cloud
     {
       title: 'SQL 初始化',
       path: 'Supabase Console -> Database -> SQL Editor',
-      purpose: '执行 database/init.sql 与 database/supabase-cloud.sql。',
+      purpose: '全新项目仅执行一次 database/supabase-cloud.sql。',
     },
     {
       title: '认证用户',
       path: 'Supabase Console -> Authentication -> Users',
       purpose: '核对 Auth 用户与 sys_user 映射关系。',
+    },
+    {
+      title: '用户管理函数',
+      path: 'Supabase Console -> Edge Functions -> erp-user-admin',
+      purpose: '部署受保护的 Auth 用户创建、更新、重置密码与删除函数。',
     },
     {
       title: '业务附件',

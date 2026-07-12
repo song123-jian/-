@@ -1,5 +1,6 @@
 import { getSupabaseClient, supabaseAuthEmailDomain, supabaseStorageBucket } from './supabaseClient'
 import { getStoredToken } from '../utils/auth-storage'
+import { getErrorMessage } from '../utils/error-message'
 import {
   buildSalePaymentPayload,
   getPaymentStatus,
@@ -90,6 +91,14 @@ import {
   normalizeSystemConfig,
   validateSystemConfig,
 } from '../utils/system-config'
+import { routeGroups } from '../router/route-config'
+import {
+  ROLE_MENU_CONFIG_KEY,
+  buildDefaultRoleMenuConfig,
+  buildRoleMenuConfigRow,
+  normalizeRoleMenuConfig,
+  parseRoleMenuConfig,
+} from '../utils/role-menu'
 import {
   buildProductPayload,
   validateProductMaster,
@@ -128,13 +137,13 @@ import {
   validateInjectionRecord,
   type InjectionModuleKey,
 } from '../utils/injection-professional'
-import bcrypt from 'bcryptjs'
 import QRCode from 'qrcode'
 
 type RequestConfig = {
   params?: Record<string, any>
   headers?: Record<string, string>
   responseType?: string
+  notifyOnError?: boolean
 }
 
 export type ApiResponse<T = any> = {
@@ -153,6 +162,8 @@ type RouteConfig = {
   table: string
   searchColumns?: string[]
   defaultOrder?: string
+  idColumn?: string
+  readOnly?: boolean
 }
 
 const routeConfigs: RouteConfig[] = [
@@ -188,6 +199,16 @@ const routeConfigs: RouteConfig[] = [
   { resource: 'machines', table: 'machine', searchColumns: ['code', 'name', 'model', 'location'] },
   { resource: 'products', table: 'product', searchColumns: ['code', 'name', 'spec', 'type'] },
   { resource: 'molds', table: 'mold', searchColumns: ['code', 'name', 'remark'] },
+  { resource: 'mold-development-projects', table: 'mold_development_project', searchColumns: ['project_no', 'project_name', 'requirement', 'remark', 'status'] },
+  { resource: 'mold-project-milestones', table: 'mold_project_milestone', searchColumns: ['stage_code', 'stage_name', 'deliverable', 'risk_note', 'status'] },
+  { resource: 'mold-trial-details', table: 'mold_trial_detail', searchColumns: ['trial_no', 'trial_stage', 'defect_summary', 'correction_action', 'status'] },
+  { resource: 'mold-revisions', table: 'mold_revision', searchColumns: ['revision_no', 'drawing_no', 'change_type', 'change_reason', 'change_summary', 'status'] },
+  { resource: 'mold-attachments', table: 'mold_attachment', searchColumns: ['file_name', 'attachment_type', 'version_no', 'status'] },
+  { resource: 'mold-products', table: 'mold_product', searchColumns: ['remark', 'status'] },
+  { resource: 'mold-components', table: 'mold_component', searchColumns: ['component_code', 'component_name', 'component_type', 'material', 'location', 'status'] },
+  { resource: 'mold-cost-records', table: 'mold_cost_record', searchColumns: ['cost_type', 'source_no', 'remark', 'status'] },
+  { resource: 'mold-supplier-evaluations', table: 'mold_supplier_evaluation', searchColumns: ['evaluation_status', 'remark'] },
+  { resource: 'mold-life-forecasts', table: 'mold_life_forecast', searchColumns: ['mold_code', 'mold_name', 'risk_level', 'status'], defaultOrder: 'mold_id', idColumn: 'mold_id', readOnly: true },
   { resource: 'users', table: 'sys_user', searchColumns: ['username', 'real_name', 'phone'] },
   ...INJECTION_MODULES.map((item) => ({
     resource: item.resource,
@@ -229,6 +250,15 @@ const CLEAR_BUSINESS_DATA_TABLES = [
   'process_card',
   'maintenance_order',
   'mold_maintenance_plan',
+  'mold_supplier_evaluation',
+  'mold_cost_record',
+  'mold_component',
+  'mold_product',
+  'mold_attachment',
+  'mold_revision',
+  'mold_trial_detail',
+  'mold_project_milestone',
+  'mold_development_project',
   'andon_event',
   'label_template',
   'customer_complaint',
@@ -255,6 +285,7 @@ const CLEAR_BUSINESS_DATA_TABLES = [
 ] as const
 
 const PRESERVED_BUSINESS_CLEAR_TABLES = ['sys_user', 'sys_config', 'workflow_definition'] as const
+const SYS_USER_SAFE_SELECT = 'id, username, real_name, phone, role, status, login_fail_count, lock_until, last_login_at, created_at, updated_at'
 
 const tableColumns: Record<string, string[]> = {
   customer: ['id', 'code', 'name', 'short_name', 'contact', 'phone', 'address', 'tax_no', 'invoice_title', 'credit_level', 'payment_days', 'sales_user_id', 'status', 'created_at'],
@@ -265,6 +296,16 @@ const tableColumns: Record<string, string[]> = {
   machine: ['id', 'code', 'name', 'model', 'tonnage', 'status', 'qr_code', 'location', 'factory_code', 'workshop', 'purchase_date', 'remark', 'created_at'],
   machine_inspection_record: ['id', 'machine_id', 'inspector_id', 'inspect_time', 'result', 'items_checked', 'issues', 'remark'],
   mold: ['id', 'code', 'name', 'product_id', 'cavities', 'lifetime', 'used_shots', 'shots_since_maintenance', 'maintenance_cycle', 'maintenance_count', 'last_maintenance_at', 'status', 'remark', 'created_at'],
+  mold_development_project: ['id', 'project_no', 'project_name', 'mold_id', 'product_id', 'customer_id', 'supplier_id', 'mold_type', 'cavity_count', 'target_machine_tonnage', 'target_cycle_seconds', 'annual_demand', 'budget_amount', 'actual_amount', 'planned_start_date', 'planned_due_date', 'actual_due_date', 'current_stage', 'owner_id', 'status', 'risk_level', 'requirement', 'remark', 'created_by', 'created_at', 'updated_at'],
+  mold_project_milestone: ['id', 'project_id', 'stage_code', 'stage_name', 'sequence_no', 'planned_date', 'actual_date', 'owner_id', 'status', 'deliverable', 'risk_note', 'approved_by', 'remark', 'created_at', 'updated_at'],
+  mold_trial_detail: ['id', 'project_id', 'trial_mold_record_id', 'trial_no', 'trial_stage', 'shot_count', 'cycle_seconds', 'mold_temp', 'material_temp', 'dimension_result', 'quality_result', 'production_result', 'first_pass', 'defect_summary', 'correction_action', 'issue_severity', 'issue_owner_id', 'correction_due_date', 'correction_status', 'retest_result', 'closure_evidence', 'closed_by', 'closed_at', 'next_trial_date', 'photo_urls', 'status', 'owner_id', 'confirmed_by', 'remark', 'created_at', 'updated_at'],
+  mold_revision: ['id', 'project_id', 'mold_id', 'revision_no', 'drawing_no', 'change_type', 'change_reason', 'change_summary', 'file_name', 'file_url', 'checksum', 'status', 'effective_at', 'created_by', 'approved_by', 'created_at', 'updated_at'],
+  mold_attachment: ['id', 'project_id', 'mold_id', 'attachment_type', 'file_name', 'file_url', 'version_no', 'checksum', 'status', 'uploaded_by', 'created_at'],
+  mold_product: ['id', 'mold_id', 'product_id', 'cavity_start', 'cavity_end', 'cavity_count', 'priority', 'status', 'effective_from', 'effective_to', 'remark', 'created_at', 'updated_at'],
+  mold_component: ['id', 'project_id', 'mold_id', 'component_code', 'component_name', 'component_type', 'material', 'supplier_id', 'quantity', 'lifetime_shots', 'used_shots', 'replacement_cost', 'status', 'location', 'last_replaced_at', 'remark', 'created_at', 'updated_at'],
+  mold_cost_record: ['id', 'project_id', 'mold_id', 'supplier_id', 'cost_type', 'source_no', 'quoted_amount', 'actual_amount', 'occurred_at', 'status', 'remark', 'created_by', 'created_at', 'updated_at'],
+  mold_supplier_evaluation: ['id', 'project_id', 'mold_id', 'supplier_id', 'delivery_score', 'quality_score', 'response_score', 'total_score', 'evaluation_status', 'remark', 'evaluated_by', 'evaluated_at', 'created_at', 'updated_at'],
+  mold_life_forecast: ['mold_id', 'mold_code', 'mold_name', 'used_shots', 'lifetime', 'remaining_shots', 'maintenance_cycle', 'shots_since_maintenance', 'recent_30d_shots', 'avg_daily_shots', 'estimated_days_to_life', 'risk_level', 'status', 'calculated_at'],
   mold_maintenance_record: ['id', 'mold_id', 'operator_id', 'used_shots_before', 'shots_since_maintenance_before', 'maintenance_count_before', 'operate_time', 'remark'],
   mold_mount_record: ['id', 'mold_id', 'machine_id', 'prod_order_id', 'mount_type', 'operator_id', 'operate_time', 'remark'],
   notification: ['id', 'user_id', 'title', 'content', 'type', 'is_read', 'created_at'],
@@ -286,11 +327,11 @@ const tableColumns: Record<string, string[]> = {
   supplier: ['id', 'code', 'name', 'contact', 'phone', 'address', 'main_material', 'status', 'created_at'],
   sys_config: ['id', 'config_key', 'config_value', 'config_desc', 'updated_at'],
   sys_operation_log: ['id', 'user_id', 'username', 'module', 'action', 'target_type', 'target_id', 'old_value', 'new_value', 'ip', 'created_at'],
-  sys_user: ['id', 'username', 'real_name', 'phone', 'password_hash', 'role', 'status', 'login_fail_count', 'lock_until', 'last_login_at', 'created_at', 'updated_at'],
+  sys_user: ['id', 'username', 'real_name', 'phone', 'role', 'status', 'login_fail_count', 'lock_until', 'last_login_at', 'created_at', 'updated_at'],
   warehouse: ['id', 'code', 'name', 'type', 'address', 'factory_code', 'workshop', 'manager_id', 'is_enabled', 'created_at'],
   warehouse_location: ['id', 'warehouse_id', 'code', 'name', 'area', 'shelf', 'layer', 'position', 'is_enabled'],
   process_card: ['id', 'card_no', 'product_id', 'mold_id', 'machine_id', 'material_id', 'version_no', 'material_temp', 'mold_temp', 'injection_pressure', 'holding_pressure', 'cooling_seconds', 'cycle_seconds', 'clamping_force', 'back_pressure', 'change_reason', 'status', 'created_by', 'created_at', 'updated_at'],
-  trial_mold_record: ['id', 'trial_no', 'prod_order_id', 'process_card_id', 'mold_id', 'machine_id', 'first_article_result', 'image_urls', 'remark', 'status', 'created_by', 'confirmed_by', 'created_at', 'updated_at'],
+  trial_mold_record: ['id', 'trial_no', 'prod_order_id', 'process_card_id', 'mold_id', 'machine_id', 'project_id', 'trial_stage', 'shot_count', 'cycle_seconds', 'defect_summary', 'correction_action', 'production_ready', 'first_article_result', 'image_urls', 'remark', 'status', 'created_by', 'confirmed_by', 'created_at', 'updated_at'],
   material_mix_order: ['id', 'mix_no', 'prod_order_id', 'product_id', 'material_batch_id', 'material_qty', 'regrind_ratio', 'drying_temp', 'drying_minutes', 'remark', 'status', 'created_by', 'created_at', 'updated_at'],
   batch_trace_link: ['id', 'trace_no', 'source_type', 'source_id', 'target_type', 'target_id', 'batch_id', 'prod_order_id', 'sale_order_id', 'remark', 'status', 'created_at'],
   startup_check: ['id', 'check_no', 'prod_order_id', 'process_card_id', 'material_ready', 'mold_ready', 'machine_ready', 'first_article_ok', 'staff_ready', 'failed_items', 'failed_items_text', 'remark', 'status', 'created_by', 'created_at', 'updated_at'],
@@ -771,58 +812,47 @@ async function saveUserRecord(id: number | undefined, payload: any) {
   const supabase = getSupabaseClient()
   const data = { ...toSnakePayload(payload) }
   const rawPassword = String(payload?.password || payload?.newPassword || '').trim()
-  delete data.password
-  delete data.newPassword
+  delete data.auth_user_id
+  delete data.password_hash
 
-  if (rawPassword) {
-    data.password_hash = bcrypt.hashSync(rawPassword, 10)
-  }
+  if (!id && !rawPassword) throw new Error('请输入密码')
+  if (data.username) data.auth_email = loginEmail(String(data.username))
 
-  if (id) {
-    if (!rawPassword) {
-      const { data: existing, error: fetchError } = await supabase
-        .from('sys_user')
-        .select('password_hash')
-        .eq('id', id)
-        .maybeSingle()
-      if (fetchError) throw fetchError
-      if (existing?.password_hash) {
-        data.password_hash = existing.password_hash
+  const { data: result, error } = await supabase.functions.invoke('erp-user-admin', {
+    body: {
+      action: id ? 'update' : 'create',
+      userId: id || null,
+      user: data,
+    },
+  })
+  if (error) {
+    let message = error.message || '用户认证服务调用失败'
+    const context = (error as any)?.context
+    if (context && typeof context.json === 'function') {
+      try {
+        const detail = await context.json()
+        message = detail?.error || detail?.message || message
+      } catch {
+        // Keep the function error when the response body is unavailable.
       }
     }
-
-    const { data: updated, error } = await supabase
-      .from('sys_user')
-      .update({
-        ...data,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .select()
-      .single()
-    if (error) throw error
-    return ok(toCamelDeep(updated), 'updated')
+    throw new Error(message)
   }
-
-  if (!data.password_hash) {
-    throw new Error('请输入密码')
-  }
-
-  const { data: created, error } = await supabase
-    .from('sys_user')
-    .insert({
-      ...data,
-      login_fail_count: 0,
-      status: data.status ?? 1,
-    })
-    .select()
-    .single()
-  if (error) throw error
-  return ok(toCamelDeep(created), 'created')
+  if (!result?.ok || !result?.user) throw new Error(result?.error || '用户认证服务未返回有效结果')
+  return ok(toCamelDeep(result.user), id ? 'updated' : 'created')
 }
 
 async function resetUserPassword(id: number, newPassword: string) {
   return saveUserRecord(id, { password: newPassword })
+}
+
+async function deleteUserRecord(id: number) {
+  const { data: result, error } = await getSupabaseClient().functions.invoke('erp-user-admin', {
+    body: { action: 'delete', userId: id },
+  })
+  if (error) throw error
+  if (!result?.ok) throw new Error(result?.error || '用户认证服务删除失败')
+  return ok(true, 'deleted')
 }
 
 async function getMachineQrCodeData(id: number) {
@@ -2579,7 +2609,8 @@ function applyFilters(query: any, route: RouteConfig, params?: Record<string, an
 async function listTable(route: RouteConfig, params?: Record<string, any>) {
   const supabase = getSupabaseClient()
   const { from, to } = pageParams(params)
-  let query: any = supabase.from(route.table).select('*', { count: 'exact' })
+  const selectColumns = route.table === 'sys_user' ? SYS_USER_SAFE_SELECT : '*'
+  let query: any = supabase.from(route.table).select(selectColumns, { count: 'exact' })
   query = applyFilters(query, route, params)
   query = query.order(route.defaultOrder || 'id', { ascending: false }).range(from, to)
   const { data, error, count } = await query
@@ -2589,7 +2620,8 @@ async function listTable(route: RouteConfig, params?: Record<string, any>) {
 }
 
 async function getTableDetail(route: RouteConfig, id: number) {
-  const { data, error } = await getSupabaseClient().from(route.table).select('*').eq('id', id).single()
+  const selectColumns = route.table === 'sys_user' ? SYS_USER_SAFE_SELECT : '*'
+  const { data, error } = await getSupabaseClient().from(route.table).select(selectColumns).eq(route.idColumn || 'id', id).single()
   if (error) throw error
   return ok(toCamelDeep(data))
 }
@@ -2692,7 +2724,60 @@ async function assertMasterDataNotReferenced(route: RouteConfig, id: number) {
   }
 }
 
+async function assertMoldDevelopmentProjectDeletable(route: RouteConfig, id: number) {
+  if (route.table !== 'mold_development_project') return
+  const children = [
+    ['mold_project_milestone', '开发里程碑'],
+    ['mold_trial_detail', '试模明细'],
+    ['trial_mold_record', '原试模记录'],
+    ['mold_revision', '模具版本'],
+    ['mold_attachment', '模具附件'],
+    ['mold_component', '模具零件'],
+    ['mold_cost_record', '模具成本'],
+    ['mold_supplier_evaluation', '供应商评价'],
+  ] as const
+  const hits: string[] = []
+  for (const [table, label] of children) {
+    const { count, error } = await getSupabaseClient().from(table).select('id', { count: 'exact', head: true }).eq('project_id', id)
+    if (error) throw error
+    if (Number(count || 0) > 0) hits.push(`${label}${count}条`)
+  }
+  if (hits.length) throw new Error(`该开发项目仍有关联数据，无法删除：${hits.join('、')}`)
+}
+
+async function releaseMoldTrial(id: number) {
+  const { data, error } = await getSupabaseClient().rpc('release_mold_trial', { p_trial_id: id })
+  if (error) throw error
+  return ok(toCamelDeep(data || {}), 'released')
+}
+
+async function advanceMoldDevelopmentProject(id: number) {
+  const { data, error } = await getSupabaseClient().rpc('advance_mold_development_project', { p_project_id: id })
+  if (error) throw error
+  return ok(toCamelDeep(data || {}), 'advanced')
+}
+
+async function transitionMoldRevision(id: number, action: unknown) {
+  const { data, error } = await getSupabaseClient().rpc('transition_mold_revision', {
+    p_revision_id: id,
+    p_action: String(action || '').toUpperCase(),
+  })
+  if (error) throw error
+  return ok(toCamelDeep(data || {}), 'transitioned')
+}
+
+async function transitionMoldTrialIssue(id: number, action: unknown, evidence: unknown) {
+  const { data, error } = await getSupabaseClient().rpc('transition_mold_trial_issue', {
+    p_trial_id: id,
+    p_action: String(action || '').toUpperCase(),
+    p_evidence: String(evidence || '').trim() || null,
+  })
+  if (error) throw error
+  return ok(toCamelDeep(data || {}), 'transitioned')
+}
+
 async function insertTable(route: RouteConfig, payload: any) {
+  if (route.readOnly) throw new Error(`${route.resource}为只读资源`)
   const injectionModule = getInjectionModuleByResource(route.resource)
   if (injectionModule) {
     const submitted = toCamelDeep(payload || {})
@@ -2726,6 +2811,12 @@ async function insertTable(route: RouteConfig, payload: any) {
   if (route.table === 'warehouse') {
     payload = buildWarehousePayload(payload)
   }
+  const actorId = getCurrentUserId() || null
+  if (route.table === 'mold_development_project') payload = { ...payload, createdBy: actorId }
+  if (route.table === 'mold_revision') payload = { ...payload, createdBy: actorId }
+  if (route.table === 'mold_attachment') payload = { ...payload, uploadedBy: actorId }
+  if (route.table === 'mold_cost_record') payload = { ...payload, createdBy: actorId }
+  if (route.table === 'mold_supplier_evaluation') payload = { ...payload, evaluatedBy: actorId }
   if (route.table === 'qc_record') {
     const submitted = toCamelDeep(payload || {})
     const hasTraceField = [
@@ -2762,6 +2853,12 @@ async function insertTable(route: RouteConfig, payload: any) {
 }
 
 async function updateTable(route: RouteConfig, id: number, payload: any) {
+  if (route.readOnly) throw new Error(`${route.resource}为只读资源`)
+  if (route.table === 'mold_development_project') {
+    payload = { ...(payload || {}) }
+    delete payload.actualAmount
+    delete payload.actual_amount
+  }
   const injectionModule = getInjectionModuleByResource(route.resource)
   if (injectionModule) {
     const submitted = toCamelDeep(payload || {})
@@ -2879,7 +2976,10 @@ async function updateTable(route: RouteConfig, id: number, payload: any) {
 }
 
 async function deleteTable(route: RouteConfig, id: number) {
+  if (route.readOnly) throw new Error(`${route.resource}为只读资源`)
   await assertMasterDataNotReferenced(route, id)
+  await assertMoldDevelopmentProjectDeletable(route, id)
+  if (route.table === 'sys_user') return deleteUserRecord(id)
   const { error } = await getSupabaseClient().from(route.table).delete().eq('id', id)
   if (error) throw error
   return ok(true, 'deleted')
@@ -3900,9 +4000,10 @@ function loginEmail(loginName: string) {
 async function findUserProfile(loginName?: string, authUserId?: string) {
   const supabase = getSupabaseClient()
   const columns = 'id, username, real_name, phone, role, status'
-  if (authUserId && tableColumns.sys_user.includes('auth_user_id')) {
-    const result = await supabase.from('sys_user').select(columns).eq('auth_user_id', authUserId).maybeSingle()
-    if (!result.error && result.data) return result.data
+  if (authUserId) {
+    const result = await supabase.rpc('current_erp_user_profile')
+    if (result.error) throw result.error
+    return result.data || undefined
   }
   if (loginName) {
     const result = await supabase
@@ -3945,17 +4046,17 @@ async function login(data: any) {
     email: loginEmail(loginName),
     password,
   })
-  if (!authResult.error && authResult.data.session) {
-    const profile = await findUserProfile(loginName, authResult.data.user?.id)
-    return ok(authPayload(profile || authResult.data.user?.user_metadata || {}, authResult.data.session.access_token))
+  if (authResult.error) throw authResult.error
+  if (!authResult.data.session || !authResult.data.user?.id) {
+    throw new Error('Supabase Auth 未返回有效登录会话')
   }
 
-  const rpcResult = await supabase.rpc('erp_login', {
-    login_name: loginName,
-    login_password: password,
-  })
-  if (rpcResult.error) throw authResult.error || rpcResult.error
-  return ok(authPayload(rpcResult.data))
+  const profile = await findUserProfile(loginName, authResult.data.user.id)
+  if (!profile) {
+    await supabase.auth.signOut()
+    throw new Error('Supabase Auth 用户尚未绑定系统账号，请先完成 auth.users 与 sys_user 的 UUID 绑定')
+  }
+  return ok(authPayload(profile, authResult.data.session.access_token))
 }
 
 async function currentUser() {
@@ -3966,26 +4067,50 @@ async function currentUser() {
   const supabase = getSupabaseClient()
   const { data } = await supabase.auth.getUser()
   const authUser = data.user
+  if (!authUser?.id) throw new Error('请先登录')
   const profile = await findUserProfile(authUser?.email?.split('@')[0], authUser?.id)
-  return ok(authPayload(profile || authUser?.user_metadata || {}, (await supabase.auth.getSession()).data.session?.access_token))
+  if (!profile) throw new Error('Supabase Auth 用户尚未绑定系统账号')
+  return ok(authPayload(profile, (await supabase.auth.getSession()).data.session?.access_token))
 }
 
-async function uploadFile(file: File, prefix = 'uploads') {
+const moldDevelopmentStorageBucket = 'erp-mold-development'
+const privateStorageUrlPrefix = 'supabase-storage://'
+
+async function uploadFile(file: File, prefix = 'uploads', bucket = supabaseStorageBucket, isPrivate = false) {
   const supabase = getSupabaseClient()
   const safeName = file.name.replace(/[^\w.\-]+/g, '_')
   const path = `${prefix}/${Date.now()}-${safeName}`
-  const { error } = await supabase.storage.from(supabaseStorageBucket).upload(path, file, { upsert: false })
+  const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: false })
   if (error) throw error
-  const { data } = supabase.storage.from(supabaseStorageBucket).getPublicUrl(path)
-  return ok({ path, url: data.publicUrl })
+  if (isPrivate) return ok({ path, bucket, url: `${privateStorageUrlPrefix}${bucket}/${path}` })
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path)
+  return ok({ path, bucket, url: data.publicUrl })
 }
 
-async function uploadFormData(data: any, prefix: string) {
+async function uploadFormData(data: any, prefix: string, bucket?: string, isPrivate = false) {
   const file = data instanceof FormData ? data.get('file') : undefined
   if (file instanceof File) {
-    return uploadFile(file, prefix)
+    return uploadFile(file, prefix, bucket, isPrivate)
   }
   throw new Error('未找到可上传的文件')
+}
+
+async function resolveMoldDevelopmentFileUrl(fileUrl: unknown) {
+  const value = String(fileUrl || '').trim()
+  if (!value) throw new Error('附件地址为空')
+  if (!value.startsWith(privateStorageUrlPrefix)) return ok({ url: value })
+
+  const storageLocation = value.slice(privateStorageUrlPrefix.length)
+  const separatorIndex = storageLocation.indexOf('/')
+  const bucket = separatorIndex > 0 ? storageLocation.slice(0, separatorIndex) : ''
+  const path = separatorIndex > 0 ? storageLocation.slice(separatorIndex + 1) : ''
+  if (bucket !== moldDevelopmentStorageBucket || !path.startsWith('mold-development/')) {
+    throw new Error('附件存储路径无效')
+  }
+
+  const { data, error } = await getSupabaseClient().storage.from(bucket).createSignedUrl(path, 300)
+  if (error) throw error
+  return ok({ url: data.signedUrl, expiresIn: 300 })
 }
 
 const integrationTargetMap: Record<string, { table: string; codeColumn: string; labelColumns: string }> = {
@@ -4121,6 +4246,32 @@ async function updateConfig(payload: Record<string, any>) {
   const { error } = await supabase.from('sys_config').upsert(rows, { onConflict: 'config_key' })
   if (error) throw error
   return ok(normalized, 'updated')
+}
+
+async function roleMenuConfigObject() {
+  const supabase = getSupabaseClient()
+  const { data, error } = await supabase
+    .from('sys_config')
+    .select('config_value')
+    .eq('config_key', ROLE_MENU_CONFIG_KEY)
+    .maybeSingle()
+  if (error) throw error
+  return ok({
+    configured: Boolean(data?.config_value),
+    menus: data?.config_value
+      ? parseRoleMenuConfig(data.config_value, routeGroups)
+      : buildDefaultRoleMenuConfig(routeGroups),
+  })
+}
+
+async function updateRoleMenuConfig(payload: Record<string, any>) {
+  if (!currentUserIsManager()) throw new Error('仅管理员或老板可以修改角色菜单')
+  const supabase = getSupabaseClient()
+  const normalized = normalizeRoleMenuConfig(payload, routeGroups)
+  const row = buildRoleMenuConfigRow(normalized, routeGroups)
+  const { error } = await supabase.from('sys_config').upsert(row, { onConflict: 'config_key' })
+  if (error) throw error
+  return ok({ configured: true, menus: normalized }, 'updated')
 }
 
 async function clearBusinessData(payload: Record<string, any> = {}) {
@@ -6069,7 +6220,9 @@ async function get(url: string, config?: RequestConfig) {
   if (path === 'finance/statements') return financeStatements(config?.params)
   if (path === 'finance/receivables') return financeReceivables(config?.params)
   if (path === 'notifications/unread-count') return unreadCount()
+  if (path === 'system/role-menus') return roleMenuConfigObject()
   if (path === 'system/config') return configObject()
+  if (path === 'mold-development/files/signed-url') return resolveMoldDevelopmentFileUrl(config?.params?.fileUrl)
   if (route?.table === 'machine' && id && action === 'qrcode') return getMachineQrCodeData(id)
   if (route?.table === 'mold' && id && action === 'shots') return getMoldShotsStatsData(id)
   if (path === 'salary/daily') return buildDailySalaryRows(config?.params)
@@ -6112,6 +6265,11 @@ async function post(url: string, data?: any, config?: RequestConfig) {
   if (path === 'system/clear-business-data') return clearBusinessData(data || {})
   if (route?.table === 'mold' && id && action === 'maintenance') return maintainMoldData(id, data)
   if (path === 'qc-records/upload') return uploadFormData(data, 'qc')
+  if (path === 'mold-development/uploads') return uploadFormData(data, 'mold-development', moldDevelopmentStorageBucket, true)
+  if (route?.table === 'mold_development_project' && id && action === 'advance') return advanceMoldDevelopmentProject(id)
+  if (route?.table === 'mold_trial_detail' && id && action === 'release') return releaseMoldTrial(id)
+  if (route?.table === 'mold_trial_detail' && id && action === 'issue-transition') return transitionMoldTrialIssue(id, data?.action, data?.evidence)
+  if (route?.table === 'mold_revision' && id && action === 'transition') return transitionMoldRevision(id, data?.action)
   if (path.startsWith('import/')) return uploadFormData(data, `imports/${path.split('/')[1]}`)
   if (path.startsWith('integrations/')) return handleIntegrationPost(path, data)
   if (path === 'prod-reports') return submitProdReport(data)
@@ -6139,6 +6297,7 @@ async function post(url: string, data?: any, config?: RequestConfig) {
 
 async function put(url: string, data?: any) {
   const { path, route, id, action } = parseRoute(url)
+  if (path === 'system/role-menus') return updateRoleMenuConfig(data || {})
   if (path === 'system/config') return updateConfig(data || {})
   if (route?.table === 'sys_user' && id && action === 'reset-password') return resetUserPassword(id, String(data?.newPassword || ''))
   if (path === 'salary/monthly/settle') return settleMonthlySalary(data || {})
@@ -6172,12 +6331,12 @@ async function remove(url: string) {
   return deleteTable(route, id)
 }
 
-function normalizeError(error: any) {
-  return error?.message || error?.error_description || 'Supabase 请求失败'
+function normalizeError(error: unknown) {
+  return getErrorMessage(error, 'Supabase 请求失败')
 }
 
 export function createSupabaseRequest(hooks: RequestHooks = {}) {
-  async function wrap<T>(runner: () => Promise<ApiResponse<T>>) {
+  async function wrap<T>(runner: () => Promise<ApiResponse<T>>, config?: RequestConfig) {
     try {
       return await runner()
     } catch (error: any) {
@@ -6185,15 +6344,15 @@ export function createSupabaseRequest(hooks: RequestHooks = {}) {
       if (message.includes('JWT') || message.includes('Auth')) {
         hooks.onUnauthorized?.()
       }
-      hooks.onError?.(message)
+      if (config?.notifyOnError !== false) hooks.onError?.(message)
       throw error
     }
   }
 
   return {
-    get: <T = any>(url: string, config?: RequestConfig) => wrap<T>(() => get(url, config) as Promise<ApiResponse<T>>),
+    get: <T = any>(url: string, config?: RequestConfig) => wrap<T>(() => get(url, config) as Promise<ApiResponse<T>>, config),
     post: <T = any>(url: string, data?: any, config?: RequestConfig) =>
-      wrap<T>(() => post(url, data, config) as Promise<ApiResponse<T>>),
+      wrap<T>(() => post(url, data, config) as Promise<ApiResponse<T>>, config),
     put: <T = any>(url: string, data?: any, config?: RequestConfig) =>
       wrap<T>(() => put(url, data) as Promise<ApiResponse<T>>),
     delete: <T = any>(url: string) => wrap<T>(() => remove(url) as Promise<ApiResponse<T>>),

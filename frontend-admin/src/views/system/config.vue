@@ -1,18 +1,22 @@
 <template>
   <div class="page-container">
     <PageHeader title="系统配置">
-      <el-button @click="handleReset">
-        <el-icon><Refresh /></el-icon>
-        重置
-      </el-button>
-      <el-button type="primary" @click="handleSave">
-        <el-icon><Check /></el-icon>
-        保存
-      </el-button>
+      <template v-if="activeTab === 'general'">
+        <el-button @click="handleReset">
+          <el-icon><Refresh /></el-icon>
+          重置
+        </el-button>
+        <el-button type="primary" @click="handleSave">
+          <el-icon><Check /></el-icon>
+          保存
+        </el-button>
+      </template>
     </PageHeader>
 
-    <el-card shadow="hover">
-      <el-form ref="formRef" :model="form" :rules="formRules" label-width="160px" class="config-form">
+    <el-tabs v-model="activeTab" class="config-tabs">
+      <el-tab-pane label="系统参数" name="general">
+        <el-card shadow="hover">
+          <el-form ref="formRef" :model="form" :rules="formRules" label-width="160px" class="config-form">
         <el-divider content-position="left">基础配置</el-divider>
         <el-form-item label="工厂名称" prop="factory_name">
           <el-input v-model="form.factory_name" placeholder="请输入工厂名称" />
@@ -90,26 +94,32 @@
         <el-form-item label="钉钉Webhook" prop="dingtalk_webhook_url">
           <el-input v-model="form.dingtalk_webhook_url" placeholder="请输入钉钉 Webhook" />
         </el-form-item>
-      </el-form>
-    </el-card>
+          </el-form>
+        </el-card>
 
-    <el-card shadow="hover" class="danger-card">
-      <div class="danger-head">
-        <div>
-          <h3>危险操作</h3>
-          <p>用于上线前清理演示和测试业务数据。操作会保留管理员账号与系统配置，但会清除单据、库存、质量、工资、流程、日志和基础业务资料。</p>
-        </div>
-        <el-button type="danger" :loading="clearing" @click="handleClearAllData">
-          一键清除所有数据
-        </el-button>
-      </div>
-      <el-alert
-        title="执行后不可从页面撤销，请先确认云库备份或恢复点已就绪。"
-        type="warning"
-        show-icon
-        :closable="false"
-      />
-    </el-card>
+        <el-card shadow="hover" class="danger-card">
+          <div class="danger-head">
+            <div>
+              <h3>危险操作</h3>
+              <p>用于上线前清理演示和测试业务数据。操作会保留管理员账号与系统配置，但会清除单据、库存、质量、工资、流程、日志和基础业务资料。</p>
+            </div>
+            <el-button type="danger" :loading="clearing" @click="handleClearAllData">
+              一键清除所有数据
+            </el-button>
+          </div>
+          <el-alert
+            title="执行后不可从页面撤销，请先确认云库备份或恢复点已就绪。"
+            type="warning"
+            show-icon
+            :closable="false"
+          />
+        </el-card>
+      </el-tab-pane>
+
+      <el-tab-pane label="角色菜单" name="role-menu">
+        <RoleMenuConfigurator />
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
@@ -118,6 +128,7 @@ import { onMounted, reactive, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
+import RoleMenuConfigurator from '@/components/RoleMenuConfigurator.vue'
 import { clearAllBusinessData, getSystemConfig, updateSystemConfig } from '@/api/system'
 import {
   DEFAULT_SYSTEM_CONFIG,
@@ -129,6 +140,7 @@ import {
 
 const formRef = ref<FormInstance>()
 const form = reactive<SystemConfigForm>({ ...DEFAULT_SYSTEM_CONFIG })
+const activeTab = ref('general')
 const clearing = ref(false)
 const CLEAR_CONFIRM_TEXT = '清除所有业务数据'
 

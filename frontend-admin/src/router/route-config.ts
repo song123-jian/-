@@ -14,6 +14,11 @@ export interface AppRouteGroup {
   children: AppLeafRoute[]
 }
 
+export interface AppRouteRedirect {
+  path: string
+  redirect: string
+}
+
 const managementRoles = ['admin', 'boss']
 const fieldRoles = ['admin', 'boss', 'operator']
 
@@ -33,6 +38,10 @@ export const loginRoute: AppLeafRoute = {
   view: 'login/index.vue',
 }
 
+export const legacyRouteRedirects: AppRouteRedirect[] = [
+  { path: '/report/finance-dashboard', redirect: '/finance/dashboard' },
+]
+
 const injectionRoutes = {
   processCard: { path: '/injection/process-card', name: 'InjectionProcessCard', title: '工艺卡管理', icon: 'Document', view: 'injection/module.vue', roles: fieldRoles },
   trialMold: { path: '/injection/trial-mold', name: 'InjectionTrialMold', title: '试模首件', icon: 'Checked', view: 'injection/module.vue', roles: fieldRoles },
@@ -46,6 +55,7 @@ const injectionRoutes = {
   customerComplaint: { path: '/injection/customer-complaint', name: 'InjectionCustomerComplaint', title: '客诉8D', icon: 'DocumentChecked', view: 'injection/module.vue', roles: fieldRoles },
   oeeRecord: { path: '/injection/oee-record', name: 'InjectionOeeRecord', title: 'OEE分析', icon: 'TrendCharts', view: 'injection/module.vue', roles: fieldRoles },
   processChange: { path: '/injection/process-change', name: 'InjectionProcessChange', title: '工艺变更', icon: 'Operation', view: 'injection/module.vue', roles: fieldRoles },
+  moldDevelopment: { path: '/prod/mold-development', name: 'MoldDevelopment', title: '模具开发中心', icon: 'Box', view: 'prod/mold-development.vue', roles: fieldRoles },
   purchaseRequisition: { path: '/injection/purchase-requisition', name: 'InjectionPurchaseRequisition', title: '采购请购', icon: 'ShoppingCart', view: 'injection/module.vue', roles: managementRoles },
 } satisfies Record<string, AppLeafRoute>
 
@@ -56,6 +66,21 @@ const equipmentRoutes = {
 const workbenchRoutes = {
   todos: { path: '/workbench/todos', name: 'WorkbenchTodos', title: '我的待办中心', icon: 'Memo', view: 'workbench/todos.vue', roles: fieldRoles },
   abnormalCenter: { path: '/workbench/abnormal-center', name: 'AbnormalCenter', title: '异常闭环中心', icon: 'WarningFilled', view: 'workbench/abnormal-center.vue', roles: fieldRoles },
+  warnings: { path: '/prod/warnings', name: 'ProdWarnings', title: '预警中心', icon: 'Bell', view: 'prod/warnings.vue', roles: fieldRoles },
+} satisfies Record<string, AppLeafRoute>
+
+const baseRoutes = {
+  warehouses: { path: 'warehouses', name: 'Warehouses', title: '仓库档案', icon: 'House', view: 'base/warehouses.vue', roles: managementRoles },
+  products: { path: 'products', name: 'Products', title: '产品档案', icon: 'Goods', view: 'base/products.vue', roles: managementRoles },
+  customers: { path: 'customers', name: 'Customers', title: '客户档案', icon: 'UserFilled', view: 'base/customers.vue', roles: managementRoles },
+  suppliers: { path: 'suppliers', name: 'Suppliers', title: '供应商档案', icon: 'Van', view: 'base/suppliers.vue', roles: managementRoles },
+  machines: { path: 'machines', name: 'Machines', title: '机台档案', icon: 'Monitor', view: 'base/machines.vue', roles: fieldRoles },
+  molds: { path: 'molds', name: 'Molds', title: '模具档案', icon: 'Box', view: 'base/molds.vue', roles: fieldRoles },
+} satisfies Record<string, AppLeafRoute>
+
+const systemRoutes = {
+  users: { path: '/base/users', name: 'Users', title: '用户管理', icon: 'User', view: 'base/users.vue', roles: managementRoles },
+  notifications: { path: '/system/notifications', name: 'Notifications', title: '消息中心', icon: 'Bell', view: 'system/notifications.vue', roles: fieldRoles },
 } satisfies Record<string, AppLeafRoute>
 
 const purchaseRoutes = {
@@ -75,6 +100,8 @@ export const routeGroups: AppRouteGroup[] = [
     children: [
       workbenchRoutes.todos,
       workbenchRoutes.abnormalCenter,
+      workbenchRoutes.warnings,
+      systemRoutes.notifications,
     ],
   },
   {
@@ -82,13 +109,12 @@ export const routeGroups: AppRouteGroup[] = [
     title: '基础资料',
     icon: 'FolderOpened',
     children: [
-      { path: 'users', name: 'Users', title: '用户管理', icon: 'User', view: 'base/users.vue', roles: managementRoles },
-      { path: 'warehouses', name: 'Warehouses', title: '仓库管理', icon: 'House', view: 'base/warehouses.vue', roles: managementRoles },
-      { path: 'products', name: 'Products', title: '产品管理', icon: 'Goods', view: 'base/products.vue', roles: managementRoles },
-      { path: 'customers', name: 'Customers', title: '客户管理', icon: 'UserFilled', view: 'base/customers.vue', roles: managementRoles },
-      { path: 'suppliers', name: 'Suppliers', title: '供应商管理', icon: 'Van', view: 'base/suppliers.vue', roles: managementRoles },
-      { path: 'machines', name: 'Machines', title: '机台管理', icon: 'Monitor', view: 'base/machines.vue', roles: fieldRoles },
-      { path: 'molds', name: 'Molds', title: '模具管理', icon: 'Box', view: 'base/molds.vue', roles: fieldRoles },
+      baseRoutes.products,
+      baseRoutes.customers,
+      baseRoutes.suppliers,
+      baseRoutes.warehouses,
+      baseRoutes.machines,
+      baseRoutes.molds,
     ],
   },
   {
@@ -111,7 +137,6 @@ export const routeGroups: AppRouteGroup[] = [
       injectionRoutes.processCard,
       injectionRoutes.processChange,
       { path: 'productization', name: 'ProductizationCenter', title: '产品化中心', icon: 'Operation', view: 'prod/productization.vue', roles: managementRoles },
-      { path: 'warnings', name: 'ProdWarnings', title: '预警中心', icon: 'Bell', view: 'prod/warnings.vue', roles: fieldRoles },
     ],
   },
   {
@@ -141,9 +166,11 @@ export const routeGroups: AppRouteGroup[] = [
         roles: fieldRoles,
       },
       injectionRoutes.maintenanceOrder,
-      equipmentRoutes.spareParts,
       { path: '/prod/downtime', name: 'Downtime', title: '停机记录', icon: 'WarningFilled', view: 'prod/downtime.vue', roles: fieldRoles },
+      equipmentRoutes.spareParts,
+      injectionRoutes.moldDevelopment,
       { path: '/prod/mount-records', name: 'MountRecords', title: '上下模记录', icon: 'Stamp', view: 'prod/mount-records.vue', roles: fieldRoles },
+      injectionRoutes.moldMaintenancePlan,
       {
         path: '/prod/mold-maintenance-records',
         name: 'MoldMaintenanceRecords',
@@ -152,7 +179,6 @@ export const routeGroups: AppRouteGroup[] = [
         view: 'prod/mold-maintenance-records.vue',
         roles: fieldRoles,
       },
-      injectionRoutes.moldMaintenancePlan,
     ],
   },
   {
@@ -218,7 +244,6 @@ export const routeGroups: AppRouteGroup[] = [
     title: '报表中心',
     icon: 'TrendCharts',
     children: [
-      { path: 'finance-dashboard', name: 'ReportFinanceDashboard', title: '财务经营报表', icon: 'Coin', view: 'finance/dashboard.vue', roles: managementRoles },
       { path: 'boss-dashboard', name: 'BossDashboard', title: '老板驾驶舱', icon: 'Odometer', view: 'report/boss-dashboard.vue', roles: managementRoles },
       { path: 'production-board', name: 'ProductionBoard', title: '生产看板', icon: 'DataLine', view: 'report/production-board.vue', roles: fieldRoles },
       injectionRoutes.oeeRecord,
@@ -230,11 +255,11 @@ export const routeGroups: AppRouteGroup[] = [
     title: '系统管理',
     icon: 'Setting',
     children: [
-      { path: 'logs', name: 'SystemLogs', title: '操作日志', icon: 'Memo', view: 'system/logs.vue', roles: managementRoles },
+      systemRoutes.users,
       { path: 'config', name: 'SystemConfig', title: '系统配置', icon: 'Tools', view: 'system/config.vue', roles: managementRoles },
       { path: 'integration', name: 'SystemIntegration', title: '集成中心', icon: 'Link', view: 'system/integration.vue', roles: managementRoles },
       { path: 'backup', name: 'SystemBackup', title: '云库运维', icon: 'FolderChecked', view: 'system/backup.vue', roles: managementRoles },
-      { path: 'notifications', name: 'Notifications', title: '消息中心', icon: 'Bell', view: 'system/notifications.vue', roles: fieldRoles },
+      { path: 'logs', name: 'SystemLogs', title: '操作日志', icon: 'Memo', view: 'system/logs.vue', roles: managementRoles },
     ],
   },
 ]
@@ -242,4 +267,11 @@ export const routeGroups: AppRouteGroup[] = [
 export function buildRoutePath(parentPath: string, childPath: string) {
   if (childPath.startsWith('/')) return childPath
   return `${parentPath}/${childPath}`
+}
+
+export function findRouteGroupByPath(routePath: string) {
+  const normalizedPath = routePath.split(/[?#]/, 1)[0]
+  return routeGroups.find((group) =>
+    group.children.some((item) => buildRoutePath(group.path, item.path) === normalizedPath),
+  ) || routeGroups.find((group) => normalizedPath === group.path || normalizedPath.startsWith(`${group.path}/`))
 }

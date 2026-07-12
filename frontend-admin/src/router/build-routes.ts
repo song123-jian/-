@@ -1,6 +1,6 @@
 import type { RouteRecordRaw } from 'vue-router'
 import Layout from '@/layout/index.vue'
-import { buildRoutePath, dashboardRoute, loginRoute, routeGroups } from './route-config'
+import { buildRoutePath, dashboardRoute, legacyRouteRedirects, loginRoute, routeGroups } from './route-config'
 
 type ViewLoader = Record<string, () => Promise<unknown>>
 
@@ -44,6 +44,10 @@ export function createAppRoutes(loaderMap: ViewLoader): RouteRecordRaw[] {
         component: resolveView(loaderMap, item.view),
         meta: { title: item.title, icon: item.icon, roles: item.roles },
       })),
+    })),
+    ...legacyRouteRedirects.map((item) => ({
+      path: item.path,
+      redirect: item.redirect,
     })),
     {
       path: '/:pathMatch(.*)*',

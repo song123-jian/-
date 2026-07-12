@@ -121,14 +121,16 @@ describe('finance dashboard risks and drilldowns', () => {
 })
 
 describe('finance dashboard page and route integration', () => {
-  it('is mounted under finance management and report center', () => {
+  it('keeps one finance-management entry and avoids a duplicate report-center shortcut', () => {
     const routes = readFileSync(new URL('../frontend-admin/src/router/route-config.ts', import.meta.url), 'utf8')
     const page = readFileSync(new URL('../frontend-admin/src/views/finance/dashboard.vue', import.meta.url), 'utf8')
     const boss = readFileSync(new URL('../frontend-admin/src/views/report/boss-dashboard.vue', import.meta.url), 'utf8')
     const requestSource = readFileSync(new URL('../frontend-admin/src/api/supabaseRequest.ts', import.meta.url), 'utf8')
 
     assert.match(routes, /name: 'FinanceDashboard'[\s\S]*view: 'finance\/dashboard\.vue'/)
-    assert.match(routes, /name: 'ReportFinanceDashboard'[\s\S]*view: 'finance\/dashboard\.vue'/)
+    assert.doesNotMatch(routes, /name: 'ReportFinanceDashboard'/)
+    assert.equal((routes.match(/view: 'finance\/dashboard\.vue'/g) || []).length, 1)
+    assert.match(routes, /path: '\/report\/finance-dashboard'[\s\S]*redirect: '\/finance\/dashboard'/)
     assert.match(page, /buildFinanceDashboardCards/)
     assert.match(page, /getFinanceReceivables/)
     assert.match(page, /逾期应收/)

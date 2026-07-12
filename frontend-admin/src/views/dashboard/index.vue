@@ -13,6 +13,7 @@
         </el-button>
       </template>
       <el-tag v-else effect="plain" type="warning">Supabase 未连接</el-tag>
+      <el-button plain :icon="Setting" @click="openConfigDialog">配置 Supabase</el-button>
     </PageHeader>
 
     <section v-if="!isSupabaseConfigured" class="setup-state">
@@ -21,7 +22,7 @@
           <p class="setup-eyebrow">Supabase 云数据库未连接</p>
           <h3 class="setup-title">完成云端配置后，工作台会自动切换到实时业务视图</h3>
           <p class="setup-description">
-            当前页面只保留配置引导，避免把全量 0 值误判为真实业务数据。补齐环境变量、执行数据库初始化后，刷新即可恢复正常看板。
+            当前页面只保留配置引导，避免把全量 0 值误判为真实业务数据。点击“填写 Supabase 配置”保存后会自动刷新；完成数据库初始化后即可恢复正常看板。
           </p>
         </div>
         <div class="setup-actions">
@@ -29,7 +30,7 @@
             <el-icon><Refresh /></el-icon>
             重新检查配置
           </el-button>
-          <el-button plain @click="goTo('/login')">返回登录页</el-button>
+          <el-button plain @click="openConfigDialog">填写 Supabase 配置</el-button>
         </div>
       </div>
 
@@ -39,7 +40,7 @@
             <span class="setup-step">01</span>
             <h4>补齐管理端环境变量</h4>
           </div>
-          <p>在 `frontend-admin/.env.local` 中配置以下变量后重启前端。</p>
+          <p>可直接点击上方按钮填写并保存，也可在 `frontend-admin/.env.local` 中配置后重启前端。</p>
           <div class="setup-tags">
             <el-tag v-for="item in requiredEnvKeys" :key="item" effect="plain" type="info">{{ item }}</el-tag>
           </div>
@@ -50,10 +51,10 @@
             <span class="setup-step">02</span>
             <h4>初始化 Supabase 云库</h4>
           </div>
-          <p>在 Supabase SQL Editor 中执行业务初始化脚本，确保表结构、登录 RPC 和存储桶已经创建。</p>
+          <p>执行完整云库脚本并部署用户管理函数，确保表结构、Auth 同步和存储桶已经创建。</p>
           <div class="setup-tags">
             <el-tag effect="plain">database/supabase-cloud.sql</el-tag>
-            <el-tag effect="plain">database/init.sql</el-tag>
+            <el-tag effect="plain">supabase/functions/erp-user-admin</el-tag>
           </div>
         </article>
 
@@ -303,6 +304,77 @@
       </el-col>
     </el-row>
     </template>
+
+    <el-dialog
+      v-model="configDialogVisible"
+      class="supabase-config-dialog"
+      title="Supabase 连接配置"
+      top="4vh"
+      width="min(560px, calc(100vw - 24px))"
+      :close-on-click-modal="false"
+      @open="loadConfigForm"
+    >
+      <el-alert
+        class="config-dialog-alert"
+        type="info"
+        show-icon
+        :closable="false"
+        title="请使用 Supabase 项目设置中的 anon/public key"
+        description="部署默认配置会随程序在不同设备生效；本页修改只覆盖当前设备，且仅允许受信任项目的 publishable key。"
+      />
+      <el-form ref="configFormRef" :model="configForm" :rules="configRules" label-position="top" class="config-form">
+        <el-form-item label="项目 URL" prop="url">
+          <el-input v-model.trim="configForm.url" placeholder="https://your-project.supabase.co" autocomplete="url" />
+        </el-form-item>
+        <el-form-item label="Anon / Public Key" prop="anonKey">
+          <el-input
+            v-model="configForm.anonKey"
+            type="password"
+            show-password
+            placeholder="粘贴 anon public key"
+            autocomplete="off"
+          />
+        </el-form-item>
+        <el-form-item label="登录邮箱域名（可选）">
+          <el-input v-model.trim="configForm.authEmailDomain" placeholder="your-project-ref.supabase.co" />
+        </el-form-item>
+        <el-form-item label="存储桶名称（可选）">
+          <el-input v-model.trim="configForm.storageBucket" placeholder="erp-files" />
+        </el-form-item>
+        <el-form-item label="配置确认密码" prop="confirmationPassword">
+          <el-input
+            v-model="configForm.confirmationPassword"
+            type="password"
+            show-password
+            placeholder="请输入配置确认密码"
+            name="supabase-config-confirmation-password"
+            autocomplete="new-password"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="config-dialog-footer">
+          <el-button @click="configDialogVisible = false">取消</el-button>
+          <el-button
+            type="warning"
+            plain
+            :loading="configResetting"
+            :disabled="configSaving"
+            @click="handleResetConfig"
+          >
+            恢复部署默认
+          </el-button>
+          <el-button
+            type="primary"
+            :loading="configSaving"
+            :disabled="configResetting"
+            @click="handleSaveConfig"
+          >
+            保存并刷新
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -310,13 +382,20 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
-import { Bell, Checked, CircleCheck, DataLine, EditPen, List, Notebook, Odometer, Refresh, TrendCharts, WarningFilled } from '@element-plus/icons-vue'
+import { Bell, Checked, CircleCheck, DataLine, EditPen, List, Notebook, Odometer, Refresh, Setting, TrendCharts, WarningFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import type { FormInstance, FormRules } from 'element-plus'
 import MetricStrip from '@/components/MetricStrip.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { getDashboardData, getProductionBoard } from '@/api/dashboard'
 import { getDowntimeRecordList } from '@/api/downtime'
-import { isSupabaseConfigured } from '@/api/supabaseClient'
+import {
+  clearSupabaseRuntimeConfig,
+  getSupabaseRuntimeConfig,
+  isSupabaseConfigured,
+  saveSupabaseRuntimeConfig,
+  type SupabaseRuntimeConfig,
+} from '@/api/supabaseClient'
 import { getOeeStats } from '@/api/report'
 import { getWarningList, getWarningSummary } from '@/api/warning'
 import { formatDate, formatDateTime } from '@/utils'
@@ -412,6 +491,38 @@ type TodoItem = NonNullable<HomeDashboard['todoList']>[number]
 const router = useRouter()
 const loading = ref(false)
 const lastUpdated = ref('')
+const configSaving = ref(false)
+const configResetting = ref(false)
+const configDialogVisible = ref(false)
+const configFormRef = ref<FormInstance>()
+
+const configForm = ref<SupabaseRuntimeConfig & { confirmationPassword: string }>({
+  url: '',
+  anonKey: '',
+  authEmailDomain: '',
+  storageBucket: '',
+  confirmationPassword: '',
+})
+
+const configRules: FormRules = {
+  url: [
+    { required: true, message: '请输入 Supabase 项目 URL', trigger: 'blur' },
+    {
+      validator: (_rule, value, callback) => {
+        try {
+          const parsedUrl = new URL(String(value || '').trim())
+          if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error()
+          callback()
+        } catch {
+          callback(new Error('请输入有效的 http 或 https 地址'))
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+  anonKey: [{ required: true, message: '请输入 anon/public key', trigger: 'blur' }],
+  confirmationPassword: [{ required: true, message: '请输入配置确认密码', trigger: 'blur' }],
+}
 
 const homeData = ref<HomeDashboard>({})
 const productionData = ref<ProductionBoard>({})
@@ -437,6 +548,52 @@ const actionItems = [
 
 const orderColors = ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#909399', '#8b5cf6']
 const requiredEnvKeys = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', 'VITE_SUPABASE_AUTH_EMAIL_DOMAIN', 'VITE_SUPABASE_STORAGE_BUCKET']
+
+function loadConfigForm() {
+  configForm.value = {
+    ...getSupabaseRuntimeConfig(),
+    confirmationPassword: '',
+  }
+}
+
+function openConfigDialog() {
+  loadConfigForm()
+  configDialogVisible.value = true
+}
+
+async function handleSaveConfig() {
+  const valid = await configFormRef.value?.validate().catch(() => false)
+  if (!valid) return
+
+  configSaving.value = true
+  try {
+    await saveSupabaseRuntimeConfig(configForm.value, configForm.value.confirmationPassword)
+    ElMessage.success('Supabase 配置已保存，页面即将刷新')
+    window.setTimeout(() => window.location.reload(), 300)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : 'Supabase 配置保存失败')
+  } finally {
+    configSaving.value = false
+  }
+}
+
+async function handleResetConfig() {
+  if (!configForm.value.confirmationPassword) {
+    await configFormRef.value?.validateField('confirmationPassword').catch(() => undefined)
+    return
+  }
+
+  configResetting.value = true
+  try {
+    await clearSupabaseRuntimeConfig(configForm.value.confirmationPassword)
+    ElMessage.success('已恢复部署默认 Supabase 配置，页面即将刷新')
+    window.setTimeout(() => window.location.reload(), 300)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : 'Supabase 配置恢复失败')
+  } finally {
+    configResetting.value = false
+  }
+}
 
 function numberText(value?: number | string | null) {
   return Number(value || 0).toLocaleString('zh-CN')
@@ -959,6 +1116,36 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+}
+
+.config-dialog-alert {
+  margin-bottom: 18px;
+}
+
+.config-form :deep(.el-form-item__label) {
+  padding-bottom: 5px;
+  color: #475569;
+  font-weight: 600;
+}
+
+.config-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+:global(.supabase-config-dialog.el-dialog) {
+  max-height: 92vh;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+:global(.supabase-config-dialog .el-dialog__body) {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .setup-grid {

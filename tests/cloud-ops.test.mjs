@@ -13,6 +13,7 @@ import {
   parseCloudOpsCoveragePackage,
   QUALITY_TRACEABILITY_SMOKE_ROUTES,
 } from '../frontend-admin/src/utils/cloud-ops.ts'
+import { resolveSupabaseAuthEmailDomain } from '../frontend-admin/src/utils/supabase-runtime-config.ts'
 import { DEFAULT_SYSTEM_CONFIG } from '../frontend-admin/src/utils/system-config.ts'
 
 const read = (path) => readFileSync(path, 'utf8')
@@ -35,14 +36,20 @@ describe('cloud ops environment state', () => {
     assert.match(state.summary, /VITE_SUPABASE_ANON_KEY/)
   })
 
-  it('keeps optional defaults visible while warning operators to confirm them', () => {
+  it('derives the Auth email domain from the configured Supabase URL hostname', () => {
+    const projectUrl = 'https://saodtwnvbanjlkwwivcb.supabase.co'
     const rows = buildCloudOpsEnvRows({
+      url: projectUrl,
       hasUrl: true,
       hasAnonKey: true,
     })
     const state = getCloudOpsEnvState(rows)
+    const authDomainRow = rows.find((row) => row.key === 'VITE_SUPABASE_AUTH_EMAIL_DOMAIN')
 
-    assert.equal(rows.find((row) => row.key === 'VITE_SUPABASE_AUTH_EMAIL_DOMAIN').valueText, 'inject-erp.example.com')
+    assert.equal(resolveSupabaseAuthEmailDomain(projectUrl), 'saodtwnvbanjlkwwivcb.supabase.co')
+    assert.equal(resolveSupabaseAuthEmailDomain(projectUrl, 'login.example.com'), 'login.example.com')
+    assert.equal(authDomainRow.valueText, 'saodtwnvbanjlkwwivcb.supabase.co')
+    assert.equal(authDomainRow.state, 'success')
     assert.equal(rows.find((row) => row.key === 'VITE_SUPABASE_STORAGE_BUCKET').valueText, 'erp-files')
     assert.equal(state.state, 'warning')
     assert.equal(state.stateText, 'Supabase 可用，存在默认配置')

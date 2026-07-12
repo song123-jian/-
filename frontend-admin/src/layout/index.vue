@@ -13,6 +13,7 @@
         :default-active="activeMenu"
         :collapse="appStore.sidebarCollapsed"
         :collapse-transition="false"
+        unique-opened
         router
         background-color="#172033"
         text-color="#c6d0dd"
@@ -195,12 +196,22 @@ import {
   WarningFilled,
 } from '@element-plus/icons-vue'
 import { getUnreadNotificationCount } from '@/api/notification'
+import { getRoleMenuConfig } from '@/api/system'
 import { isSupabaseConfigured } from '@/api/supabaseClient'
 import { useAppStore } from '@/store/app'
 import { useUserStore } from '@/store/user'
-import { buildRoutePath, routeGroups } from '@/router/route-config'
+import { buildRoutePath, findRouteGroupByPath, routeGroups } from '@/router/route-config'
 import { normalizeUnreadNotificationCount } from '@/utils/notification-center'
-import { canAccessRoles, getStoredUserRoles, normalizeRoles } from '@/utils/role-access'
+import { getStoredUserRoles, normalizeRoles } from '@/utils/role-access'
+import {
+  ROLE_MENU_UPDATED_EVENT,
+  ROLE_MENU_STORAGE_KEY,
+  filterRouteGroupsByRoleMenu,
+  loadRoleMenuCache,
+  normalizeRoleMenuConfig,
+  saveRoleMenuCache,
+  type RoleMenuConfig,
+} from '@/utils/role-menu'
 
 const route = useRoute()
 const router = useRouter()
@@ -213,6 +224,7 @@ const latestVersion = ref('')
 const updateDownloadUrl = ref('')
 const updateMessage = ref('')
 const updateAvailable = ref(false)
+const roleMenuConfig = ref<RoleMenuConfig>(loadRoleMenuCache(routeGroups))
 const windowManagerState = ref<DesktopWindowManagerState>({
   maxWindows: 2,
   count: 0,
@@ -224,6 +236,7 @@ let removeWindowManagerListener: (() => void) | null = null
 
 const roleNameMap: Record<string, string> = {
   admin: '管理员',
+  boss: '老板',
   manager: '主管',
   operator: '现场角色',
   field: '现场角色',
@@ -249,16 +262,11 @@ const accessRoles = computed(() => normalizeRoles([
   ...getStoredUserRoles(),
 ]))
 const visibleRouteGroups = computed(() =>
-  routeGroups
-    .map((group) => ({
-      ...group,
-      children: group.children.filter((item) => canAccessRoles(accessRoles.value, item.roles)),
-    }))
-    .filter((group) => group.children.length > 0)
+  filterRouteGroupsByRoleMenu(routeGroups, accessRoles.value, roleMenuConfig.value)
 )
 const currentModuleTitle = computed(() => {
   if (route.path === '/dashboard') return '工作台'
-  const matchedGroup = routeGroups.find((group) => route.path === group.path || route.path.startsWith(`${group.path}/`))
+  const matchedGroup = findRouteGroupByPath(route.path)
   return matchedGroup?.title || String(route.meta?.title || '业务页面')
 })
 const currentRoleLabel = computed(() => {
@@ -356,6 +364,30 @@ async function loadUnreadCount() {
 
 function handleNotificationUpdated() {
   loadUnreadCount()
+}
+
+function handleRoleMenuUpdated(event: Event) {
+  const detail = (event as CustomEvent<RoleMenuConfig>).detail
+  roleMenuConfig.value = detail
+    ? normalizeRoleMenuConfig(detail, routeGroups)
+    : loadRoleMenuCache(routeGroups)
+}
+
+function handleRoleMenuStorage(event: StorageEvent) {
+  if (event.key === ROLE_MENU_STORAGE_KEY) roleMenuConfig.value = loadRoleMenuCache(routeGroups)
+}
+
+async function loadRoleMenus() {
+  roleMenuConfig.value = loadRoleMenuCache(routeGroups)
+  if (!isSupabaseConfigured) return
+  try {
+    const res: any = await getRoleMenuConfig()
+    if (res?.data?.configured && res.data.menus) {
+      roleMenuConfig.value = saveRoleMenuCache(res.data.menus, routeGroups)
+    }
+  } catch {
+    // Keep the cached role menu when the cloud request is unavailable.
+  }
 }
 
 async function loadDesktopVersionInfo() {
@@ -494,18 +526,23 @@ async function checkDesktopUpdate() {
 
 onMounted(() => {
   loadUnreadCount()
+  loadRoleMenus()
   loadDesktopVersionInfo()
   loadWindowManagerState()
   if (window.desktopWindowManager) {
     removeWindowManagerListener = window.desktopWindowManager.onStateChanged(updateWindowManagerState)
   }
   window.addEventListener('notification-updated', handleNotificationUpdated as EventListener)
+  window.addEventListener(ROLE_MENU_UPDATED_EVENT, handleRoleMenuUpdated as EventListener)
+  window.addEventListener('storage', handleRoleMenuStorage)
 })
 
 onUnmounted(() => {
   removeWindowManagerListener?.()
   removeWindowManagerListener = null
   window.removeEventListener('notification-updated', handleNotificationUpdated as EventListener)
+  window.removeEventListener(ROLE_MENU_UPDATED_EVENT, handleRoleMenuUpdated as EventListener)
+  window.removeEventListener('storage', handleRoleMenuStorage)
 })
 </script>
 

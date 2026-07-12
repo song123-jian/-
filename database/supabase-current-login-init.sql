@@ -63,7 +63,7 @@ begin
   end if;
 
   if matched_user.password_hash is null
-     or matched_user.password_hash <> crypt(login_password, matched_user.password_hash::text) then
+     or matched_user.password_hash <> extensions.crypt(login_password, matched_user.password_hash::text) then
     update public.sys_user
        set login_fail_count = coalesce(login_fail_count, 0) + 1,
            updated_at = now()
@@ -71,7 +71,7 @@ begin
     raise exception '用户名或密码错误' using errcode = 'P0001';
   end if;
 
-  session_token := encode(gen_random_bytes(32), 'hex');
+  session_token := encode(extensions.gen_random_bytes(32), 'hex');
 
   update public.sys_user
      set login_fail_count = 0,
