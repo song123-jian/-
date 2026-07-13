@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+
+const require = createRequire(import.meta.url)
+const { compareVersions, normalizeUpdateManifest, normalizeUrl } = require('../frontend-admin/electron/update-utils.cjs')
 
 const mainSource = await readFile(new URL('../frontend-admin/electron/main.cjs', import.meta.url), 'utf8')
 const preloadSource = await readFile(new URL('../frontend-admin/electron/preload.cjs', import.meta.url), 'utf8')
@@ -42,13 +46,32 @@ describe('desktop electron shell', () => {
     assert.match(adminPackage.scripts['desktop:portable'], /--win portable/)
     assert.equal(adminPackage.build.win.target[0].target, 'dir')
     assert.equal(adminPackage.build.asar, true)
+    assert.equal(adminPackage.build.compression, 'store')
+    assert.equal(adminPackage.version, '1.0.1')
   })
 
   it('exposes a safe desktop updater bridge for version checks and downloads', () => {
     assert.match(mainSource, /UPDATE_URL_FILE\s*=\s*'update-url\.txt'/)
+    assert.match(mainSource, /DEFAULT_UPDATE_URL\s*=\s*'https:\/\/api\.github\.com\/repos\/song123-jian\/-\/releases\/latest'/)
     assert.match(mainSource, /INJECT_ERP_UPDATE_URL/)
-    assert.match(mainSource, /function compareVersions/)
-    assert.match(mainSource, /function normalizeUpdateManifest/)
+    assert.equal(compareVersions('1.0.1', '1.0.0'), 1)
+    assert.equal(compareVersions('v1.0.1', '1.0.1'), 0)
+    assert.equal(normalizeUrl('file:///unsafe.exe'), '')
+    assert.deepEqual(normalizeUpdateManifest({
+      tag_name: 'v1.0.2',
+      html_url: 'https://github.com/song123-jian/-/releases/tag/v1.0.2',
+      assets: [
+        { name: 'checksums.txt', browser_download_url: 'https://example.com/checksums.txt' },
+        { name: 'InjectERP-Admin-1.0.2-portable.exe', browser_download_url: 'https://example.com/app.exe' },
+      ],
+      body: '修复窗口恢复问题',
+    }), {
+      latestVersion: '1.0.2',
+      downloadUrl: 'https://example.com/app.exe',
+      releaseDate: '',
+      notes: '修复窗口恢复问题',
+      force: false,
+    })
     assert.match(mainSource, /ipcMain\.handle\('desktop:get-version-info'/)
     assert.match(mainSource, /ipcMain\.handle\('desktop:check-for-updates'/)
     assert.match(mainSource, /ipcMain\.handle\('desktop:open-update-download'/)

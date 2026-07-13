@@ -1,6 +1,6 @@
 {
   "name": "inject-erp-admin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "注塑ERP管理端桌面版",
   "private": true,
   "author": "ZSC",
@@ -19,6 +19,7 @@
     "appId": "com.zsc.injecterp.admin",
     "productName": "注塑ERP管理端",
     "asar": true,
+    "compression": "store",
     "directories": {
       "output": "release"
     },

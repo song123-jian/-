@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, screen, shell } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
+const { compareVersions, normalizeUpdateManifest, normalizeUrl } = require('./update-utils.cjs')
 
 const isDev = !app.isPackaged
 const appIcon = path.join(__dirname, '..', 'build', 'icon.ico')
@@ -11,6 +12,7 @@ const DEFAULT_WINDOW_BOUNDS = { width: 1440, height: 900 }
 const MIN_WINDOW_BOUNDS = { width: 1180, height: 720 }
 const CLOSE_BEHAVIORS = new Set(['ask', 'hide', 'quit'])
 const UPDATE_URL_FILE = 'update-url.txt'
+const DEFAULT_UPDATE_URL = 'https://api.github.com/repos/song123-jian/-/releases/latest'
 const UPDATE_TIMEOUT_MS = 10000
 const WINDOW_MANAGER_CHANGED_CHANNEL = 'desktop:window-manager:state-changed'
 
@@ -29,17 +31,6 @@ if (!gotSingleInstanceLock) {
 
 function stateFilePath() {
   return path.join(app.getPath('userData'), WINDOW_STATE_FILE)
-}
-
-function normalizeUrl(value) {
-  const text = String(value || '').trim()
-  if (!text) return ''
-  try {
-    const url = new URL(text)
-    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : ''
-  } catch {
-    return ''
-  }
 }
 
 function readTextFile(filePath) {
@@ -61,34 +52,7 @@ function getUpdateFeedUrl() {
     const url = normalizeUrl(readTextFile(file))
     if (url) return url
   }
-  return ''
-}
-
-function normalizeVersion(value) {
-  return String(value || '').trim().replace(/^v/i, '')
-}
-
-function compareVersions(left, right) {
-  const leftParts = normalizeVersion(left).split(/[.-]/).map((item) => Number.parseInt(item, 10) || 0)
-  const rightParts = normalizeVersion(right).split(/[.-]/).map((item) => Number.parseInt(item, 10) || 0)
-  const length = Math.max(leftParts.length, rightParts.length)
-  for (let index = 0; index < length; index += 1) {
-    const diff = (leftParts[index] || 0) - (rightParts[index] || 0)
-    if (diff !== 0) return diff
-  }
-  return 0
-}
-
-function normalizeUpdateManifest(payload) {
-  const latestVersion = normalizeVersion(payload?.version || payload?.latestVersion || payload?.tag_name)
-  const downloadUrl = normalizeUrl(payload?.downloadUrl || payload?.download_url || payload?.url || payload?.html_url)
-  return {
-    latestVersion,
-    downloadUrl,
-    releaseDate: String(payload?.releaseDate || payload?.published_at || '').trim(),
-    notes: String(payload?.notes || payload?.body || payload?.changelog || '').trim(),
-    force: Boolean(payload?.force),
-  }
+  return DEFAULT_UPDATE_URL
 }
 
 async function fetchUpdateManifest(updateUrl) {

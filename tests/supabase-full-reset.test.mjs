@@ -225,7 +225,7 @@ function cloudObjectBody(table) {
   if (tableMatch) return tableMatch[1]
   if (table === 'mold_life_forecast') {
     return cloudSql.match(
-      /create or replace view public\.mold_life_forecast[\s\S]*?\nas\n([\s\S]*?)where public\.can_access_mold_development\(\);/i,
+      /create or replace view public\.mold_life_forecast[\s\S]*?\r?\nas\r?\n([\s\S]*?)where public\.can_access_mold_development\(\);/i,
     )?.[1]
   }
   return undefined
