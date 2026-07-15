@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { login as loginApi, logout as logoutApi, type LoginParams, type LoginResult } from '../api/auth'
+import { clearStoredAuthContext } from '../utils/auth-session.ts'
 
 /** 用户状态管理 */
 export const useUserStore = defineStore('user', () => {
@@ -48,12 +49,7 @@ export const useUserStore = defineStore('user', () => {
       role.value = ''
       realName.value = ''
       shift.value = '白班'
-      localStorage.removeItem('token')
-      localStorage.removeItem('userId')
-      localStorage.removeItem('userName')
-      localStorage.removeItem('phone')
-      localStorage.removeItem('role')
-      localStorage.removeItem('realName')
+      clearStoredAuthContext()
       localStorage.removeItem('shift')
     }
   }

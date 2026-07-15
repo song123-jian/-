@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { login as loginApi, logout as logoutApi, getUserInfo as getUserInfoApi } from '@/api/auth'
 import router from '@/router'
-import { clearStoredToken, getStoredToken, setStoredToken } from '@/utils/auth-storage'
+import { clearStoredAuthContext, getStoredToken, setStoredToken } from '@/utils/auth-storage'
 import { resolvePostLoginPath } from '@/utils/auth-route'
 
 // 用户状态管理
@@ -66,17 +66,7 @@ export const useUserStore = defineStore('user', () => {
     token.value = ''
     userInfo.value = {}
     roles.value = []
-    clearStoredToken()
-    try {
-      localStorage.removeItem('userId')
-      localStorage.removeItem('userName')
-      localStorage.removeItem('realName')
-      localStorage.removeItem('phone')
-      localStorage.removeItem('role')
-      localStorage.removeItem('roles')
-    } catch {
-      // ignore
-    }
+    clearStoredAuthContext()
     router.push('/login')
   }
 

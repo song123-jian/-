@@ -11,6 +11,7 @@ const preloadSource = await readFile(new URL('../frontend-admin/electron/preload
 const layoutSource = await readFile(new URL('../frontend-admin/src/layout/index.vue', import.meta.url), 'utf8')
 const updaterTypes = await readFile(new URL('../frontend-admin/src/types/desktop-updater.d.ts', import.meta.url), 'utf8')
 const adminPackage = JSON.parse(await readFile(new URL('../frontend-admin/package.json', import.meta.url), 'utf8'))
+const rootPackage = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
 
 describe('desktop electron shell', () => {
   it('limits the desktop app to one process and at most two managed windows', () => {
@@ -47,7 +48,8 @@ describe('desktop electron shell', () => {
     assert.equal(adminPackage.build.win.target[0].target, 'dir')
     assert.equal(adminPackage.build.asar, true)
     assert.equal(adminPackage.build.compression, 'store')
-    assert.equal(adminPackage.version, '1.0.1')
+    assert.equal(adminPackage.version, rootPackage.version)
+    assert.match(adminPackage.version, /^\d+\.\d+\.\d+$/)
   })
 
   it('exposes a safe desktop updater bridge for version checks and downloads', () => {

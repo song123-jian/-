@@ -1,5 +1,6 @@
 const TOKEN_KEY = 'token'
 const COOKIE_KEY = 'inject_erp_token'
+const USER_CONTEXT_KEYS = ['userId', 'userName', 'realName', 'phone', 'role', 'roles']
 
 function hasLocalStorage() {
   try {
@@ -64,4 +65,14 @@ export function clearStoredToken() {
     }
   }
   deleteCookie(COOKIE_KEY)
+}
+
+export function clearStoredAuthContext() {
+  clearStoredToken()
+  if (!hasLocalStorage()) return
+  try {
+    for (const key of USER_CONTEXT_KEYS) window.localStorage.removeItem(key)
+  } catch {
+    // The token cookie was already cleared; ignore unavailable local storage.
+  }
 }

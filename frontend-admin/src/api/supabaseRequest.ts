@@ -1,6 +1,6 @@
 import { getSupabaseClient, supabaseAuthEmailDomain, supabaseStorageBucket } from './supabaseClient'
-import { getStoredToken } from '../utils/auth-storage'
 import { getErrorMessage } from '../utils/error-message'
+import { hasActiveSupabaseSession } from '../utils/auth-session'
 import {
   buildSalePaymentPayload,
   getPaymentStatus,
@@ -532,21 +532,6 @@ async function loadRowsByColumn(table: string, column: string, values: Array<str
 
 function choosePiecePrice(rows: any[], productId?: number, processName?: string, date?: string) {
   return chooseSalaryPiecePrice(rows, productId, processName || '注塑', date)
-}
-
-function formatCurrentUserPayload(context: StoredUserContext, fallbackToken = '') {
-  const role = context.role || context.roles?.[0] || 'USER'
-  const realName = context.realName || context.userName || context.phone || ''
-  return {
-    token: fallbackToken || '',
-    userId: context.userId || 0,
-    userName: context.userName || context.phone || '',
-    username: context.userName || context.phone || '',
-    realName,
-    phone: context.phone || '',
-    role,
-    roles: context.roles?.length ? context.roles : [role],
-  }
 }
 
 function isWorkflowPersistenceUnavailable(error: any) {
@@ -4060,17 +4045,17 @@ async function login(data: any) {
 }
 
 async function currentUser() {
-  const storedUser = getStoredUserContext()
-  if (storedUser.userId) {
-    return ok(formatCurrentUserPayload(storedUser, getStoredToken()))
-  }
   const supabase = getSupabaseClient()
+  const sessionResult = await supabase.auth.getSession()
+  if (sessionResult.error || !sessionResult.data.session?.access_token) {
+    throw new Error('Supabase Auth 会话已失效，请重新登录')
+  }
   const { data } = await supabase.auth.getUser()
   const authUser = data.user
   if (!authUser?.id) throw new Error('请先登录')
   const profile = await findUserProfile(authUser?.email?.split('@')[0], authUser?.id)
   if (!profile) throw new Error('Supabase Auth 用户尚未绑定系统账号')
-  return ok(authPayload(profile, (await supabase.auth.getSession()).data.session?.access_token))
+  return ok(authPayload(profile, sessionResult.data.session.access_token))
 }
 
 const moldDevelopmentStorageBucket = 'erp-mold-development'
@@ -6335,16 +6320,26 @@ function normalizeError(error: unknown) {
   return getErrorMessage(error, 'Supabase 请求失败')
 }
 
+async function isUnauthorizedError(error: any, message: string) {
+  const normalized = message.toLowerCase()
+  if (normalized.includes('jwt') || normalized.includes('auth session') || normalized.includes('auth 会话')) {
+    return true
+  }
+  const permissionDenied = error?.code === '42501' || normalized.includes('permission denied for table')
+  return permissionDenied ? !(await hasActiveSupabaseSession()) : false
+}
+
 export function createSupabaseRequest(hooks: RequestHooks = {}) {
   async function wrap<T>(runner: () => Promise<ApiResponse<T>>, config?: RequestConfig) {
     try {
       return await runner()
     } catch (error: any) {
       const message = normalizeError(error)
-      if (message.includes('JWT') || message.includes('Auth')) {
+      if (await isUnauthorizedError(error, message)) {
         hooks.onUnauthorized?.()
+      } else if (config?.notifyOnError !== false) {
+        hooks.onError?.(message)
       }
-      if (config?.notifyOnError !== false) hooks.onError?.(message)
       throw error
     }
   }

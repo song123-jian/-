@@ -22,6 +22,13 @@ const adminRequestUrl = new URL('../frontend-admin/src/api/supabaseRequest.ts', 
 const mobileRequestUrl = new URL('../frontend-mobile/src/api/supabaseRequest.ts', import.meta.url)
 const adminSupabaseClientUrl = new URL('../frontend-admin/src/api/supabaseClient.ts', import.meta.url)
 const mobileSupabaseClientUrl = new URL('../frontend-mobile/src/api/supabaseClient.ts', import.meta.url)
+const adminAuthSessionUrl = new URL('../frontend-admin/src/utils/auth-session.ts', import.meta.url)
+const mobileAuthSessionUrl = new URL('../frontend-mobile/src/utils/auth-session.ts', import.meta.url)
+const adminAuthStorageUrl = new URL('../frontend-admin/src/utils/auth-storage.ts', import.meta.url)
+const adminRouterUrl = new URL('../frontend-admin/src/router/index.ts', import.meta.url)
+const mobileRouterUrl = new URL('../frontend-mobile/src/router/index.ts', import.meta.url)
+const adminApiIndexUrl = new URL('../frontend-admin/src/api/index.ts', import.meta.url)
+const mobileApiIndexUrl = new URL('../frontend-mobile/src/api/index.ts', import.meta.url)
 const supabaseConfigSecurityUrl = new URL('../frontend-admin/src/utils/supabase-config-security.ts', import.meta.url)
 const loginPageUrl = new URL('../frontend-admin/src/views/login/index.vue', import.meta.url)
 const mobileLoginPageUrl = new URL('../frontend-mobile/src/views/login/index.vue', import.meta.url)
@@ -41,6 +48,13 @@ const adminRequest = readFileSync(adminRequestUrl, 'utf8')
 const mobileRequest = readFileSync(mobileRequestUrl, 'utf8')
 const adminSupabaseClient = readFileSync(adminSupabaseClientUrl, 'utf8')
 const mobileSupabaseClient = readFileSync(mobileSupabaseClientUrl, 'utf8')
+const adminAuthSession = readFileSync(adminAuthSessionUrl, 'utf8')
+const mobileAuthSession = readFileSync(mobileAuthSessionUrl, 'utf8')
+const adminAuthStorage = readFileSync(adminAuthStorageUrl, 'utf8')
+const adminRouter = readFileSync(adminRouterUrl, 'utf8')
+const mobileRouter = readFileSync(mobileRouterUrl, 'utf8')
+const adminApiIndex = readFileSync(adminApiIndexUrl, 'utf8')
+const mobileApiIndex = readFileSync(mobileApiIndexUrl, 'utf8')
 const supabaseConfigSecurity = readFileSync(supabaseConfigSecurityUrl, 'utf8')
 const loginPage = readFileSync(loginPageUrl, 'utf8')
 const mobileLoginPage = readFileSync(mobileLoginPageUrl, 'utf8')
@@ -728,6 +742,38 @@ describe('single-entry bootstrap and real Auth session integration', () => {
     assert.doesNotMatch(mobileLoginPage, /手机号格式不正确|v-model\.trim="form\.phone"/)
     assert.equal(getErrorMessage(new Error('{}'), '登录失败，请稍后重试'), '登录失败，请稍后重试')
     assert.equal(getErrorMessage({ message: 'Invalid login credentials' }, '登录失败'), 'Invalid login credentials')
+  })
+
+  it('migrates legacy local tokens to a real Supabase Auth session without permission-error floods', () => {
+    for (const source of [adminAuthSession, mobileAuthSession]) {
+      assert.match(source, /auth\.getSession\(\)/)
+      assert.match(source, /data\.session\?\.access_token/)
+      assert.match(source, /data\.session\.user\?\.id/)
+      assert.match(source, /clearStoredAuthContext\(\)/)
+      assert.match(source, /synchronizeSupabaseAuthSession/)
+    }
+
+    assert.match(adminAuthStorage, /USER_CONTEXT_KEYS[\s\S]*'userId'[\s\S]*'roles'/)
+    assert.match(adminAuthStorage, /export function clearStoredAuthContext/)
+
+    for (const source of [adminRouter, mobileRouter]) {
+      assert.match(source, /beforeEach\(async/)
+      assert.match(source, /await synchronizeSupabaseAuthSession\(\)/)
+      assert.doesNotMatch(source, /const token = (?:getStoredToken\(\)|localStorage\.getItem\('token'\))/)
+    }
+
+    for (const source of [adminRequest, mobileRequest]) {
+      assert.match(source, /const sessionResult = await supabase\.auth\.getSession\(\)/)
+      assert.match(source, /permission denied for table/)
+      assert.match(source, /await hasActiveSupabaseSession\(\)/)
+      assert.doesNotMatch(source, /if \(storedUser\.userId\)/)
+    }
+
+    for (const source of [adminApiIndex, mobileApiIndex]) {
+      assert.match(source, /let redirectingToLogin = false/)
+      assert.match(source, /if \(redirectingToLogin\) return/)
+      assert.match(source, /clearStoredAuthContext\(\)/)
+    }
   })
 
   it('never exposes password hashes through user table column contracts', () => {

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
+import { synchronizeSupabaseAuthSession } from '../utils/auth-session.ts'
 
 // 路由配置（严格按技术文档10.2节）
 const routes: RouteRecordRaw[] = [
@@ -100,11 +101,11 @@ const router = createRouter({
 })
 
 // 路由守卫：未登录跳转到登录页
-router.beforeEach((to, _from, next) => {
-  const token = localStorage.getItem('token')
-  if (to.meta.requireAuth && !token) {
+router.beforeEach(async (to, _from, next) => {
+  const authenticated = await synchronizeSupabaseAuthSession()
+  if (to.meta.requireAuth && !authenticated) {
     next('/m/login')
-  } else if (to.path === '/m/login' && token) {
+  } else if (to.path === '/m/login' && authenticated) {
     // 已登录访问登录页，重定向到首页
     next('/m/home')
   } else {

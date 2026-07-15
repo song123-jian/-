@@ -1,6 +1,6 @@
 import { createRouter, createWebHashHistory, createWebHistory } from 'vue-router'
 import { createAppRoutes } from './build-routes'
-import { getStoredToken } from '@/utils/auth-storage'
+import { synchronizeSupabaseAuthSession } from '@/utils/auth-session'
 import { buildLoginUrl, resolvePostLoginPath } from '@/utils/auth-route'
 import { canAccessRoles, getStoredUserRoles } from '@/utils/role-access'
 
@@ -11,16 +11,16 @@ const router = createRouter({
   routes: createAppRoutes(viewModules),
 })
 
-router.beforeEach((to, _from, next) => {
-  const token = getStoredToken()
+router.beforeEach(async (to, _from, next) => {
+  const authenticated = await synchronizeSupabaseAuthSession()
   const redirectQuery = Array.isArray(to.query.redirect) ? to.query.redirect[0] : to.query.redirect
   if (to.path === '/login') {
-    if (token) {
+    if (authenticated) {
       next(resolvePostLoginPath(typeof redirectQuery === 'string' ? redirectQuery : null))
       return
     }
     next()
-  } else if (!token) {
+  } else if (!authenticated) {
     next(buildLoginUrl(to.fullPath))
   } else if (!canAccessRoles(getStoredUserRoles(), to.meta.roles as string[] | undefined)) {
     next('/dashboard')
