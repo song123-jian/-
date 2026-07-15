@@ -28,9 +28,17 @@ const hasEnvironmentConnection = Boolean(
 const supabaseUrl = hasEnvironmentConnection ? configuredSupabaseUrl : defaultSupabaseUrl
 const supabaseAnonKey = hasEnvironmentConnection ? configuredSupabaseKey : defaultSupabasePublishableKey
 
+function isPlaceholderAuthEmailDomain(value: string) {
+  return value === ['inject-erp', 'example', 'com'].join('.')
+}
+
 export function resolveSupabaseAuthEmailDomain(supabaseUrl: unknown, ...explicitDomains: unknown[]) {
   for (const domain of explicitDomains) {
-    if (typeof domain === 'string' && domain.trim()) return domain.trim()
+    if (typeof domain !== 'string') continue
+    const normalizedDomain = domain.trim().toLowerCase()
+    if (normalizedDomain && !isPlaceholderAuthEmailDomain(normalizedDomain)) {
+      return normalizedDomain
+    }
   }
 
   try {

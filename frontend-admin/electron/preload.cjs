@@ -2,12 +2,6 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 const WINDOW_MANAGER_CHANGED_CHANNEL = 'desktop:window-manager:state-changed'
 
-contextBridge.exposeInMainWorld('desktopUpdater', {
-  getVersionInfo: () => ipcRenderer.invoke('desktop:get-version-info'),
-  checkForUpdates: () => ipcRenderer.invoke('desktop:check-for-updates'),
-  openDownload: (downloadUrl) => ipcRenderer.invoke('desktop:open-update-download', downloadUrl),
-})
-
 contextBridge.exposeInMainWorld('desktopWindowManager', {
   getState: () => ipcRenderer.invoke('desktop:window-manager:get-state'),
   createWindow: () => ipcRenderer.invoke('desktop:window-manager:create'),

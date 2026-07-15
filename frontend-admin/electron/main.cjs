@@ -1,7 +1,6 @@
 const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, screen, shell } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
-const { compareVersions, normalizeUpdateManifest, normalizeUrl } = require('./update-utils.cjs')
 
 const isDev = !app.isPackaged
 const appIcon = path.join(__dirname, '..', 'build', 'icon.ico')
@@ -11,9 +10,6 @@ const WINDOW_STATE_FILE = 'desktop-window-state.json'
 const DEFAULT_WINDOW_BOUNDS = { width: 1440, height: 900 }
 const MIN_WINDOW_BOUNDS = { width: 1180, height: 720 }
 const CLOSE_BEHAVIORS = new Set(['ask', 'hide', 'quit'])
-const UPDATE_URL_FILE = 'update-url.txt'
-const DEFAULT_UPDATE_URL = 'https://api.github.com/repos/song123-jian/-/releases/latest'
-const UPDATE_TIMEOUT_MS = 10000
 const WINDOW_MANAGER_CHANGED_CHANNEL = 'desktop:window-manager:state-changed'
 
 let desktopState = { closeBehavior: 'ask', windows: [] }
@@ -31,115 +27,6 @@ if (!gotSingleInstanceLock) {
 
 function stateFilePath() {
   return path.join(app.getPath('userData'), WINDOW_STATE_FILE)
-}
-
-function readTextFile(filePath) {
-  try {
-    return fs.readFileSync(filePath, 'utf8').trim()
-  } catch {
-    return ''
-  }
-}
-
-function getUpdateFeedUrl() {
-  const envUrl = normalizeUrl(process.env.INJECT_ERP_UPDATE_URL)
-  if (envUrl) return envUrl
-  const candidates = [
-    path.join(path.dirname(app.getPath('exe')), UPDATE_URL_FILE),
-    path.join(__dirname, '..', UPDATE_URL_FILE),
-  ]
-  for (const file of candidates) {
-    const url = normalizeUrl(readTextFile(file))
-    if (url) return url
-  }
-  return DEFAULT_UPDATE_URL
-}
-
-async function fetchUpdateManifest(updateUrl) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), UPDATE_TIMEOUT_MS)
-  try {
-    const response = await fetch(updateUrl, {
-      signal: controller.signal,
-      headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
-    })
-    if (!response.ok) throw new Error(`更新服务返回 ${response.status}`)
-    return normalizeUpdateManifest(await response.json())
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
-function desktopVersionInfo() {
-  const updateUrl = getUpdateFeedUrl()
-  return {
-    currentVersion: app.getVersion(),
-    updateUrlConfigured: Boolean(updateUrl),
-    updateUrl,
-  }
-}
-
-async function checkForUpdates() {
-  const base = desktopVersionInfo()
-  if (!base.updateUrlConfigured) {
-    return {
-      ...base,
-      ok: false,
-      updateAvailable: false,
-      message: '未配置在线更新地址。请在 EXE 同目录创建 update-url.txt，写入版本清单 JSON 地址，或设置 INJECT_ERP_UPDATE_URL。',
-    }
-  }
-  try {
-    const manifest = await fetchUpdateManifest(base.updateUrl)
-    const updateAvailable = manifest.latestVersion
-      ? compareVersions(manifest.latestVersion, base.currentVersion) > 0
-      : false
-    return {
-      ...base,
-      ...manifest,
-      ok: true,
-      updateAvailable,
-      message: updateAvailable ? '发现新版本' : '当前已是最新版本',
-    }
-  } catch (error) {
-    return {
-      ...base,
-      ok: false,
-      updateAvailable: false,
-      message: error?.message || '检查更新失败，请检查网络或更新地址。',
-    }
-  }
-}
-
-async function openUpdateDownload(downloadUrl) {
-  const url = normalizeUrl(downloadUrl)
-  if (!url) return { ok: false, message: '更新下载地址无效。' }
-  await shell.openExternal(url)
-  return { ok: true }
-}
-
-async function promptForUpdateIfNeeded() {
-  const result = await checkForUpdates()
-  if (!result.ok || !result.updateAvailable || !result.downloadUrl) return
-  const windows = managedWindows()
-  const owner = windows.find((win) => win.isVisible()) || windows[0]
-  const message = `发现新版本 ${result.latestVersion}，当前版本 ${result.currentVersion}。`
-  const dialogOptions = {
-    type: 'info',
-    title: '版本更新',
-    message,
-    detail: result.notes || '建议下载新版客户端后替换当前目录版程序。',
-    buttons: ['立即下载', '稍后'],
-    defaultId: 0,
-    cancelId: 1,
-    noLink: true,
-  }
-  const response = owner && !owner.isDestroyed()
-    ? await dialog.showMessageBox(owner, dialogOptions)
-    : await dialog.showMessageBox(dialogOptions)
-  if (response.response === 0) {
-    await openUpdateDownload(result.downloadUrl)
-  }
 }
 
 function safeNumber(value, fallback) {
@@ -460,12 +347,6 @@ function createTray() {
   updateTrayMenu()
 }
 
-function registerUpdaterIpc() {
-  ipcMain.handle('desktop:get-version-info', () => desktopVersionInfo())
-  ipcMain.handle('desktop:check-for-updates', () => checkForUpdates())
-  ipcMain.handle('desktop:open-update-download', (_event, downloadUrl) => openUpdateDownload(downloadUrl))
-}
-
 function registerWindowManagerIpc() {
   ipcMain.handle('desktop:window-manager:get-state', () => windowManagerState())
   ipcMain.handle('desktop:window-manager:create', () => createManagedWindow())
@@ -618,13 +499,9 @@ if (gotSingleInstanceLock) {
     app.setAppUserModelId('com.zsc.injecterp.admin')
     Menu.setApplicationMenu(null)
     loadDesktopState()
-    registerUpdaterIpc()
     registerWindowManagerIpc()
     createTray()
     createMainWindow()
-    setTimeout(() => {
-      promptForUpdateIfNeeded()
-    }, 3000)
 
     app.on('activate', () => {
       showExistingOrCreateWindow()

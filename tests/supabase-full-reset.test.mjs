@@ -863,11 +863,14 @@ describe('cross-device Supabase runtime configuration', () => {
     assert.equal(resolveSupabaseAuthEmailDomain(projectUrl), 'saodtwnvbanjlkwwivcb.supabase.co')
     assert.equal(resolveSupabaseAuthEmailDomain(projectUrl, 'runtime.example.com', 'env.example.com'), 'runtime.example.com')
     assert.equal(resolveSupabaseAuthEmailDomain(projectUrl, '', 'env.example.com'), 'env.example.com')
+    assert.equal(resolveSupabaseAuthEmailDomain(projectUrl, 'inject-erp.example.com'), 'saodtwnvbanjlkwwivcb.supabase.co')
+    assert.equal(resolveSupabaseAuthEmailDomain(projectUrl, 'inject-erp.example.com', 'login.company.cn'), 'login.company.cn')
 
     for (const source of [adminSupabaseClient, mobileSupabaseClient, userAdminFunction]) {
       assert.doesNotMatch(source, /inject-erp\.example\.com/)
       assert.match(source, /resolveSupabaseAuthEmailDomain\(supabaseUrl/)
     }
+    assert.match(mobileSupabaseClient, /isPlaceholderAuthEmailDomain/)
     assert.match(userAdminFunction, /Deno\.env\.get\('ERP_AUTH_EMAIL_DOMAIN'\)/)
   })
 

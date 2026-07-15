@@ -97,22 +97,6 @@
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
-            <el-tooltip v-if="desktopUpdaterAvailable" :content="updateStatusText" placement="bottom">
-              <span class="status-pill version-pill" :class="{ 'is-update': updateAvailable }">
-                {{ desktopVersionText }}
-              </span>
-            </el-tooltip>
-            <el-button
-              v-if="desktopUpdaterAvailable"
-              class="update-button"
-              size="small"
-              :type="updateAvailable ? 'warning' : 'primary'"
-              link
-              :loading="checkingUpdate"
-              @click="checkDesktopUpdate()"
-            >
-              {{ updateAvailable ? '下载更新' : '检查更新' }}
-            </el-button>
             <span class="status-role">{{ currentRoleLabel }}</span>
           </div>
 
@@ -145,8 +129,8 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { Component } from 'vue'
-import type { DesktopCloseBehavior, DesktopManagedWindow, DesktopWindowManagerState } from '@/types/desktop-updater'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import type { DesktopCloseBehavior, DesktopManagedWindow, DesktopWindowManagerState } from '@/types/desktop-window-manager'
+import { ElMessage } from 'element-plus'
 import {
   Bell,
   Bottom,
@@ -218,12 +202,6 @@ const router = useRouter()
 const appStore = useAppStore()
 const userStore = useUserStore()
 const unreadCount = ref(0)
-const checkingUpdate = ref(false)
-const desktopVersion = ref('')
-const latestVersion = ref('')
-const updateDownloadUrl = ref('')
-const updateMessage = ref('')
-const updateAvailable = ref(false)
 const roleMenuConfig = ref<RoleMenuConfig>(loadRoleMenuCache(routeGroups))
 const windowManagerState = ref<DesktopWindowManagerState>({
   maxWindows: 2,
@@ -274,17 +252,11 @@ const currentRoleLabel = computed(() => {
   return role ? roleNameMap[role] || role : '未分配角色'
 })
 const cloudStatusText = computed(() => (isSupabaseConfigured ? '云库已配置' : '云库未配置'))
-const desktopUpdaterAvailable = computed(() => Boolean(window.desktopUpdater))
 const desktopWindowManagerAvailable = computed(() => Boolean(window.desktopWindowManager))
-const desktopVersionText = computed(() => desktopVersion.value ? `v${desktopVersion.value}` : '版本')
 const windowManagerText = computed(() =>
   `窗口 ${windowManagerState.value.count}/${windowManagerState.value.maxWindows}`
 )
 const closeBehaviorText = computed(() => closeBehaviorNameMap[windowManagerState.value.closeBehavior])
-const updateStatusText = computed(() => {
-  if (updateAvailable.value && latestVersion.value) return `发现新版本 v${latestVersion.value}`
-  return updateMessage.value || '点击检查在线更新'
-})
 
 const iconMap: Record<string, Component> = {
   Bell,
@@ -390,17 +362,6 @@ async function loadRoleMenus() {
   }
 }
 
-async function loadDesktopVersionInfo() {
-  if (!window.desktopUpdater) return
-  try {
-    const info = await window.desktopUpdater.getVersionInfo()
-    desktopVersion.value = info.currentVersion || ''
-    if (!info.updateUrlConfigured) updateMessage.value = '未配置在线更新地址'
-  } catch {
-    updateMessage.value = '版本信息读取失败'
-  }
-}
-
 function updateWindowManagerState(state?: DesktopWindowManagerState) {
   if (!state) return
   windowManagerState.value = state
@@ -472,62 +433,9 @@ async function handleWindowManagerCommand(command: string | number | object) {
   }
 }
 
-async function openUpdateDownload() {
-  if (!window.desktopUpdater || !updateDownloadUrl.value) return
-  const result = await window.desktopUpdater.openDownload(updateDownloadUrl.value)
-  if (!result.ok) ElMessage.warning(result.message || '更新下载地址无效')
-}
-
-async function confirmUpdateDownload(notes = '') {
-  const detail = notes ? `\n\n${notes}` : ''
-  try {
-    await ElMessageBox.confirm(
-      `发现新版本 v${latestVersion.value}，当前版本 v${desktopVersion.value || '-'}。${detail}`,
-      '版本更新',
-      {
-        confirmButtonText: '立即下载',
-        cancelButtonText: '稍后',
-        type: 'info',
-      },
-    )
-    await openUpdateDownload()
-  } catch {
-    // User cancelled the update prompt.
-  }
-}
-
-async function checkDesktopUpdate() {
-  if (!window.desktopUpdater) return
-  if (updateAvailable.value && updateDownloadUrl.value) {
-    await openUpdateDownload()
-    return
-  }
-  checkingUpdate.value = true
-  try {
-    const result = await window.desktopUpdater.checkForUpdates()
-    desktopVersion.value = result.currentVersion || desktopVersion.value
-    latestVersion.value = result.latestVersion || ''
-    updateDownloadUrl.value = result.downloadUrl || ''
-    updateMessage.value = result.message || ''
-    updateAvailable.value = Boolean(result.ok && result.updateAvailable && result.downloadUrl)
-    if (!result.ok) {
-      ElMessage.warning(result.message || '检查更新失败')
-      return
-    }
-    if (updateAvailable.value) {
-      await confirmUpdateDownload(result.notes || '')
-      return
-    }
-    ElMessage.success(result.message || '当前已是最新版本')
-  } finally {
-    checkingUpdate.value = false
-  }
-}
-
 onMounted(() => {
   loadUnreadCount()
   loadRoleMenus()
-  loadDesktopVersionInfo()
   loadWindowManagerState()
   if (window.desktopWindowManager) {
     removeWindowManagerListener = window.desktopWindowManager.onStateChanged(updateWindowManagerState)
@@ -791,23 +699,6 @@ onUnmounted(() => {
 
 .status-pill.is-warning .status-dot {
   background: #f59e0b;
-}
-
-.version-pill {
-  cursor: default;
-}
-
-.version-pill.is-update {
-  border-color: rgba(217, 119, 6, 0.24);
-  background: #fff7ed;
-  color: #b45309;
-}
-
-.update-button {
-  height: 26px;
-  padding: 0 4px;
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .window-button {

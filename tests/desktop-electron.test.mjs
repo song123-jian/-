@@ -1,15 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { readFile } from 'node:fs/promises'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const { compareVersions, normalizeUpdateManifest, normalizeUrl } = require('../frontend-admin/electron/update-utils.cjs')
 
 const mainSource = await readFile(new URL('../frontend-admin/electron/main.cjs', import.meta.url), 'utf8')
 const preloadSource = await readFile(new URL('../frontend-admin/electron/preload.cjs', import.meta.url), 'utf8')
 const layoutSource = await readFile(new URL('../frontend-admin/src/layout/index.vue', import.meta.url), 'utf8')
-const updaterTypes = await readFile(new URL('../frontend-admin/src/types/desktop-updater.d.ts', import.meta.url), 'utf8')
+const windowManagerTypes = await readFile(new URL('../frontend-admin/src/types/desktop-window-manager.d.ts', import.meta.url), 'utf8')
 const adminPackage = JSON.parse(await readFile(new URL('../frontend-admin/package.json', import.meta.url), 'utf8'))
 const rootPackage = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
 
@@ -42,45 +38,27 @@ describe('desktop electron shell', () => {
   })
 
   it('builds the default no-install EXE as a fast unpacked directory while keeping portable as fallback', () => {
-    assert.match(adminPackage.scripts['desktop:build'], /--win dir/)
-    assert.match(adminPackage.scripts['desktop:dir'], /--win dir/)
+    assert.equal(adminPackage.scripts['desktop:build'], 'npm run desktop:fast')
+    assert.equal(adminPackage.scripts['desktop:dir'], 'npm run desktop:fast')
+    assert.match(adminPackage.scripts['desktop:fast'], /--win dir/)
+    assert.match(adminPackage.scripts['desktop:fast'], /release-delivery\.mjs finalize-fast/)
     assert.match(adminPackage.scripts['desktop:portable'], /--win portable/)
     assert.equal(adminPackage.build.win.target[0].target, 'dir')
     assert.equal(adminPackage.build.asar, true)
     assert.equal(adminPackage.build.compression, 'store')
+    assert.equal(adminPackage.build.electronDist, 'node_modules/electron/dist')
     assert.equal(adminPackage.version, rootPackage.version)
     assert.match(adminPackage.version, /^\d+\.\d+\.\d+$/)
   })
 
-  it('exposes a safe desktop updater bridge for version checks and downloads', () => {
-    assert.match(mainSource, /UPDATE_URL_FILE\s*=\s*'update-url\.txt'/)
-    assert.match(mainSource, /DEFAULT_UPDATE_URL\s*=\s*'https:\/\/api\.github\.com\/repos\/song123-jian\/-\/releases\/latest'/)
-    assert.match(mainSource, /INJECT_ERP_UPDATE_URL/)
-    assert.equal(compareVersions('1.0.1', '1.0.0'), 1)
-    assert.equal(compareVersions('v1.0.1', '1.0.1'), 0)
-    assert.equal(normalizeUrl('file:///unsafe.exe'), '')
-    assert.deepEqual(normalizeUpdateManifest({
-      tag_name: 'v1.0.2',
-      html_url: 'https://github.com/song123-jian/-/releases/tag/v1.0.2',
-      assets: [
-        { name: 'checksums.txt', browser_download_url: 'https://example.com/checksums.txt' },
-        { name: 'InjectERP-Admin-1.0.2-portable.exe', browser_download_url: 'https://example.com/app.exe' },
-      ],
-      body: '修复窗口恢复问题',
-    }), {
-      latestVersion: '1.0.2',
-      downloadUrl: 'https://example.com/app.exe',
-      releaseDate: '',
-      notes: '修复窗口恢复问题',
-      force: false,
-    })
-    assert.match(mainSource, /ipcMain\.handle\('desktop:get-version-info'/)
-    assert.match(mainSource, /ipcMain\.handle\('desktop:check-for-updates'/)
-    assert.match(mainSource, /ipcMain\.handle\('desktop:open-update-download'/)
+  it('removes online update checks, prompts, downloads and renderer bridges', () => {
+    assert.doesNotMatch(mainSource, /DEFAULT_UPDATE_URL|UPDATE_URL_FILE|INJECT_ERP_UPDATE_URL/)
+    assert.doesNotMatch(mainSource, /fetchUpdateManifest|checkForUpdates|promptForUpdateIfNeeded|registerUpdaterIpc/)
+    assert.doesNotMatch(mainSource, /desktop:get-version-info|desktop:check-for-updates|desktop:open-update-download/)
+    assert.doesNotMatch(preloadSource, /desktopUpdater|checkForUpdates|openDownload/)
+    assert.doesNotMatch(layoutSource, /desktopUpdater|checkDesktopUpdate|下载更新|检查更新/)
+    assert.doesNotMatch(windowManagerTypes, /DesktopUpdaterBridge|DesktopUpdateCheckResult|desktopUpdater/)
     assert.match(mainSource, /preload:\s*preloadScript/)
-    assert.match(preloadSource, /contextBridge\.exposeInMainWorld\('desktopUpdater'/)
-    assert.match(preloadSource, /checkForUpdates/)
-    assert.match(preloadSource, /openDownload/)
   })
 
   it('exposes a desktop window manager bridge with bounded window operations', () => {
@@ -101,21 +79,8 @@ describe('desktop electron shell', () => {
     assert.match(preloadSource, /contextBridge\.exposeInMainWorld\('desktopWindowManager'/)
     assert.match(preloadSource, /onStateChanged/)
     assert.match(preloadSource, /hideCurrentWindow/)
-    assert.match(updaterTypes, /DesktopWindowManagerBridge/)
-    assert.match(updaterTypes, /desktopWindowManager\?: DesktopWindowManagerBridge/)
-  })
-
-  it('renders desktop version and online update controls in the admin shell', () => {
-    assert.match(layoutSource, /desktopUpdaterAvailable/)
-    assert.match(layoutSource, /desktopVersionText/)
-    assert.match(layoutSource, /checkDesktopUpdate/)
-    assert.match(layoutSource, /下载更新/)
-    assert.match(layoutSource, /检查更新/)
-    assert.match(layoutSource, /ElMessageBox\.confirm/)
-    assert.match(layoutSource, /window\.desktopUpdater\.checkForUpdates/)
-    assert.match(layoutSource, /window\.desktopUpdater\.openDownload/)
-    assert.match(updaterTypes, /interface Window/)
-    assert.match(updaterTypes, /desktopUpdater\?: DesktopUpdaterBridge/)
+    assert.match(windowManagerTypes, /DesktopWindowManagerBridge/)
+    assert.match(windowManagerTypes, /desktopWindowManager\?: DesktopWindowManagerBridge/)
   })
 
   it('renders desktop window controls in the admin shell', () => {

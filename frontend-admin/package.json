@@ -1,6 +1,6 @@
 {
   "name": "inject-erp-admin",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "注塑ERP管理端桌面版",
   "private": true,
   "author": "ZSC",
@@ -11,12 +11,15 @@
     "build": "vue-tsc && vite build",
     "preview": "vite preview",
     "desktop:icon": "node scripts/generate-icon.mjs",
-    "desktop:build": "npm run desktop:icon && npm run build && electron-builder --win dir",
-    "desktop:dir": "npm run desktop:icon && npm run build && electron-builder --win dir",
-    "desktop:portable": "npm run desktop:icon && npm run build && electron-builder --win portable"
+    "desktop:build": "npm run desktop:fast",
+    "desktop:dir": "npm run desktop:fast",
+    "desktop:fast": "npm run desktop:icon && npm run build && electron-builder --win dir && node scripts/release-delivery.mjs finalize-fast && node scripts/release-delivery.mjs verify --require=fast",
+    "desktop:portable": "npm run desktop:icon && npm run build && electron-builder --win portable",
+    "verify:release": "node scripts/release-delivery.mjs verify --require=portable,fast"
   },
   "build": {
     "appId": "com.zsc.injecterp.admin",
+    "electronDist": "node_modules/electron/dist",
     "productName": "注塑ERP管理端",
     "asar": true,
     "compression": "store",
