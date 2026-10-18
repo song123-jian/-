@@ -1,0 +1,20 @@
+# 本地运行数据和凭据
+/data/
+/work/
+/可以删除文件/
+/.build/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.coverage
+*.py[cod]
+*.log
+*.sqlite3*
+*.db
+.env
+.env.*
+source/account_config.json
+source/business_templates/*.png
+*.exe
+*.apk
