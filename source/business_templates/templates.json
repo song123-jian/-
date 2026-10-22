@@ -1,0 +1,65 @@
+[
+  {
+    "kind": "quotation",
+    "original_sha256": "d95ae122ef1dcafd04a3a704ae5ae6ca3895d3ecf38216ff226bab6ca11d3470",
+    "page_size": [
+      595.0,
+      842.0
+    ],
+    "pixels": [
+      2480,
+      3509
+    ],
+    "dpi": 300,
+    "layers": [
+      {
+        "kind": "seal",
+        "bounds": [
+          375.9375,
+          108.64122772216797,
+          493.9375,
+          229.6412353515625
+        ]
+      }
+    ],
+    "seal_retained": true,
+    "watermark_retained": false,
+    "background_sha256": "055a2f11e2a419916099c02bd7ef4932333cf0d3ddd9cbdf2a6985e6573fa62d"
+  },
+  {
+    "kind": "contract",
+    "original_sha256": "d34ae8a35fc04b44ff51bd5acbb85cfb55ad9368617ddeb77fcb31089229965e",
+    "page_size": [
+      595.2999877929688,
+      841.9500122070312
+    ],
+    "pixels": [
+      2481,
+      3509
+    ],
+    "dpi": 300,
+    "layers": [
+      {
+        "kind": "seal",
+        "bounds": [
+          98.75999450683594,
+          102.8699951171875,
+          231.83999633789062,
+          232.34999084472656
+        ]
+      },
+      {
+        "kind": "watermark",
+        "bounds": [
+          87.27466583251953,
+          309.6394958496094,
+          508.0251159667969,
+          532.310302734375
+        ]
+      }
+    ],
+    "seal_retained": true,
+    "watermark_retained": false,
+    "background_sha256": "ac3691b7c45710534a031cc38ab62a7c0543ee2459e9b533277cb7fedaad2cc2"
+  }
+]

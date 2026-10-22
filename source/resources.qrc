@@ -1,0 +1,16 @@
+<RCC><qresource prefix="/">
+  <file alias="app-icon.svg">assets/app-icon.svg</file>
+  <file alias="theme.qss">ui/theme.qss</file>
+  <file alias="icons/search.svg">ui/icons/search.svg</file>
+  <file alias="icons/plus.svg">ui/icons/plus.svg</file>
+  <file alias="icons/history.svg">ui/icons/history.svg</file>
+  <file alias="icons/upload.svg">ui/icons/upload.svg</file>
+  <file alias="icons/download.svg">ui/icons/download.svg</file>
+  <file alias="icons/database.svg">ui/icons/database.svg</file>
+  <file alias="icons/menu.svg">ui/icons/menu.svg</file>
+  <file alias="icons/refresh.svg">ui/icons/refresh.svg</file>
+  <file alias="icons/chevron-down.svg">ui/icons/chevron-down.svg</file>
+  <file alias="icons/search-white.svg">ui/icons/search-white.svg</file>
+  <file alias="icons/plus-white.svg">ui/icons/plus-white.svg</file>
+  <file alias="icons/database-white.svg">ui/icons/database-white.svg</file>
+</qresource></RCC>

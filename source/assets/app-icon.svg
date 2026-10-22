@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101A35"/>
+      <stop offset="1" stop-color="#263E70"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E7EEFC"/>
+    </linearGradient>
+    <linearGradient id="mint" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5DE7C3"/>
+      <stop offset="1" stop-color="#1FB9B6"/>
+    </linearGradient>
+    <linearGradient id="bars" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7187FF"/>
+      <stop offset="1" stop-color="#5367D9"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#071020" flood-opacity="0.32"/>
+    </filter>
+  </defs>
+  <rect x="28" y="28" width="456" height="456" rx="112" fill="url(#tile)"/>
+  <circle cx="389" cy="116" r="98" fill="#53CFC2" opacity="0.11"/>
+  <circle cx="95" cy="407" r="78" fill="#8286FF" opacity="0.10"/>
+  <rect x="88" y="82" width="336" height="348" rx="48" fill="url(#paper)" filter="url(#shadow)"/>
+  <path d="M127 123h67l31 31-69 69-29-29z" fill="url(#mint)"/>
+  <circle cx="190" cy="148" r="7" fill="#EAFBF6"/>
+  <text x="150" y="190" fill="#FFFFFF" font-family="Segoe UI, Arial, sans-serif" font-size="35" font-weight="700" text-anchor="middle">¥</text>
+  <rect x="244" y="132" width="133" height="15" rx="7.5" fill="#AAB7D0"/>
+  <rect x="244" y="159" width="91" height="11" rx="5.5" fill="#CBD4E5"/>
+  <rect x="121" y="237" width="270" height="151" rx="24" fill="#F4F7FD"/>
+  <path d="M144 354h225" stroke="#D8E0EF" stroke-width="6" stroke-linecap="round"/>
+  <rect x="148" y="304" width="37" height="50" rx="11" fill="url(#bars)"/>
+  <rect x="207" y="279" width="37" height="75" rx="11" fill="url(#bars)"/>
+  <rect x="266" y="253" width="37" height="101" rx="11" fill="url(#bars)"/>
+  <rect x="325" y="232" width="37" height="122" rx="11" fill="url(#bars)"/>
+  <path d="M143 292l66-38 57 13 83-70" fill="none" stroke="url(#mint)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M330 194l24-8-3 25" fill="none" stroke="#1FB9B6" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="143" cy="292" r="8" fill="#FFFFFF" stroke="#1FB9B6" stroke-width="7"/>
+  <circle cx="209" cy="254" r="8" fill="#FFFFFF" stroke="#1FB9B6" stroke-width="7"/>
+  <circle cx="266" cy="267" r="8" fill="#FFFFFF" stroke="#1FB9B6" stroke-width="7"/>
+</svg>

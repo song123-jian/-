@@ -1,0 +1,76 @@
+{
+  "generated_at": "2026-10-23",
+  "repository": "https://github.com/song123-jian/-",
+  "visibility": "public",
+  "purpose": "公开归档当前桌面端源码、非敏感验收资料和用户已授权的发布资源",
+  "included": {
+    "source": { "files": 313, "bytes": 3352006 },
+    "docs": { "files": 8, "bytes": 95391 },
+    "work": { "files": 44, "bytes": 347315617 },
+    "remote_history_preserved": [
+      ".gitignore",
+      "README.md",
+      "UPLOAD_MANIFEST.json",
+      "桌面端临时数据清理记录-20261018.md",
+      "桌面端代码审查总结-20261018.md",
+      "桌面端源码-20261018.zip"
+    ]
+  },
+  "release_files": [
+    {
+      "path": "工作-1.7.8.exe",
+      "bytes": 172526656,
+      "sha256": "E409E4D926E5DC6A96D0FBC5818A54C0DEB23A2F6F163ADD7E9B5414DA502671"
+    },
+    {
+      "path": "工作-1.7.8-r9-Setup.exe",
+      "bytes": 173906594,
+      "sha256": "0355501D2C83262E77333FD38D53958DBAF2010529FB4225AFB43ACD02794E45"
+    },
+    {
+      "path": "工作-1.7.8-r9-Setup.release.json",
+      "bytes": 1114,
+      "sha256": "FEFD68F797B40A67DF3EF9CBA5535C02ED7988AABCDD132B8BD0FC19BE4ABBF8"
+    },
+    {
+      "path": "工作快捷启动.lnk",
+      "bytes": 1622,
+      "sha256": "834F939379C04E238E554781B128542DD6F12609F0364A8EF143A93501CCE4F8",
+      "note": "本机绝对路径快捷方式；换电脑或安装目录后需重新生成"
+    },
+    {
+      "path": "工作图标.ico",
+      "bytes": 41938,
+      "sha256": "B544402EB14196C5013A258E3D31EB03D4CBDBF210F489309FD1126FCAEAAC3E"
+    }
+  ],
+  "large_file_policy": {
+    "git_lfs": ["*.exe"],
+    "reason": "安装包和独立 EXE 保留原始二进制，不把它们转成 Git 普通 blob"
+  },
+  "excluded": [
+    "data/",
+    "source/account_config.json",
+    "**/login_credentials.json",
+    "**/mes_credentials.json",
+    "**/runtime.json",
+    "**/.env*",
+    "**/*.pem",
+    "**/*.key",
+    ".build/",
+    ".venv/",
+    "缓存、Python 字节码和日志"
+  ],
+  "local_checks": {
+    "real_credentials_included": false,
+    "root_and_work_release_hashes_match": true,
+    "pyinstaller_archive_review": "root 1.7.8 EXE contains only publishable Supabase config fields and zero seed records; no credential files found",
+    "release_verification_status": "not_run",
+    "public_upload_authorized": true
+  },
+  "limitations": [
+    "本次仅归档和同步文件，不代表正式 AppId 安装验收或生产上线验收",
+    "公开仓库中的合同印章、业务模板和验收样例按公开业务素材处理",
+    "快捷启动文件绑定原电脑路径，其他电脑必须重新生成"
+  ]
+}

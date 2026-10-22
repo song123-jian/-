@@ -1,0 +1,9 @@
+[functions.pmu-register]
+# New accounts have no user JWT; publishable keys are not JWTs.
+# This dedicated endpoint permits registration only; business APIs require a user JWT.
+verify_jwt = false
+
+[functions.pmu-mobile]
+# Verify current user through Auth on each business request; supports asymmetric user JWTs.
+# Public health/version routes intentionally require no JWT. pmu-register is unchanged.
+verify_jwt = false

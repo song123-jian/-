@@ -1,0 +1,33 @@
+{
+  "version": "1.7.6",
+  "status": "passed",
+  "date": "2026-10-19",
+  "copies": [
+    {
+      "path": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\工作-1.7.6.exe",
+      "sha256": "5F2B7E267C7BF3D6E768B48B059C912A650310260756479AF6CB5FD7AC24CAFB",
+      "matches_release": true
+    },
+    {
+      "path": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\工作-1.7.6-Setup.exe",
+      "sha256": "AE2C303647F7A6C949308176708331C44C800AC15B2329E963B86D677092F97D",
+      "matches_release": true
+    },
+    {
+      "path": "C:\\Users\\宋建建\\Desktop\\工作-1.7.6-Setup.exe",
+      "sha256": "AE2C303647F7A6C949308176708331C44C800AC15B2329E963B86D677092F97D",
+      "matches_release": true
+    }
+  ],
+  "shortcut": {
+    "path": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\工作快捷启动.lnk",
+    "target": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\工作-1.7.6.exe",
+    "working_directory": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端",
+    "arguments": "",
+    "backup": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\import-sync-before\\工作快捷启动.lnk"
+  },
+  "old_root_exe_sha256": "37427EEE449D8E0227D48E7AB8039C868F1843CF29BF578338E646A3BD91D20F",
+  "old_running_exe_overwritten": false,
+  "user_data_modified": false,
+  "note": "使用新版前请从托盘明确退出旧版；本轮不结束旧进程。"
+}

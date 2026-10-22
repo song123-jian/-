@@ -1,0 +1,38 @@
+{
+  "pdfplumber": {
+    "version": "0.11.9",
+    "copied_license_files": 1
+  },
+  "pdfminer.six": {
+    "version": "20251230",
+    "copied_license_files": 1
+  },
+  "Pillow": {
+    "version": "12.3.0",
+    "copied_license_files": 1
+  },
+  "cryptography": {
+    "version": "50.0.2",
+    "copied_license_files": 3
+  },
+  "cffi": {
+    "version": "2.1.1",
+    "copied_license_files": 1
+  },
+  "pycparser": {
+    "version": "3.11",
+    "copied_license_files": 1
+  },
+  "charset-normalizer": {
+    "version": "3.5.2",
+    "copied_license_files": 1
+  },
+  "pypdfium2": {
+    "version": "5.14.0",
+    "copied_license_files": 18
+  },
+  "reportlab": {
+    "version": "4.4.9",
+    "copied_license_files": 4
+  }
+}

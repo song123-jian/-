@@ -1,0 +1,618 @@
+[
+  {
+    "name": "six decimals",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": true,
+    "expected": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    }
+  },
+  {
+    "name": "trailing zeros",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513000",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": true,
+    "expected": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    }
+  },
+  {
+    "name": "scientific notation",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513e0",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": true,
+    "expected": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    }
+  },
+  {
+    "name": "positive exponent",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "1e9",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": true,
+    "expected": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "1000000000",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    }
+  },
+  {
+    "name": "smallest price",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "1e-6",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": true,
+    "expected": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "0.000001",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    }
+  },
+  {
+    "name": "too small",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "1e-7",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": false
+  },
+  {
+    "name": "numeric underscores",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9_000.123_400",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": true,
+    "expected": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9000.1234",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    }
+  },
+  {
+    "name": "positive sign",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "+9.70",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": true,
+    "expected": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.7",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    }
+  },
+  {
+    "name": "leading fractional",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": ".125",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": true,
+    "expected": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "0.125",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    }
+  },
+  {
+    "name": "zero",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "0",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": false
+  },
+  {
+    "name": "negative",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "-1",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": false
+  },
+  {
+    "name": "NaN",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "NaN",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": false
+  },
+  {
+    "name": "infinity",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "Infinity",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": false
+  },
+  {
+    "name": "too large",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "1000000000.000001",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": false
+  },
+  {
+    "name": "huge exponent",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "1e999999",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": false
+  },
+  {
+    "name": "tax from note",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "",
+      "effective_date": "2026-10-13",
+      "note": "不含税",
+      "reason": "报价"
+    },
+    "accepted": true,
+    "expected": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "未税",
+      "effective_date": "2026-10-13",
+      "note": "不含税",
+      "reason": "报价"
+    }
+  },
+  {
+    "name": "unlabelled tax",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": true,
+    "expected": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "未注明",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    }
+  },
+  {
+    "name": "invalid tax",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "其他",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": false
+  },
+  {
+    "name": "date normalize",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026/1/2 00:00:00.00",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": true,
+    "expected": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026-01-02",
+      "note": "原文\n保留",
+      "reason": "报价"
+    }
+  },
+  {
+    "name": "invalid calendar",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026-02-29",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": false
+  },
+  {
+    "name": "leap year",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2024-02-29",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": true,
+    "expected": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2024-02-29",
+      "note": "原文\n保留",
+      "reason": "报价"
+    }
+  },
+  {
+    "name": "date range",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2201-01-01",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": false
+  },
+  {
+    "name": "empty customer",
+    "input": {
+      "customer": " ",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": false
+  },
+  {
+    "name": "python trim NEL",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": true,
+    "expected": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    }
+  },
+  {
+    "name": "python trim control",
+    "input": {
+      "customer": "\u001c测试客户\u001f",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": true,
+    "expected": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    }
+  },
+  {
+    "name": "invalid control",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "x\u0001y",
+      "reason": "报价"
+    },
+    "accepted": false
+  },
+  {
+    "name": "emoji codepoints at limit",
+    "input": {
+      "customer": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": true,
+    "expected": {
+      "customer": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    }
+  },
+  {
+    "name": "emoji codepoints over limit",
+    "input": {
+      "customer": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": false
+  },
+  {
+    "name": "unknown privilege field",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": "9.734513",
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价",
+      "owner_id": "other"
+    },
+    "accepted": false
+  },
+  {
+    "name": "price must be string",
+    "input": {
+      "customer": "测试客户",
+      "grade": "PA6",
+      "material": "PA6",
+      "color": "黑色",
+      "price": 9.7,
+      "tax_type": "含税",
+      "effective_date": "2026-10-13",
+      "note": "原文\n保留",
+      "reason": "报价"
+    },
+    "accepted": false
+  }
+]

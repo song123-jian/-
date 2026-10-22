@@ -1,0 +1,32 @@
+{
+  "applicationName": "工作",
+  "applicationVersion": "1.7.4",
+  "applicationSha256": "3A6A4D35AF5F2E26B2C4EFDEC46A366C019C53826CEDFB964F632FCFF5E1D74D",
+  "installerSha256": "3B4F3F4FD1D5D9CA43AD96CB09ED99AA8943C04E5B7402103137AE965AB191B2",
+  "environment": "Windows 11 x64; current-user isolated install; CPython 3.13.16 packaged with PyInstaller 6.22.3",
+  "programEntry": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\installer-work-1.7.4-中文路径\\Programs\\PriceQueryDesktop\\工作.exe",
+  "validationRoot": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\installer-work-1.7.4-中文路径",
+  "installExitCode": 0,
+  "installedPayloadHashesMatch": true,
+  "shortcutNames": [
+    "工作.lnk",
+    "工作.lnk",
+    "卸载工作.lnk"
+  ],
+  "startMenuFolder": "工作",
+  "shortcutWorkingDirectoriesValid": true,
+  "dataMarkerSha256": "11E7209B399F72450861C8A291F0CABE22539A6D670497B7C44E31B4EA5B6835",
+  "realDesktopOrRegistryWritten": false,
+  "installedApplicationUi": "已验证：实际安装EXE窗口标题“工作 · 程序账号登录”，正文“登录工作”，输入框和按钮可见；未提交账号或密码",
+  "uninstall": "passed",
+  "successfulAccountRegistrationLogin": "尚未完成验证：由用户自行注册，不代建账号",
+  "actualRuntimeVersion": "1.7.4",
+  "actualRuntimeProcessId": 11840,
+  "uiEvidence": [
+    ".build/work-1.7.4-login.png",
+    ".build/work-1.7.4-login-state.txt"
+  ],
+  "uninstallExitCode": 0,
+  "programAndShortcutsRemoved": true,
+  "dataMarkerPreserved": true
+}

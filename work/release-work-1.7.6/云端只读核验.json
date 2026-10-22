@@ -1,0 +1,69 @@
+{
+  "date": "2026-10-19",
+  "status": "passed",
+  "mode": "remote final read-only verification",
+  "checks": [
+    {
+      "name": "authenticated_rpc_read_and_denial",
+      "passed": true,
+      "detail": "meta/snapshot read; unregistered identity denied"
+    },
+    {
+      "name": "schema_version",
+      "passed": true,
+      "detail": "desktop sync v1"
+    },
+    {
+      "name": "function_owners",
+      "passed": true,
+      "detail": "3 functions owned by restricted executor"
+    },
+    {
+      "name": "forced_rls",
+      "passed": true,
+      "detail": "quotes/customers/version table RLS enabled and forced"
+    },
+    {
+      "name": "read_rpc_acl",
+      "passed": true,
+      "detail": "authenticated read RPC only; no anonymous or direct trigger access"
+    },
+    {
+      "name": "version_table_acl",
+      "passed": true,
+      "detail": "version table only accessed through restricted functions"
+    },
+    {
+      "name": "triggers",
+      "passed": true,
+      "detail": "2 enabled version triggers"
+    },
+    {
+      "name": "executor_limits",
+      "passed": true,
+      "detail": "NOLOGIN/NOBYPASSRLS/no schema CREATE"
+    },
+    {
+      "name": "original_membership_preserved",
+      "passed": true,
+      "detail": "original managed grant retained; temporary grant removed"
+    },
+    {
+      "name": "business_counts_preserved",
+      "passed": true,
+      "detail": "1 member / 0 customers / 0 quotes"
+    },
+    {
+      "name": "schema_epoch",
+      "passed": true,
+      "detail": "shared epoch configured"
+    }
+  ],
+  "counts": {
+    "members": 1,
+    "customers": 0,
+    "quotes": 0
+  },
+  "authenticated_desktop_login_and_cross_device_sync_tested": false,
+  "note": "数据库角色与JWT主体设置仅用于只读权限验收，不代表真实桌面登录。升级及ACL修复已执行，不得重复迁移。"
+}

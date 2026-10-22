@@ -1,0 +1,30 @@
+{
+  "version": "1.7.5",
+  "status": "passed",
+  "files": [
+    {
+      "path": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\工作.exe",
+      "bytes": 172430932,
+      "sha256": "37427EEE449D8E0227D48E7AB8039C868F1843CF29BF578338E646A3BD91D20F"
+    },
+    {
+      "path": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\工作-1.7.5-Setup.exe",
+      "bytes": 172539904,
+      "sha256": "A88CBF0D1944CB545A3197125D6723CF86C63EA5BAECE396217FEEBE88E68852"
+    },
+    {
+      "path": "C:\\Users\\宋建建\\Desktop\\工作-1.7.5-Setup.exe",
+      "bytes": 172539904,
+      "sha256": "A88CBF0D1944CB545A3197125D6723CF86C63EA5BAECE396217FEEBE88E68852"
+    }
+  ],
+  "shortcut": {
+    "path": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\工作快捷启动.lnk",
+    "target": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\工作.exe",
+    "working_directory": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端",
+    "icon": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\工作图标.ico,0"
+  },
+  "previous_exe_backup": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\settings-tray-before\\工作.exe",
+  "previous_exe_sha256": "3A6A4D35AF5F2E26B2C4EFDEC46A366C019C53826CEDFB964F632FCFF5E1D74D",
+  "previous_installers_preserved": true
+}

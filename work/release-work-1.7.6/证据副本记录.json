@@ -1,0 +1,42 @@
+[
+  {
+    "source": ".build/work-1.7.6-installer-validation.json",
+    "target": "安装验证记录.json",
+    "sha256": "DF7B32D0D30151BEAD34D0A91C3E4BD4504368E4352E5FBDA75C0F0AA82D6F02"
+  },
+  {
+    "source": ".build/work-1.7.6-packaged-ui/report.json",
+    "target": "实际程序界面验证.json",
+    "sha256": "28EC729D0F75B5433E8C052C5EF311BEE3EC20B905C3A473E93963FDC9829068"
+  },
+  {
+    "source": ".build/work-1.7.6-packaged-ui/seal-original-verification.json",
+    "target": "原章像素核验.json",
+    "sha256": "1361B4270C55C1C81C6AFE5CC15C917826FBB787E247C040D52C80421CBF62D6"
+  },
+  {
+    "source": ".build/import-sync-final-source-validation.json",
+    "target": "源码定向验证.json",
+    "sha256": "3E3C422D1F7199D605D6ABB3E191447E96E34D97E4040C88318FB2C33CA7BBB4"
+  },
+  {
+    "source": ".build/import-sync-code-review.json",
+    "target": "增量代码审查.json",
+    "sha256": "B58BE50580AB7C724D484FA9056A050D7DB3FFC127563B26FB5296AEC7A87B35"
+  },
+  {
+    "source": ".build/work-1.7.6-packaged-ui/quotation.pdf",
+    "target": "报价单验收样例.pdf",
+    "sha256": "289C42952B94F5B965CE18A895BF7B745DB7782B3BCFB27B6218FDA10FEDB1E0"
+  },
+  {
+    "source": ".build/work-1.7.6-packaged-ui/contract.pdf",
+    "target": "合同验收样例.pdf",
+    "sha256": "35C63CD094A020CBFDA184F09D4FF7B1887FFE7EB9FDB80D43F2342D307BD9A9"
+  },
+  {
+    "source": ".build/work-1.7.6-packaged-ui/two-documents-preview.png",
+    "target": "两份单据同章预览.png",
+    "sha256": "2CC1CAC2BE2DB7C4FFBDE4DC8331E198DAA08BE5C369D642DE27ECD4B871C657"
+  }
+]

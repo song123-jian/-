@@ -1,0 +1,18 @@
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+exclude = ["ui/resources_rc.py", "static"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"app.py" = ["F401", "E402"]
+"supabase_backend.py" = ["F401"]
+"importer.py" = ["F401", "E402"]
+"tests/*" = ["E402"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+qt_api = "pyside6"
+testpaths = ["tests"]

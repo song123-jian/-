@@ -1,0 +1,88 @@
+{
+  "status": "passed",
+  "scope": "changed Python sources plus direct SQL/template metadata",
+  "checks": [
+    "UTF-8 strict",
+    "no BOM",
+    "no replacement character",
+    "Python AST",
+    "JSON parse"
+  ],
+  "files": [
+    {
+      "path": "source\\business_templates\\README.md",
+      "bytes": 793,
+      "sha256": "d43d7c1cf700f5a23cd3ebc13b65e40373f336ad2af78df3c7df38b071ecf357"
+    },
+    {
+      "path": "source\\business_templates\\reference-seal.json",
+      "bytes": 351,
+      "sha256": "06ad3a146e5e2132fdb9cc8e498b426bdfcf5f22f700c31667a7774eacecf37a"
+    },
+    {
+      "path": "source\\desktop_main.py",
+      "bytes": 8926,
+      "sha256": "905e26d4a8e7c22a7de83c6bf693087ffc291a9c264c53692622a7b00e4a06cf"
+    },
+    {
+      "path": "source\\domain.py",
+      "bytes": 7534,
+      "sha256": "c49fd615746b47944d6a25607e5921d8cc7f79041ff1c437e4652e06c3f332ff"
+    },
+    {
+      "path": "source\\migrations\\desktop_sync_v176.sql",
+      "bytes": 6865,
+      "sha256": "790f44797c26ef91bd52056d91d04dd39672748df1a83726e788598aa390a846"
+    },
+    {
+      "path": "source\\migrations\\desktop_sync_v176_acl_fix.sql",
+      "bytes": 1343,
+      "sha256": "60749d6a56a7770fb794fd0735c90b0d34525ac4d721b38ea3a01054837cc08f"
+    },
+    {
+      "path": "source\\operation_sync_qa.py",
+      "bytes": 7060,
+      "sha256": "a4c39aefa23e61ced2546f0998c2424992826474195597975f684f27eb0279ed"
+    },
+    {
+      "path": "source\\services\\business_document_service.py",
+      "bytes": 28933,
+      "sha256": "7239491836c15e92bad1633aad80e493d6eb3b8203618f8cc0cac330ba5588c2"
+    },
+    {
+      "path": "source\\storage\\account_store.py",
+      "bytes": 5526,
+      "sha256": "ad36c92cf0d4bf61036291b4a00f899155c681d36a04f83c08afb6729c7274df"
+    },
+    {
+      "path": "source\\tests\\test_business_documents.py",
+      "bytes": 6089,
+      "sha256": "6e3eece8c33cf70b282cb0d2a0c4e5d9b956621181d94c3e93ec655da17132f5"
+    },
+    {
+      "path": "source\\tests\\test_import_operation_regression.py",
+      "bytes": 3773,
+      "sha256": "3a84eddf46ce1be1b7f927a76a36d625a6346e20ccb00f9aaea59beb6de2c60b"
+    },
+    {
+      "path": "source\\tests\\test_mobile_sync.py",
+      "bytes": 3070,
+      "sha256": "ce184aaa1034236e0c832702019ffc698b89e77d96e137e690aef90be4451e72"
+    },
+    {
+      "path": "source\\ui\\business_document_dialog.py",
+      "bytes": 22626,
+      "sha256": "4c56f3c25eb35a3ac65e5d146f7c639c81d365e4b1a509ae367fdaf7175f77f1"
+    },
+    {
+      "path": "source\\ui\\main_window.py",
+      "bytes": 46377,
+      "sha256": "08d09c0e45ccaa9032ba7d55f5b67cdb36d6ef7108777086aed524affd556d4a"
+    },
+    {
+      "path": "source\\ui\\workers.py",
+      "bytes": 6296,
+      "sha256": "c2e753af67cf609581fcc87f2a34a5e3775ccb249e9385fa6fa81e8deb858187"
+    }
+  ]
+}

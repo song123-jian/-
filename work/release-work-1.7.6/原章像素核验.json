@@ -1,0 +1,20 @@
+{
+  "quotation": {
+    "pages": 1,
+    "seal_original_pixels_match": true,
+    "seal_size": [
+      189,
+      192
+    ],
+    "file_sha256": "289c42952b94f5b965ce18a895bf7b745db7782b3bcfb27b6218fda10fedb1e0"
+  },
+  "contract": {
+    "pages": 1,
+    "seal_original_pixels_match": true,
+    "seal_size": [
+      189,
+      192
+    ],
+    "file_sha256": "35c63cd094a020cbfda184f09d4ff7b1887ffe7eb9fdb80d43f2342d307bd9a9"
+  }
+}

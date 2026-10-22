@@ -1,0 +1,49 @@
+{
+  "status": "passed",
+  "rootDirectory": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端",
+  "copies": [
+    {
+      "path": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\工作.exe",
+      "bytes": 172421090,
+      "sha256": "3A6A4D35AF5F2E26B2C4EFDEC46A366C019C53826CEDFB964F632FCFF5E1D74D",
+      "matches": true
+    },
+    {
+      "path": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\工作-1.7.4-Setup.exe",
+      "bytes": 172530176,
+      "sha256": "3B4F3F4FD1D5D9CA43AD96CB09ED99AA8943C04E5B7402103137AE965AB191B2",
+      "matches": true
+    },
+    {
+      "path": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\工作图标.ico",
+      "bytes": 41938,
+      "sha256": "B544402EB14196C5013A258E3D31EB03D4CBDBF210F489309FD1126FCAEAAC3E",
+      "matches": true
+    },
+    {
+      "path": "C:\\Users\\宋建建\\Desktop\\工作-1.7.4-Setup.exe",
+      "bytes": 172530176,
+      "sha256": "3B4F3F4FD1D5D9CA43AD96CB09ED99AA8943C04E5B7402103137AE965AB191B2",
+      "matches": true
+    },
+    {
+      "path": "C:\\Users\\宋建建\\Desktop\\工作图标.ico",
+      "bytes": 41938,
+      "sha256": "B544402EB14196C5013A258E3D31EB03D4CBDBF210F489309FD1126FCAEAAC3E",
+      "matches": true
+    },
+    {
+      "path": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\work\\release-work-1.7.4\\工作图标.ico",
+      "bytes": 41938,
+      "sha256": "B544402EB14196C5013A258E3D31EB03D4CBDBF210F489309FD1126FCAEAAC3E",
+      "matches": true
+    }
+  ],
+  "rootShortcut": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\工作快捷启动.lnk",
+  "shortcutTarget": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\工作.exe",
+  "shortcutWorkingDirectory": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端",
+  "archivedTaskDesktopCopies": [
+    "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\rename-work-desktop-previous\\价格查询桌面版-1.7.3-Setup.exe"
+  ],
+  "projectFolderMoved": false
+}

@@ -1,0 +1,17 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.13.16",
+  "history_records": 10000,
+  "identities": 1000,
+  "histories_per_identity": 10,
+  "returned": 100,
+  "insertion_seconds": 0.8084603000006609,
+  "query_seconds": [
+    0.1305913000005603,
+    0.13029629999982717,
+    0.13026239999999234,
+    0.12402910000037082
+  ],
+  "target_seconds": 1.0,
+  "passed": true
+}

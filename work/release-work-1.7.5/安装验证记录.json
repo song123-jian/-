@@ -1,0 +1,33 @@
+{
+  "version": "1.7.5",
+  "status": "passed",
+  "environment": "Windows 11 x64; native Qt Windows; system DPI 150%",
+  "installer_exit_code": 0,
+  "app_exit_code": 0,
+  "uninstall_exit_code": 0,
+  "installed_exe": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\installer-work-1.7.5-中文路径\\Programs\\PriceQueryDesktop\\工作.exe",
+  "payload_sha256": "37427EEE449D8E0227D48E7AB8039C868F1843CF29BF578338E646A3BD91D20F",
+  "shortcuts": [
+    {
+      "path": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\installer-work-1.7.5-中文路径\\Desktop\\工作.lnk",
+      "target": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\installer-work-1.7.5-中文路径\\Programs\\PriceQueryDesktop\\工作.exe",
+      "working_directory": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\installer-work-1.7.5-中文路径\\Programs\\PriceQueryDesktop"
+    },
+    {
+      "path": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\installer-work-1.7.5-中文路径\\Start Menu\\工作\\工作.lnk",
+      "target": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\installer-work-1.7.5-中文路径\\Programs\\PriceQueryDesktop\\工作.exe",
+      "working_directory": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\installer-work-1.7.5-中文路径\\Programs\\PriceQueryDesktop"
+    },
+    {
+      "path": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\installer-work-1.7.5-中文路径\\Start Menu\\工作\\卸载工作.lnk",
+      "target": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "arguments": "-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\installer-work-1.7.5-中文路径\\Programs\\PriceQueryDesktop\\Uninstall.ps1\""
+    }
+  ],
+  "ui_report": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\work-1.7.5-argument-check-ui\\report.json",
+  "ui_data_directory": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\work-1.7.5-argument-check-data",
+  "data_retained": true,
+  "production_or_cloud_data_accessed": false,
+  "normal_registry_installation_tested": false,
+  "authenticated_cloud_business_flow_tested": false
+}

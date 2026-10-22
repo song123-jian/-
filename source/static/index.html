@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>客户价格查询</title>
+  <link rel="stylesheet" href="/app.css">
+  <script defer src="/lucide.min.js"></script>
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">价</span><div><strong>价格查询</strong><span>客户报价管理</span></div></div>
+      <nav aria-label="主导航"><button class="nav-item active" id="queryNav">价格查询</button><button class="nav-item" id="dataNav">数据与导入</button></nav>
+      <div class="side-label">客户目录 <span id="customerCount">—</span></div>
+      <div id="customerList" class="customer-list" aria-label="选择客户"></div>
+      <div class="sidebar-foot"><span class="online-dot" aria-hidden="true"></span> 本机运行<div>报价保存在这台电脑</div><button id="exitButton" class="text-button">退出程序</button></div>
+    </aside>
+    <main>
+      <header class="page-header"><div><div class="eyebrow">PRICE LOOKUP</div><h1>客户价格查询</h1><p>报价单位：元/kg<span id="backendBadge" class="backend-badge">本地数据库</span></p></div><button class="button primary" id="newQuote" disabled>新增报价</button></header>
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+      <section class="stats-grid" aria-label="查询概览">
+        <div class="stat"><span>匹配客户</span><strong id="statCustomers">—</strong><small>按当前筛选</small></div>
+        <div class="stat"><span>报价规格</span><strong id="statItems">—</strong><small>区分颜色与税口径</small></div>
+        <div class="stat"><span>历史记录</span><strong id="statRecords">—</strong><small>每次更新完整保留</small></div>
+        <div class="stat"><span>最近报价日期</span><strong class="date-stat" id="statDate">—</strong><small>按业务日期计算</small></div>
+      </section>
+      <section class="panel search-panel" aria-labelledby="searchTitle">
+        <h2 id="searchTitle">查找报价</h2>
+        <form id="searchForm">
+          <div class="search-grid">
+            <label>客户名称<input id="customerSearch" placeholder="输入全称或部分名称，如：金华" autocomplete="off"></label>
+            <label>牌号 / 材料 / 颜色<input id="gradeSearch" placeholder="如：PM4、PC/ABS、黑色" autocomplete="off"></label>
+            <label>材料类别<select id="materialFilter"><option value="">全部类别</option></select></label>
+            <label>税口径<select id="taxFilter"><option value="">全部口径</option><option>含税</option><option>未税</option><option>未注明</option></select></label>
+            <div class="search-actions"><button class="button primary" type="submit">查询</button><button class="button" type="button" id="resetSearch">重置</button></div>
+          </div>
+          <details class="extra-filters"><summary>日期与更新提醒</summary><div class="extra-grid"><label>更新日期从<input type="date" id="fromDate"></label><label>更新日期到<input type="date" id="toDate"></label><label class="check-label"><input type="checkbox" id="staleFilter">仅看超过 60 天未更新的报价</label></div></details>
+        </form>
+      </section>
+      <section class="panel results-panel" aria-labelledby="resultsTitle">
+        <div class="results-head"><div><h2 id="resultsTitle">全部客户报价</h2><span id="resultCaption" class="muted">正在读取报价…</span></div><div class="toolbar"><button class="button small" id="exportCurrent">导出查询结果</button><button class="button small" id="exportHistory">导出全部历史</button></div></div>
+        <div class="table-wrap" tabindex="0" aria-label="报价表，可横向滚动"><table class="quotes-table"><thead><tr><th>客户 / 牌号</th><th>材料 / 颜色</th><th class="number">价格（元/kg）</th><th>税口径</th><th>更新日期</th><th>备注</th><th>操作</th></tr></thead><tbody id="quoteRows"></tbody></table></div>
+        <div class="empty" id="emptyState" hidden><strong>没有找到匹配报价</strong><p>试试较短的客户名称或牌号，也可以清除筛选。</p><button class="button" id="emptyReset">清除筛选</button></div>
+        <div class="pagination"><span id="pageInfo" class="muted">—</span><div><button class="button small" id="previousPage">上一页</button><span id="pageNumber">1 / 1</span><button class="button small" id="nextPage">下一页</button></div></div>
+      </section>
+      <footer class="page-foot"><span id="sourceInfo">正在核对初始数据…</span><span>更新日期为报价业务日期；录入时间可在历史中查看。</span></footer>
+    </main>
+  </div>
+
+  <dialog id="historyDialog" class="wide-dialog" aria-labelledby="historyTitle">
+    <div class="dialog-head"><div><div class="eyebrow">PRICE HISTORY</div><h2 id="historyTitle">价格历史</h2><p id="historySubtitle"></p></div><button class="icon-button" data-close="historyDialog" aria-label="关闭价格历史">×</button></div>
+    <div class="history-summary"><div><span class="muted">当前价格（元/kg）</span><strong id="historyPrice">—</strong></div><div><span class="muted">当前报价日期</span><strong id="historyDate">—</strong></div><button class="button primary" id="updateFromHistory">更新价格 / 补录历史</button></div>
+    <div id="trend" class="trend" aria-label="价格变化趋势"></div>
+    <div class="table-wrap"><table class="history-table"><thead><tr><th>报价日期</th><th class="number">价格（元/kg）</th><th class="number">较上一条</th><th>原因 / 备注</th><th>录入时间 / 来源</th></tr></thead><tbody id="historyRows"></tbody></table></div>
+    <p class="dialog-note">同日多次报价按录入顺序排列。历史按业务日期回溯，补录旧报价不会替换当前价格。</p>
+  </dialog>
+
+  <dialog id="quoteDialog" aria-labelledby="quoteTitle">
+    <div class="dialog-head"><div><h2 id="quoteTitle">新增报价</h2><p id="quoteHint">保存后即可按客户查询。</p></div><button class="icon-button" data-close="quoteDialog" aria-label="关闭报价表单">×</button></div>
+    <form id="quoteForm">
+      <div class="form-grid">
+        <label>客户名称 <span class="required">*</span><input id="quoteCustomer" required maxlength="250" autocomplete="off"></label>
+        <label>牌号 / 材料规格 <span class="required">*</span><input id="quoteGrade" required maxlength="250" autocomplete="off"></label>
+        <label>材料类别<input id="quoteMaterial" maxlength="250"></label>
+        <label>颜色<input id="quoteColor" maxlength="250"></label>
+        <label>价格（元/kg） <span class="required">*</span><input id="quotePrice" type="number" step="0.000001" min="0.000001" max="1000000000" required></label>
+        <label>更新 / 生效日期 <span class="required">*</span><input id="quoteDate" type="date" required min="1900-01-01" max="2200-12-31"></label>
+        <label>税口径 <span class="required">*</span><select id="quoteTax"><option>含税</option><option>未税</option><option>未注明</option></select></label>
+        <label>调价 / 补录原因<input id="quoteReason" maxlength="1000" placeholder="如：原料成本调整、补录旧报价"></label>
+        <label class="full-width">备注<textarea id="quoteNote" rows="3" maxlength="2000" placeholder="保留报价条件、项目等说明"></textarea></label>
+      </div>
+      <p id="quoteError" class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions"><button class="button" type="button" data-close="quoteDialog">取消</button><button class="button primary" id="saveQuote" type="submit">保存报价</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dataDialog" class="wide-dialog" aria-labelledby="dataTitle">
+    <div class="dialog-head"><div><h2 id="dataTitle">数据与导入</h2><p>导入前检查明细，完全相同的报价自动跳过。</p></div><button class="icon-button" data-close="dataDialog" aria-label="关闭数据管理">×</button></div>
+    <section class="backend-settings" aria-labelledby="backendTitle">
+      <div class="settings-title"><h3 id="backendTitle">数据库设置</h3><button class="button small" id="schemaButton">下载 Supabase 建表 SQL</button></div>
+      <label>数据后端<select id="backendMode"><option value="sqlite">本地数据库（离线可用）</option><option value="supabase">Supabase 云数据库</option></select></label>
+      <div id="supabaseFields" class="form-grid" hidden>
+        <label>Supabase 项目 URL<input id="supabaseUrl" type="url" placeholder="https://项目编号.supabase.co" autocomplete="off"></label>
+        <label>后端 Secret / service_role key<input id="supabaseKey" type="password" placeholder="输入项目后端密钥" autocomplete="new-password"></label>
+      </div>
+      <p class="dialog-note">先执行 Supabase 建表 SQL，再检查连接。密钥由当前 Windows 用户加密保存，报价备份不包含密钥。切换数据后端不会自动迁移报价。</p>
+      <div class="settings-actions"><button class="button" id="testConnection">检查连接</button><button class="button primary" id="saveBackend">保存并切换</button></div>
+      <p id="backendMessage" role="status" class="import-status"></p>
+    </section>
+    <div class="data-tools"><div><strong>备份完整报价与历史</strong><p>下载数据库备份。导入新增记录前也会自动保留备份。</p><button class="button" id="backupButton">下载完整备份</button></div><div><strong>使用原表或标准模板</strong><p>支持 .xlsx / .csv，包含客户、牌号、价格和日期。</p><button class="button" id="templateButton">下载 CSV 模板</button></div></div>
+    <label class="file-zone">选择报价文件<input id="importFile" type="file" accept=".xlsx,.csv"><span class="muted">最多 20 MB；原表“价格明细”可直接导入</span></label>
+    <p id="importStatus" class="import-status" role="status">选择文件后显示导入预览，确认后才保存。</p>
+    <div id="importPreview" hidden></div>
+    <p id="importError" class="form-error" role="alert" hidden></p>
+    <div class="dialog-actions"><button class="button" data-close="dataDialog">关闭</button><button class="button primary" id="commitImport" disabled>确认导入</button></div>
+    <p class="dialog-note">文件中有错误行时整批停止，修正后重试。CSV 在 Excel 中可通过“数据 → 从文本/CSV”选择 UTF-8 打开。</p>
+    <div class="data-location"><span>本机数据位置</span><code id="dataLocation"></code></div>
+  </dialog>
+
+  <dialog id="exitDialog" class="compact-dialog" aria-labelledby="exitTitle"><h2 id="exitTitle">退出价格查询程序？</h2><p>已保存报价会保留，下次双击程序即可继续使用。</p><div class="dialog-actions"><button class="button" data-close="exitDialog">继续使用</button><button class="button primary" id="confirmExit">退出程序</button></div></dialog>
+</body>
+</html>

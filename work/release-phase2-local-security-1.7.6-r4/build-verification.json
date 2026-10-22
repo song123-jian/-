@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-21T17:24:18.6584382+08:00",
+  "applicationVersion": "1.7.6",
+  "applicationEntry": "desktop_main.py",
+  "applicationFile": "工作.exe",
+  "applicationSha256": "C388E912FD284A24D7D056DF1E773C91DE44259937F9CCF38AF7F65F3B0A10B4",
+  "python": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.venv\\Scripts\\python.exe",
+  "buildRoot": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\desktop-0b0d7aacee57496a90c345080a4f1c0e",
+  "checks": "ruff and pytest passed",
+  "testReport": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\desktop-0b0d7aacee57496a90c345080a4f1c0e\\tests.xml",
+  "excludedLegacyModules": [
+    "app.py",
+    "supabase_backend.py"
+  ],
+  "actualProgramVerification": "not_run"
+}

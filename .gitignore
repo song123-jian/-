@@ -1,20 +1,32 @@
-# 本地运行数据和凭据
+# Local runtime state and credentials
 /data/
-/work/
+/work-private/
 /可以删除文件/
+/手动删除/
 /.build/
 .venv/
 __pycache__/
+*.py[cod]
 .pytest_cache/
 .ruff_cache/
 .coverage
-*.py[cod]
-*.log
 *.sqlite3*
 *.db
+*.log
 .env
 .env.*
 source/account_config.json
-source/business_templates/*.png
-*.exe
+
+# Local machine and secret material
+**/login_credentials.json
+**/mes_credentials.json
+**/runtime.json
+**/*credentials*.json
+**/*secret*.json
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+
+# Mobile packages are outside this desktop delivery
 *.apk

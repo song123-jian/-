@@ -1,0 +1,16 @@
+{
+  "applicationVersion": "1.7.3",
+  "applicationSha256": "5A334D9C6F3B8A03ABD63194FB847D009EA7E6129E30978EE563AD7AD5122BEF",
+  "installerSha256": "887FAE384855BD5F98933328675C7A449FCDA4F12420CDF2D2E60C080063AB47",
+  "environment": "Windows 11 x64; current-user isolated install",
+  "validationRoot": "C:\\Users\\宋建建\\Desktop\\价格查询桌面端\\.build\\installer-registration-15-中文路径",
+  "installExitCode": 0,
+  "installedHashMatches": true,
+  "shortcutCount": 3,
+  "shortcutWorkingDirectoriesValid": true,
+  "uninstallExitCode": 0,
+  "programAndShortcutsRemoved": true,
+  "dataMarkerPreserved": true,
+  "realDesktopOrRegistryWritten": false,
+  "installedApplicationUi": "尚未完成验证"
+}

@@ -1,0 +1,44 @@
+{
+  "status": "completed_no_high_confidence_issues",
+  "date": "2026-10-19",
+  "method": "Primary agent incremental diff review against .build/import-sync-before/source; direct dependencies inspected",
+  "diff": ".build/import-sync-final.diff",
+  "reviewed": [
+    "source/desktop_main.py",
+    "source/domain.py",
+    "source/services/business_document_service.py",
+    "source/storage/account_store.py",
+    "source/ui/main_window.py",
+    "source/ui/workers.py",
+    "source/ui/business_document_dialog.py",
+    "source/operation_sync_qa.py",
+    "source/tests/test_business_documents.py",
+    "source/tests/test_mobile_sync.py",
+    "source/tests/test_import_operation_regression.py",
+    "source/migrations/desktop_sync_v176.sql",
+    "source/migrations/desktop_sync_v176_acl_fix.sql",
+    "source/business_templates/README.md",
+    "source/business_templates/reference-seal.json"
+  ],
+  "direct_dependency": "source/services/sync_service.py",
+  "conclusions": [
+    "SyncState.observe does not apply the token; sync_applied applies it only after snapshot refresh, preserving retry behavior.",
+    "Missing sync RPC retains polling at 60 seconds and successful reads return to 15 seconds; network errors remain distinct.",
+    "Document resources are checked before PDF output; both document types share the extracted original seal.",
+    "Import errors retain actionable storage errors; self-contained regression covers duplicate import and whole-batch rollback.",
+    "Read RPC and version-table permissions remain restricted, with final remote read-only checks confirming ACL/RLS and preserved business counts."
+  ],
+  "findings": [],
+  "limits": [
+    "No full project audit.",
+    "Seven legacy fixture-dependent tests failed; no private seed/XLSX restoration.",
+    "Authenticated desktop cloud login and cross-device business sync remain unverified."
+  ],
+  "evidence": [
+    ".build/import-sync-final-source-validation.json",
+    ".build/work-1.7.6-installer-validation.json",
+    ".build/work-1.7.6-packaged-ui/report.json",
+    ".build/work-1.7.6-packaged-ui/seal-original-verification.json",
+    ".build/desktop-sync-1.7.6/final-verify-result.txt"
+  ]
+}
