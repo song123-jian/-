@@ -26,7 +26,7 @@ internal fun mesCredentialPersistenceWarning(rememberCredentials: Boolean, persi
     throw cancelled
 } catch (failure: Exception) {
     val action = if (rememberCredentials) "本机加密凭据保存" else "本机保存凭据清除"
-    "MES已登录，但$action失败：${failure.message ?: "请重试"}"
+    "MES已登录，但${action}失败：${failure.message ?: "请重试"}"
 }
 
 class MobilePreferences(context: Context) {

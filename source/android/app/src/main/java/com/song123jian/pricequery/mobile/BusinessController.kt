@@ -36,6 +36,7 @@ import com.song123jian.pricequery.mobile.data.InventoryResult
 import com.song123jian.pricequery.mobile.data.MesClient
 import com.song123jian.pricequery.mobile.data.MesCredentials
 import com.song123jian.pricequery.mobile.data.MobilePreferences
+import com.song123jian.pricequery.mobile.data.mesCredentialPersistenceWarning
 import com.song123jian.pricequery.mobile.data.QuoteRecord
 import com.song123jian.pricequery.mobile.data.newRequestId
 import com.song123jian.pricequery.mobile.data.withSupplier
