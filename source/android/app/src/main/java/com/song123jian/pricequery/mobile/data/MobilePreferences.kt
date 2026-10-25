@@ -7,6 +7,7 @@ import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.KeyStore
+import java.util.concurrent.CancellationException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -17,6 +18,16 @@ data class VaultState(
     val pendingSave: PendingQuoteSave? = null,
     val pendingBusiness: JSONObject? = null,
 )
+
+internal fun mesCredentialPersistenceWarning(rememberCredentials: Boolean, persist: () -> Unit): String? = try {
+    persist()
+    null
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (failure: Exception) {
+    val action = if (rememberCredentials) "本机加密凭据保存" else "本机保存凭据清除"
+    "MES已登录，但$action失败：${failure.message ?: "请重试"}"
+}
 
 class MobilePreferences(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences("mobile_client_v1", Context.MODE_PRIVATE)

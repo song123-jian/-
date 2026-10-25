@@ -1009,11 +1009,15 @@ class BusinessController(
 
     fun loginMes(username: String, password: String, rememberCredentials: Boolean = false) = run("登录MES") {
         withContext(Dispatchers.IO) { mes.login(username, password) }
-        withContext(Dispatchers.IO) {
-            if (rememberCredentials) preferences.saveMesCredentials(MesCredentials(username.trim(), password))
-            else preferences.clearMesCredentials()
+        val credentialWarning = withContext(Dispatchers.IO) {
+            mesCredentialPersistenceWarning(rememberCredentials) {
+                if (rememberCredentials) preferences.saveMesCredentials(MesCredentials(username.trim(), password))
+                else preferences.clearMesCredentials()
+            }
         }
-        mutableState.update { it.copy(inventoryLoggedIn = true, inventory = null, message = "MES已登录") }
+        mutableState.update {
+            it.copy(inventoryLoggedIn = true, inventory = null, message = "MES已登录", error = credentialWarning)
+        }
     }
 
     fun clearMesCredentials() = run("清除已保存MES登录信息") {
