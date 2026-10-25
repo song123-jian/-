@@ -119,6 +119,28 @@ class BusinessModelsTest {
         }
     }
 
+    @Test fun inventoryQuantityParsingMatchesDesktopPrecisionAndLengthLimits() {
+        assertEquals("", parseInventoryQuantity(""))
+        assertEquals("0", parseInventoryQuantity("0.0000"))
+        assertEquals("-10.5", parseInventoryQuantity("-10.5"))
+        assertEquals("0.000000000001", parseInventoryQuantity("1e-12"))
+        assertEquals("1000000000000000", parseInventoryQuantity("1e15"))
+        assertEquals("-0", parseInventoryQuantity("-0.00"))
+        listOf("1e-13", "0e16", "1e-999999999", "NaN", "0".repeat(81)).forEach { value ->
+            assertTrue("Expected invalid MES quantity to be rejected: $value", runCatching {
+                parseInventoryQuantity(value)
+            }.isFailure)
+        }
+    }
+
+    @Test fun inventoryDatesMatchDesktopPrecisionAndFallbacks() {
+        assertEquals("2026-09-01 08:00:00", formatInventoryDate("/Date(1788220800000+0800)/"))
+        assertEquals("2013-08-07 08:41:21", formatInventoryDate("2013/8/7 8:41:21"))
+        assertEquals("2026-09-01 00:00:00", formatInventoryDate("2026-09-01"))
+        assertEquals("", formatInventoryDate("/Date(-62135596800000)/"))
+        assertEquals("x".repeat(80), formatInventoryDate("x".repeat(100)))
+    }
+
     @Test fun csvSpreadsheetPayloadsAreNeutralized() {
         assertEquals("'=SUM(A1)", FileExchange.spreadsheetCell("=SUM(A1)"))
         assertEquals("'  @cmd", FileExchange.spreadsheetCell("  @cmd"))

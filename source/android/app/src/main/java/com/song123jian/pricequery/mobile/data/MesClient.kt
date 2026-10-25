@@ -11,8 +11,12 @@ import java.net.URI
 import java.net.URL
 import java.net.URLEncoder
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.ResolverStyle
+import java.util.Locale
 
 data class InventoryResult(
     val query: String,
@@ -38,6 +42,43 @@ internal fun inventoryPageIsConsistent(total: Int, page: Int, rowCount: Int): Bo
     if (total < 0 || page < 1 || rowCount !in 0..100 || rowCount > total) return false
     val firstRow = (page.toLong() - 1L) * 100L
     return rowCount == 0 || total.toLong() >= firstRow + rowCount
+}
+
+internal fun parseInventoryQuantity(value: String): String {
+    if (value.isEmpty()) return ""
+    require(value.length <= 80) { "MES库存数量格式无效" }
+    val normalized = value.trim()
+    val number = normalized.toBigDecimalOrNull() ?: error("MES库存数量格式无效")
+    val exponent = -number.scale().toLong()
+    require(number.abs() <= BigDecimal("1e15") && exponent in -12L..15L) { "MES库存数量格式无效" }
+    return if (number.signum() == 0 && normalized.startsWith('-')) "-0" else number.stripTrailingZeros().toPlainString()
+}
+
+private val inventoryDatePattern = Regex("/Date\\((-?[0-9]+)(?:[+-][0-9]{4})?\\)/")
+private val inventoryDateOutput = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ROOT)
+private val inventoryDateTimeInputs = listOf("uuuu/M/d H:m:s", "uuuu-M-d H:m:s").map {
+    DateTimeFormatter.ofPattern(it, Locale.ROOT).withResolverStyle(ResolverStyle.STRICT)
+}
+private val inventoryDateInputs = listOf("uuuu/M/d", "uuuu-M-d").map {
+    DateTimeFormatter.ofPattern(it, Locale.ROOT).withResolverStyle(ResolverStyle.STRICT)
+}
+
+internal fun formatInventoryDate(value: String): String {
+    val milliseconds = inventoryDatePattern.matchEntire(value)?.groupValues?.get(1)?.toLongOrNull()
+    if (milliseconds != null) {
+        val date = runCatching { Instant.ofEpochMilli(milliseconds).atZone(ZoneId.of("Asia/Shanghai")) }.getOrNull()
+            ?: return value.take(80)
+        return if (date.year > 1900) date.format(inventoryDateOutput) else ""
+    }
+    for (formatter in inventoryDateTimeInputs) {
+        val date = runCatching { LocalDateTime.parse(value, formatter) }.getOrNull() ?: continue
+        return if (date.year > 1900) date.format(inventoryDateOutput) else ""
+    }
+    for (formatter in inventoryDateInputs) {
+        val date = runCatching { LocalDate.parse(value, formatter) }.getOrNull() ?: continue
+        return if (date.year > 1900) date.atStartOfDay().format(inventoryDateOutput) else ""
+    }
+    return value.take(80)
 }
 
 data class InventoryQuantitySummary(
@@ -166,17 +207,9 @@ class MesClient {
         (value.optJSONArray("datas") ?: error("MES字典格式无效")).objects().filter { !it.isNull(code) }
             .associate { it.getString(code) to it.optString(name, it.getString(code)) }
 
-    private fun quantity(value: String): String {
-        if (value.isBlank()) return ""
-        val number = value.toBigDecimalOrNull() ?: error("MES库存数量格式无效")
-        require(number.abs() <= BigDecimal("1e15")) { "MES库存数量超出范围" }
-        return number.stripTrailingZeros().toPlainString()
-    }
+    private fun quantity(value: String): String = parseInventoryQuantity(value)
 
-    private fun mesDate(value: String): String {
-        val milliseconds = Regex("/Date\\((-?[0-9]+)(?:[+-][0-9]+)?\\)/").matchEntire(value)?.groupValues?.get(1)?.toLongOrNull()
-        return if (milliseconds != null) Instant.ofEpochMilli(milliseconds).atZone(ZoneId.of("Asia/Shanghai")).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")) else value
-    }
+    private fun mesDate(value: String): String = formatInventoryDate(value)
 
     private data class Response(val status: Int, val location: String, val bytes: ByteArray)
 

@@ -1,13 +1,21 @@
-## 仓库上传验收检查点（2026-10-25，尚未完成）
+## 仓库上传验收（2026-10-25）
 
-- 对象：E:/工作、main、origin=https://github.com/song123-jian/-；本地68a61e62d8b7e59476861845b0ac66329ced885a，远端仍df119974be9783c5f6d1b01fa632f229b0596a72。Windows11/PowerShell/Git LFS。
-- 范围：上传文件清单、LFS载荷、提交一致性；不改业务代码，不重跑功能或构建。原各阶段验收记录沿用，不以本次上传证明功能正确。
-- 已核验：首次暂存250文件，后续并发更新需补提交；1.23根APK与候选SHA一致。5个根APK的配置JSON可解析，仅publishable key，未见凭据文件或私钥条目。*.apk新增LFS属性有效。
-- 首次推送：会话77768未完成，远端SHA未变，LFS batch 28唯一对象7可用/21返回404；只停止已核实的本任务19104后，push exit1。连接数和整机流量不能替代完成证据。
-- 续传：会话27270、4并发、字节进度文件lfs-progress.log，约170–450KB/s。独立1.24代理上传curl exit28：120.001秒、11,550,115字节、96,250B/s；尚未上传成功。直连存储HEAD为HTTP403/0.81秒（仅连通性）；下一步将该APK存储PUT改直连并核验对象，GitHub鉴权仍经代理。
-- 原git diff --cached --check有已有Markdown硬换行空格3处和测试末尾空行1处，保留既有内容。完整远端验收尚未完成。
-- 新增有效证据：同一1.24 APK仅将存储路由改直连，HTTP200、93,883,688字节、17.286784秒、5,430,952B/s，curl exit0；LFS verify成功。代理上传失败不代表包损坏。剩余LFS改用该已验证路由，最终远端全对象核验仍待执行。
+对象：Windows11/PowerShell/Git LFS，工作区`E:/工作`，远端[仓库main](https://github.com/song123-jian/-/tree/main)。业务文件验收快照`452367abc7f9e0102e36696104cda693031eff37`；后续交接提交及纯文本备份增量不改变已验证的LFS载荷。程序入口/版本沿用原阶段记录；本次只执行仓库上传验收，不重建或重新验收程序功能。
 
+| 检查范围与步骤 | 预期与实际结果 | 状态/证据 |
+| --- | --- | --- |
+| 文件清单、忽略边界和并发内容 | 580个入库文件，含桌面/Android源码、模板及发布物；5个根APK显式纳入。凭据、真实数据与构建缓存保持排除；并发保存的源码分批补齐 | 通过；upload-inventory.json、Git提交树 |
+| 本地LFS哈希 | `git lfs fsck --objects HEAD`核验快照55f7908所有载荷；随后未改LFS二进制 | `Git LFS fsck OK`，exit0，结果仍有效 |
+| LFS上传完成 | 主批次会话93622为27/27、exit0；1.24 APK直连PUT 93,883,688字节/17.286784秒，HTTP200，verify完成；最终push复用全部对象 | 通过；transfer-summary.json |
+| 远端真实可读 | LFS batch列出29唯一对象；每个签名下载地址实际GET `Range: bytes=0-0`，检查HTTP206及Content-Range总长度 | 29/29通过；remote-verification.json；31路径/29对象/5,218,765,998字节 |
+| Git提交一致性 | `git ls-remote origin refs/heads/main`对比HEAD；验收快照均452367a，工作区无待提交项 | 通过；remote-verification.json；最终交接提交后仅复核SHA与工作区，不重复大对象读取 |
+| 新文件安全检查 | 原上传前扫描无真实私钥/令牌；后续文本增量未匹配私钥/私有token模式。5个根APK配置JSON仅publishable key，无凭据文件/私钥条目 | 在上述模式及文件范围内通过，不是全项目安全审计 |
+| 清理 | 两份一次性脚本和两份进度日志按精确路径删除，核对四项均不存在；报告/检查点保留 | 通过；cleanup.json，无残留阻塞 |
+
+- 失败记录：首次commit缺身份未执行，改用最近提交相同的单次命令身份成功，未改全局配置。首次推送77768和慢速续传27270仅停止本任务已核实进程后exit1；远端当时仍旧SHA，未记为成功。代理APK传输curl exit28/120秒/11,550,115字节；改为存储域直连后HTTP200，主批次约7.3MB/s完成。连接数和网卡流量未作为最终证据。
+- 格式与审查：本次实际新改动为`*.apk`的LFS属性和双交接，未发现本次属性差异问题。对上传既有源码不宣称完成全仓库审查。初始`diff --check`的三处Markdown硬换行空格及测试EOF空行沿用；交接本次写入执行基线哈希、回读、UTF-8无BOM、链接和表格格式核验。
+- 清理记录检查曾因`Where-Object`比较参数缺空格报错；四文件已删除且cleanup.json已保存，修正为脚本谓词后仅回读实际状态，不重复删除，最终核对通过。
+- 未覆盖：应用功能重测、EXE重建、生产数据库迁移、真实业务同步、实体手机及其他任务进行中的Android1.25交付均不属于本次上传验收；原各阶段有效结果保持原有适用范围。真实数据、凭据和本机配置未上传，恢复大文件需Git LFS。使用Skill：无。
 ## 当前验收：1.8.6快捷查询、目录折叠与覆盖（2026-10-25，已完成）
 
 - 对象：Windows11 x64/Qt Widgets，CPython3.12.14；正式E:/工作/工作-1.8.6.exe、候选work/release-work-1.8.6-20261025/工作.exe、原生C:/Users/Administrator/AppData/Local/Programs/PriceQueryDesktop/工作.exe。三处EXE SHA256 1353B7A33DB8EE35C02308E72BFE9922AB3FECA87D71CB202C91AD8DCB6757E9，安装包SHA256 02944B4D7EED787476788170229E66D73F3152D6FD8C44C3EB33D627AD47D21A。
