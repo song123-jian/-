@@ -118,6 +118,8 @@ data class BusinessState(
     val backupQuery: String = "",
 )
 
+internal fun BusinessState.withoutInventoryResult(): BusinessState = copy(inventory = null)
+
 class BusinessController(
     private val context: Context,
     private val scope: CoroutineScope,
@@ -1031,9 +1033,16 @@ class BusinessController(
         mutableState.update { it.copy(inventoryLoggedIn = false, inventory = null) }
     }
 
-    fun queryInventory(text: String, mode: String, page: Int = 1) = run("查询库存") {
-        val result = withContext(Dispatchers.IO) { mes.query(text, mode, page) }
-        mutableState.update { it.copy(inventory = result) }
+    fun clearInventoryResult() {
+        if (!mutableState.value.busy) mutableState.update { it.withoutInventoryResult() }
+    }
+
+    fun queryInventory(text: String, mode: String, page: Int = 1) {
+        clearInventoryResult()
+        run("查询库存") {
+            val result = withContext(Dispatchers.IO) { mes.query(text, mode, page) }
+            mutableState.update { it.copy(inventory = result) }
+        }
     }
 
     fun exportInventory() = run("导出当前页库存") {

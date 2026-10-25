@@ -928,8 +928,18 @@ private fun InventoryPage(state: BusinessState, controller: BusinessController) 
             item { Button(onClick = { capturedPassword = password; password = ""; httpConfirm = true }, enabled = !state.busy && username.isNotBlank() && password.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("登录MES") } }
         } else {
             item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("MES已登录", Modifier.weight(1f)); TextButton(onClick = controller::logoutMes, enabled = !state.busy) { Text("退出MES") } } }
-            item { Choice("查询方式", mode, listOf("material_code" to "物料编码", "material_name" to "物料名称", "reserve" to "批号备货"), !state.busy) { mode = it } }
-            item { BusinessField(if (mode == "reserve") "批号（精确匹配）" else "物料关键字", text, !state.busy) { text = it } }
+            item { Choice("查询方式", mode, listOf("material_code" to "物料编码", "material_name" to "物料名称", "reserve" to "批号备货"), !state.busy) {
+                if (mode != it) {
+                    mode = it
+                    controller.clearInventoryResult()
+                }
+            } }
+            item { BusinessField(if (mode == "reserve") "批号（精确匹配）" else "物料关键字", text, !state.busy) {
+                if (text != it) {
+                    text = it
+                    controller.clearInventoryResult()
+                }
+            } }
             item { Button(onClick = { controller.queryInventory(text, mode) }, enabled = !state.busy && text.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("查询") } }
             state.inventory?.let { result ->
                 item {

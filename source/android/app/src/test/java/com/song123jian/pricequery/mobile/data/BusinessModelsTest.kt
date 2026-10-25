@@ -3,6 +3,8 @@ package com.song123jian.pricequery.mobile.data
 import org.junit.Assert.*
 import org.junit.Test
 import java.math.BigDecimal
+import com.song123jian.pricequery.mobile.BusinessState
+import com.song123jian.pricequery.mobile.withoutInventoryResult
 
 class BusinessModelsTest {
     private fun quote(
@@ -107,6 +109,12 @@ class BusinessModelsTest {
         assertTrue(inventoryPageIsConsistent(Int.MAX_VALUE, 21_474_837, 47))
         assertFalse(inventoryPageIsConsistent(Int.MAX_VALUE, 21_474_837, 48))
         assertFalse(inventoryPageIsConsistent(Int.MAX_VALUE, 0, 1))
+    }
+
+    @Test fun inventoryCriteriaChangesClearPreviousRowsAndTotals() {
+        val state = BusinessState(inventory = InventoryResult("PA66", "material_code", 1, 1, emptyList(), ""))
+
+        assertNull(state.withoutInventoryResult().inventory)
     }
 
     @Test fun inventoryTotalCountRejectsNonIntegerAndOutOfRangeValues() {
