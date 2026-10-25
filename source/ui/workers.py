@@ -8,7 +8,7 @@ import traceback
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal, Slot
 
-from domain import BackendChangedError, StorageError
+from domain import BackendChangedError, NetworkError, StorageError
 from services.read_control import ReadCancelled, read_scope
 
 
@@ -34,6 +34,8 @@ class Worker(QRunnable):
             error_code = "permission_denied"
         elif isinstance(error, FileNotFoundError):
             error_code = "file_not_found"
+        elif isinstance(error, NetworkError):
+            error_code = "network_error"
         elif isinstance(error, OSError):
             error_code = "io_error"
         elif isinstance(error, StorageError):

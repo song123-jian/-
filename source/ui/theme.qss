@@ -9,11 +9,44 @@ QFrame#Sidebar QPushButton:checked { background: {{g800}}; border-color: {{sideb
 QFrame[role="panel"], QFrame[role="stat"] { background: {{card}}; border: 1px solid {{line}}; border-radius: 12px; }
 QFrame[role="stat"] { border: none; border-bottom: 1px solid {{lineStrong}}; border-radius: 0; }
 QFrame[role="filterBand"] { background: {{card}}; border: none; border-bottom: 1px solid {{lineStrong}}; border-radius: 0; }
+QFrame[role="projectProgress"] { background: {{card}}; border: 1px solid {{line}}; border-radius: 12px; }
+QFrame[role="projectMetric"] { background: {{g50}}; border: 1px solid {{line}}; border-radius: 8px; }
+QFrame[role="projectSegment"] { background: {{g50}}; border: 1px solid {{line}}; border-radius: 8px; }
+QFrame[role="projectSegment"]#ProjectSegmentOem { border-top: 3px solid {{g700}}; }
+QFrame[role="projectSegment"]#ProjectSegmentNonAuto { border-top: 3px solid {{future}}; }
+QFrame[role="projectCallout"] { background: {{successBg}}; border: 1px solid {{successLine}}; border-radius: 8px; }
 QLabel { background: transparent; border: none; }
 QLabel[role="title"] { font-size: 24px; font-weight: 700; }
 QLabel[role="heading"] { font-size: 16px; font-weight: 600; }
 QLabel[role="muted"] { color: {{ink500}}; font-size: 12px; }
-QLabel[role="number"] { color: {{price}}; font-size: 26px; font-weight: 700; }
+QLabel[role="number"], QLabel[role="statCompact"], QLabel[role="statDate"] { color: {{price}}; font-weight: 700; }
+QLabel[role="number"] { font-size: {{font_stat_value}}; }
+QLabel[role="statCompact"] { font-size: {{font_stat_compact}}; }
+QLabel[role="statDate"] { font-size: {{font_stat_date}}; }
+QLabel[role="projectBadge"] { color: {{g700}}; background: {{g100}}; border: 1px solid {{g200}}; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 600; }
+QLabel[role="projectFormula"] { color: {{ink700}}; background: {{g50}}; border-left: 3px solid {{g700}}; padding: 8px 10px; font-size: 12px; }
+QLabel[role="projectMetricValue"] { color: {{price}}; font-size: 15px; font-weight: 600; }
+QLabel[role="projectStage"] { font-size: 13px; font-weight: 600; }
+QLabel[role="projectPercent"] { color: {{g700}}; font-size: 12px; font-weight: 600; }
+QLabel[role="projectScoreTitle"] { color: {{price}}; font-size: 13px; font-weight: 600; }
+QLabel[role="projectList"] { color: {{ink700}}; font-size: 11px; }
+QLabel[role="projectResourceTier"] { color: {{price}}; font-size: 13px; font-weight: 700; }
+QLabel[role="projectResourceText"] { color: {{ink700}}; font-size: 12px; }
+QLabel[role="projectSegmentTitle"] { font-size: 14px; font-weight: 600; }
+QLabel[role="projectTag"] { color: {{ink700}}; background: {{card}}; border: 1px solid {{lineStrong}}; border-radius: 6px; padding: 3px 7px; font-size: 11px; }
+QLabel[role="projectStep"] { color: {{ink700}}; font-size: 12px; }
+QLabel[role="projectAction"] { color: {{price}}; font-size: 12px; font-weight: 600; }
+QLabel[role="projectCadenceDay"] { color: {{g700}}; font-size: 12px; font-weight: 700; }
+QLabel[role="projectCadenceTitle"] { color: {{ink900}}; font-size: 13px; font-weight: 600; }
+QLabel[role="projectRecommendationTitle"] { color: {{success}}; font-size: 14px; font-weight: 700; }
+QProgressBar[role="projectMilestone"] { border: none; border-radius: 3px; background: {{line}}; max-height: 7px; }
+QProgressBar[role="projectMilestone"]::chunk { background: {{g700}}; border-radius: 3px; }
+QFrame[role="projectScore"], QFrame[role="projectResource"], QFrame[role="projectCadence"] { background: {{g50}}; border: 1px solid {{line}}; border-radius: 8px; }
+QFrame[role="projectResource"]#ProjectResourceA { border-top: 3px solid {{g700}}; }
+QFrame[role="projectResource"]#ProjectResourceB { border-top: 3px solid {{down}}; }
+QFrame[role="projectResource"]#ProjectResourceC { border-top: 3px solid {{future}}; }
+QFrame[role="projectResource"]#ProjectResourceD { border-top: 3px solid {{lineStrong}}; }
+QFrame[role="projectCadence"] { background: {{card}}; }
 QPushButton { background: {{card}}; border: 1px solid {{lineStrong}}; border-radius: 8px; padding: 7px 12px; min-height: 22px; }
 QPushButton:hover { background: {{g50}}; border-color: {{buttonHoverLine}}; }
 QPushButton:pressed { background: {{g100}}; }
@@ -38,6 +71,7 @@ QComboBox QAbstractItemView::item { min-height: 28px; padding: 2px 10px; }
 QHeaderView::section { background: {{tableHeader}}; color: {{ink700}}; padding: 10px 8px; border: none; border-right: 1px solid {{tableGrid}}; border-bottom: 1px solid {{tableGrid}}; }
 QTableView, QTableWidget { background: {{card}}; alternate-background-color: {{g50}}; border: 1px solid {{tableGrid}}; selection-background-color: {{g100}}; selection-color: {{ink900}}; gridline-color: {{tableGrid}}; }
 QTableView::item, QTableWidget::item { border: none; }
+QTableWidget[role="inventoryTable"]::item { padding: 0 {{inventory_cell_padding_x}}; }
 QTableView::item:selected { background: {{g100}}; color: {{ink900}}; }
 QTableView:focus { border: 1px solid {{g700}}; }
 QListView#Customers { background: {{g900}}; color: {{sidebarText}}; border: none; outline: none; }

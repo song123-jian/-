@@ -40,8 +40,9 @@ class AppContext:
         if generation is not None and generation != self.data_generation:
             raise ValidationError("客户状态已变化，请重新打开表单或重新预览")
 
-    def invalidate_customer_data(self):
+    def invalidate_customer_data(self, *, clear_previews=True):
         with self.state_lock:
             self.data_generation += 1
-            self.previews.clear()
+            if clear_previews:
+                self.previews.clear()
 

@@ -27,7 +27,11 @@ class AccountAcceptance(QObject):
         marker=self.controller.folder/'acceptance-account.json'
         self.spec=json.loads(marker.read_text(encoding='utf-8')) if marker.exists() else {}
         self.username=self.spec.get('username','song123')
+        self.cloud_readonly=self.spec.get('scenario')=='customer-cloud-readonly'
+        self.login_only=self.spec.get('scenario') in {'login-only', 'customer-cloud-readonly'}
         self.business=self.spec.get('business',False)
+        if self.login_only:
+            assert not self.business
         self.expected_records=self.spec.get('initial_records',78)
         self.expected_current=self.spec.get('initial_current',1 if self.business else 47)
         if self.business:
@@ -37,6 +41,10 @@ class AccountAcceptance(QObject):
                      'environment':'Windows x64 Qt Widgets; actual Supabase Auth/HTTPS/SQL',
                      'checks':{},'substitution':'OS export/save file chooser only; real login/controller/Qt/RPC/files',
                      'business_writes':0}
+        if self.login_only:
+            self.report.update(scenario='login-only',substitution='none; real login/controller/Qt/HTTPS; no export or backup')
+        if self.cloud_readonly:
+            self.report['scenario']='customer-cloud-readonly'
         self.timer=QTimer(self)
         self.timer.timeout.connect(self.tick)
         self.timer.start(90)
@@ -49,6 +57,8 @@ class AccountAcceptance(QObject):
             method()
         except Exception as exc:
             self.timer.stop()
+            if self.login_only:
+                LoginCredentialStore(self.controller.folder).clear()
             self.report.update(status='failed',phase=self.phase,error=str(exc))
             self.save()
             if self.controller.window:
@@ -71,14 +81,32 @@ class AccountAcceptance(QObject):
 
     def phase_loaded(self):
         window=self.controller.window
+        dialog=self.controller.login_dialog
+        if self.login_only and dialog and dialog.isVisible() and not dialog.pending:
+            raise AssertionError('Actual login rejected; see isolated app.log')
         if not window or window.tasks.jobs or not window.loaded:
             return
-        assert window.model.rowCount()==self.expected_current and window.context.account['username']==self.username
+        assert window.context.account['username']==self.username
+        if not self.login_only:
+            assert window.model.rowCount()==self.expected_current
         assert window.context.folder.parent.name=='profiles'
         assert window.context.shared_folder==self.controller.folder
         assert not (window.context.folder/'prices.sqlite3').exists()
         assert self.username in window.windowTitle()
         self.report['checks']['normal_login_actual_cloud_and_profile']=True
+        self.report['login_home_seconds']=round(time.monotonic()-self.started,3)
+        if self.login_only:
+            self.report['checks']['actual_home_loaded']=True
+            self.window=window
+            if self.cloud_readonly:
+                assert window.context.store.url == self.spec['expected_url']
+                self.report['target']=window.context.store.url
+                self.phase='cloud_customers'
+                QTest.mouseClick(window.customer_nav, Qt.MouseButton.LeftButton)
+                return
+            self.phase='login_only_logged_out'
+            window.logout_account()
+            return
         window.backend_dialog()
         assert not any(d.isVisible() and d.__class__.__name__=='BackendDialog' for d in window.dialogs)
         self.report['checks']['admin_database_switch_blocked']=True
@@ -96,6 +124,58 @@ class AccountAcceptance(QObject):
             QTest.mouseClick(self.quote.save,Qt.MouseButton.LeftButton)
             return
         self.open_history()
+
+    def phase_cloud_customers(self):
+        window=self.window
+        if window.tasks.jobs:
+            return
+        assert window.pages.currentIndex()==window.PAGE_CUSTOMERS
+        assert window.customer_profile_status.text()==f'{len(window.customer_profiles)} 位客户'
+        assert not window.customer_profile_service.local_only
+        assert window.customer_profile_table.rowCount()==len(window.customer_profiles)
+        assert '云端已读取' in window.sync_label.text() or '云端同步正常' in window.sync_label.text()
+        self.report['customer_count']=len(window.customer_profiles)
+        self.report['checks']['actual_customer_cloud_read_no_local_fallback']=True
+        self.report['checks']['actual_sync_metadata_available']=True
+        self.phase='cloud_projects'
+        QTest.mouseClick(window.project_nav, Qt.MouseButton.LeftButton)
+
+    def phase_cloud_projects(self):
+        window=self.window
+        if window.tasks.jobs:
+            return
+        assert window.pages.currentIndex()==window.PAGE_PROJECT_PROGRESS
+        assert window.project_progress_status.text()==f'{len(window.project_progress_records)} 个项目'
+        self.report['project_count']=len(window.project_progress_records)
+        self.report['checks']['actual_project_cloud_read']=True
+        QTest.mouseClick(window.settings_nav, Qt.MouseButton.LeftButton)
+        assert window.pages.currentIndex()==window.PAGE_SETTINGS
+        assert window.settings_tabs.count()>=2
+        self.report['checks']['actual_settings_navigation']=True
+        QTest.mouseClick(window.customer_nav, Qt.MouseButton.LeftButton)
+        self.phase='cloud_finished'
+
+    def phase_cloud_finished(self):
+        if self.window.tasks.jobs:
+            return
+        self.window.resize(1200,780)
+        self.window.grab().save(str(self.output/'account-final.png'))
+        self.phase='login_only_logged_out'
+        self.window.logout_account()
+
+    def phase_login_only_logged_out(self):
+        dialog=self.controller.login_dialog
+        if not dialog or not dialog.isVisible() or dialog.pending:
+            return
+        assert self.controller.window is None and self.controller.session is None
+        assert self.window.context.closing and self.window.context.store.session.closed
+        LoginCredentialStore(self.controller.folder).clear()
+        assert LoginCredentialStore(self.controller.folder).load() is None
+        self.report['checks']['logout_and_clear_qa_credentials']=True
+        self.timer.stop()
+        self.report.update(status='passed',elapsed_seconds=round(time.monotonic()-self.started,2))
+        self.save()
+        dialog.reject()
 
     def phase_saved_new(self):
         if self.window.tasks.jobs or not self.quote.row:

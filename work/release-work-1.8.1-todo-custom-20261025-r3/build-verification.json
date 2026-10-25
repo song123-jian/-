@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-25T12:21:20.7743944+08:00",
+  "applicationVersion": "1.8.1",
+  "applicationEntry": "desktop_main.py",
+  "applicationFile": "工作.exe",
+  "applicationSha256": "1A6973D829EF8975C34625C990B19AE1E4BADEEE3E279372427FC6D0A8639E9A",
+  "python": "E:\\工作\\.build\\desktop-ui-refactor-20261025-venv\\Scripts\\python.exe",
+  "buildRoot": "E:\\工作\\.build\\desktop-40eda3d76d6a41e9b11d037482999eab",
+  "checks": "skipped by explicit switch",
+  "testReport": null,
+  "excludedLegacyModules": [
+    "app.py",
+    "supabase_backend.py"
+  ],
+  "actualProgramVerification": "not_run"
+}

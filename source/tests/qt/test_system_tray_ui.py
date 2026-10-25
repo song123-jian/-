@@ -61,9 +61,9 @@ def test_close_to_tray_restores_current_page_and_maximized_state(qtbot, shell):
     assert tray.icon.isVisible()
     tray.activated(QSystemTrayIcon.ActivationReason.DoubleClick)
     qtbot.waitUntil(window.isVisible)
-    assert window.isMaximized() and window.pages.currentIndex() == 2 and window.settings_nav.isChecked()
+    assert window.isMaximized() and window.pages.currentIndex() == window.PAGE_SETTINGS and window.settings_nav.isChecked()
     window.query_nav.click()
-    assert window.pages.currentIndex() == 0 and not window.settings_nav.isChecked()
+    assert window.pages.currentIndex() == window.PAGE_QUERY and not window.settings_nav.isChecked()
 
 
 def test_missing_tray_service_falls_back_to_graceful_exit(qtbot, shell, monkeypatch):
@@ -224,16 +224,17 @@ def test_storage_settings_row_and_managed_permissions(qtbot, context):
     try:
         window.resize(960, 640)
         qtbot.mouseClick(window.settings_nav, Qt.MouseButton.LeftButton)
-        assert window.pages.currentIndex() == 2
+        assert window.pages.currentIndex() == window.PAGE_SETTINGS
         assert window.storage_label.text() == "● Supabase 云数据库"
-        assert window.settings_nav.accessibleName() == "数据库设置"
+        assert window.settings_nav.accessibleName() == "设置"
         assert window.storage_label.geometry().right() < window.settings_nav.geometry().left()
         assert abs(window.storage_label.geometry().center().y() - window.settings_nav.geometry().center().y()) <= 1
-        backend_button = next(control for control in window.pages.widget(2).findChildren(type(window.settings_nav))
+        backend_button = next(control for control in window.pages.widget(window.PAGE_SETTINGS).findChildren(type(window.settings_nav))
                               if control.text() == "打开数据库设置")
         assert not backend_button.isEnabled()
-        window.data_nav.click()
-        assert window.pages.currentIndex() == 1 and not window.settings_nav.isChecked()
+        window.navigate(window.PAGE_DATA)
+        assert window.pages.currentIndex() == window.PAGE_SETTINGS and window.settings_nav.isChecked()
+        assert window.settings_tabs.currentIndex() == 0
     finally:
         window.request_exit()
         qtbot.waitUntil(lambda: window._ready_to_close)

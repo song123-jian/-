@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 2,
+  "createdAt": "2026-10-25T18:38:15.9345092+08:00",
+  "productId": "PriceQueryDesktop",
+  "appId": "PriceQueryDesktop",
+  "applicationVersion": "1.8.5",
+  "installerRevision": "r1",
+  "installerEngine": "Inno Setup",
+  "isTestPackage": false,
+  "setupFile": "工作-1.8.5-r1-Setup.exe",
+  "applicationFile": "工作.exe",
+  "applicationSha256": "8C84083736B0CE69FAB9EAF831738ED6586BA0CC1BE815FA7083857E2CC8C10C",
+  "applicationEntry": "desktop_main.py",
+  "compilerSha256": "0A8757031B33777E4C9CBFFEE40F11A5062B36D25CBE144C1DB73B6102B80AD7",
+  "files": [
+    {
+      "target": "工作.exe",
+      "sha256": "8C84083736B0CE69FAB9EAF831738ED6586BA0CC1BE815FA7083857E2CC8C10C"
+    },
+    {
+      "target": "app.ico",
+      "sha256": "B544402EB14196C5013A258E3D31EB03D4CBDBF210F489309FD1126FCAEAAC3E"
+    },
+    {
+      "target": "install-info.ini",
+      "sha256": "8D693F7DB166A20333C796A615E054BADC68D9D19DB3E183EBFFA0C344436481"
+    }
+  ],
+  "verificationStatus": "passed",
+  "setupSha256": "3DDDA9EB5D1F5C312FF5B5D16B3E2CA19AE804ADB2080D54B70D644261235E31",
+  "verificationEvidence": "E:/工作/.build/release-1.8.5-20261025/installer-verification.json"
+}

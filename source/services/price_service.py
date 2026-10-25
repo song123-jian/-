@@ -248,6 +248,8 @@ class PriceService:
                                     "fill_missing_identity": bool(data.get("fill_missing_identity"))})
             except sqlite3.Error:
                 raise StorageError("数据库写入失败，请查看 data/app.log") from None
+            if result.get("added") or data.get("fill_missing_identity"):
+                self.context.invalidate_customer_data(clear_previews=False)
             return {**result, "storage_generation": captured}
 
     def _read_import(self, path, generation):
@@ -408,6 +410,8 @@ class PriceService:
                 result = store.commit(pending["result"]["records"], customer_revisions=pending["customer_revisions"])
             except sqlite3.Error:
                 raise StorageError("整批导入失败，事务已回滚；请重新预览") from None
+            if result.get("added"):
+                self.context.invalidate_customer_data(clear_previews=False)
             return {**result, "storage_generation": captured}
 
     def export_quotes(self, filters, mode, path, generation):

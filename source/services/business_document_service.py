@@ -7,6 +7,7 @@ import json
 import os
 import re
 import threading
+import uuid
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 from pathlib import Path
@@ -16,13 +17,17 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
-from domain import ASSETS, ValidationError, today
+from domain import ASSETS, ConflictError, NetworkError, ValidationError, now, today
 from services.price_service import atomic_bytes
 
 KINDS = {"quotation": "报价单", "contract": "购销合同"}
-PAGE_SIZES = {"quotation": (595.0, 842.0), "contract": (595.3, 841.95)}
+PAGE_SIZES = {"quotation": (595.35, 842.0), "contract": (595.3, 841.95)}
 SELLER = "南京聚隆科技股份有限公司"
 MAX_ITEMS = 30
+MAX_RECORDS = 200
+MAX_RECORD_FILE_BYTES = 2_000_000
+MAX_PENDING_FILE_BYTES = 2_000_000
+SYNC_STATUSES = {"pending", "conflict", "error"}
 PARTY_FIELDS = ("name", "address", "representative", "agent", "phone", "fax", "bank", "account")
 SUPPLIER_FIELDS = tuple("seller_"+key for key in PARTY_FIELDS) + ("email",)
 COMMON_FIELDS = (
@@ -32,15 +37,15 @@ COMMON_FIELDS = (
 FIELD_NAMES = COMMON_FIELDS + tuple(f"{party}_{key}" for party in ("seller", "buyer") for key in PARTY_FIELDS)
 ITEM_FIELDS = ("name", "model", "price", "note", "manufacturer", "quantity", "delivery")
 DEFAULT_TERMS = {
-    "quote_note": "如项目正式量产原材料高于或低于10%，双方需要重新核价。如有疑问，请来电垂询。",
+    "quote_note": "如项目正式量产原材料高于或低于10%，双方需要重新核价。",
     "quality": "质量要求按供方材料技术质量标准。",
-    "delivery": "交货地点为供方仓库，供方代办运输。",
+    "delivery": "交货地点为供方仓库,供方代办运输。",
     "transport": "汽配至需方指定地点，供方负责运费。",
     "packaging": "25KG/袋。",
-    "acceptance": "按条款（二）验收，提出异议期限以收货一周内。异议期内，需方不得批量投料，一经投料，供方将不承担任何经济损失。",
+    "acceptance": "按条款（二）验收，提出异议期限为收货一周内。异议期内，需方不得批量投料，一经投料，供方将不承担任何经济损失。",
     "breach": "需方应按约付款，延迟一日承担货款总额万分之三的违约金。",
     "dispute": "双方协商解决，协商不成，由供方所在地法院诉讼解决。",
-    "effective": "本合同经双方签字或盖章后即生效，传真件具同等法律效力。",
+    "effective": "本合同经双方签字或盖章后即生效，传真件具有同等法律效力。",
 }
 PAYMENTS = ("款到发货", "月结30天", "月结60天")
 _FONT_LOCK = threading.RLock()
@@ -48,6 +53,17 @@ _FONT_LOCK = threading.RLock()
 
 def blank_item():
     return {**dict.fromkeys(ITEM_FIELDS, ""), "manufacturer": "聚隆", "delivery": "具体交期\n双方协商"}
+
+
+def record_title(document):
+    """Return a stable, readable label without adding a field to the document schema."""
+    fields = document.get("fields", {}) if isinstance(document, dict) else {}
+    buyer = str(fields.get("buyer_name", "")).strip()
+    items = document.get("items", []) if isinstance(document, dict) else []
+    first = items[0] if items and isinstance(items[0], dict) else {}
+    product = " ".join(str(first.get(key, "")).strip() for key in ("name", "model") if first.get(key))
+    parts = [part for part in (buyer, product) if part]
+    return " · ".join(parts)[:120] or "未命名单据"
 
 
 def new_document(kind, row=None, customer=""):
@@ -435,12 +451,13 @@ def _contract_page(pdf, document, item, page_index, pages, total, assets):
 
 
 class BusinessDocumentService:
-    def __init__(self, folder, assets=None):
+    def __init__(self, folder, assets=None, cloud_store=None):
         self.folder = Path(folder).resolve() / "business-documents"
         private = Path(folder).resolve() / "business_templates"
         self.assets = Path(assets) if assets else private if private.is_dir() else ASSETS / "business_templates"
         self.template_directory = Path(assets) if assets else private
         self.custom_assets = assets is not None
+        self.cloud_store = cloud_store
 
     def template_images(self, kind):
         names = (f"{kind}.png",)
@@ -515,6 +532,445 @@ class BusinessDocumentService:
         atomic_bytes(path, json.dumps(result, ensure_ascii=False, indent=2).encode("utf-8"))
         return str(path)
 
+    def _records_path(self, kind):
+        if kind not in KINDS:
+            raise ValidationError("不支持的单据类型")
+        return self.folder / f"{kind}-records.json"
+
+    def _pending_path(self, kind):
+        if kind not in KINDS:
+            raise ValidationError("不支持的单据类型")
+        return self.folder / f"{kind}-pending.json"
+
+    @staticmethod
+    def _normalize_record_id(value, field_name="record id"):
+        if not isinstance(value, str):
+            raise ValueError(f"invalid {field_name}")
+        try:
+            return uuid.UUID(value).hex
+        except (ValueError, AttributeError, TypeError) as exc:
+            raise ValueError(f"invalid {field_name}") from exc
+
+    @staticmethod
+    def _normalize_record(raw, kind, seen):
+        if not isinstance(raw, dict):
+            raise ValueError("record is not an object")
+        record_id = BusinessDocumentService._normalize_record_id(raw.get("id"))
+        if record_id in seen:
+            raise ValueError("invalid record id")
+        title = raw.get("title", "")
+        if (not isinstance(title, str) or not title or len(title) > 120
+                or any(ord(char) < 32 and char not in "\n\t\r" for char in title)):
+            raise ValueError("invalid record title")
+        created_at, updated_at = raw.get("created_at"), raw.get("updated_at")
+        for timestamp in (created_at, updated_at):
+            if (not isinstance(timestamp, str) or not 1 <= len(timestamp) <= 64
+                    or any(ord(char) < 32 for char in timestamp)):
+                raise ValueError("invalid record timestamp")
+        revision = raw.get("revision", 1)
+        if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
+            raise ValueError("invalid record revision")
+        sync_status = raw.get("sync_status", "")
+        if sync_status and sync_status not in SYNC_STATUSES:
+            raise ValueError("invalid record sync status")
+        sync_error = raw.get("sync_error", "")
+        if not isinstance(sync_error, str) or len(sync_error) > 500:
+            raise ValueError("invalid record sync error")
+        document = draft_data(raw.get("document"))
+        if document["kind"] != kind:
+            raise ValueError("record kind mismatch")
+        seen.add(record_id)
+        result = {"id": record_id, "title": title, "created_at": created_at,
+                  "updated_at": updated_at, "revision": revision, "document": document}
+        if sync_status:
+            result["sync_status"] = sync_status
+        if sync_error:
+            result["sync_error"] = sync_error
+        return result
+
+    def _normalize_records(self, kind, records):
+        if not isinstance(records, list) or len(records) > MAX_RECORDS:
+            raise ValueError("too many records")
+        result, seen = [], set()
+        for raw in records:
+            result.append(self._normalize_record(raw, kind, seen))
+        return result
+
+    def _write_records(self, kind, records):
+        self.folder.mkdir(parents=True, exist_ok=True)
+        atomic_bytes(self._records_path(kind), json.dumps(
+            {"schema": 1, "kind": kind, "records": records},
+            ensure_ascii=False, indent=2).encode("utf-8"))
+
+    @staticmethod
+    def _normalize_pending(raw, kind, seen):
+        if not isinstance(raw, dict):
+            raise ValueError("pending operation is not an object")
+        operation = raw.get("operation")
+        if operation not in ("save", "delete"):
+            raise ValueError("invalid pending operation")
+        local_id = raw.get("local_id")
+        if not isinstance(local_id, str) or not re.fullmatch(r"[0-9a-f]{32}", local_id):
+            raise ValueError("invalid pending local id")
+        if local_id in seen:
+            raise ValueError("duplicate pending local id")
+        document_id = raw.get("document_id")
+        if document_id is not None:
+            document_id = BusinessDocumentService._normalize_record_id(document_id, "pending document id")
+        expected_revision = raw.get("expected_revision")
+        if expected_revision is not None and (isinstance(expected_revision, bool)
+                                              or not isinstance(expected_revision, int)
+                                              or expected_revision < 1):
+            raise ValueError("invalid pending revision")
+        status = raw.get("status", "pending")
+        if status not in ("pending", "conflict", "error"):
+            raise ValueError("invalid pending status")
+        error = raw.get("error", "")
+        if not isinstance(error, str) or len(error) > 500:
+            raise ValueError("invalid pending error")
+        result = {"operation": operation, "local_id": local_id, "document_id": document_id,
+                  "expected_revision": expected_revision, "status": status, "error": error}
+        if operation == "save":
+            document = draft_data(raw.get("document"))
+            if document["kind"] != kind:
+                raise ValueError("pending kind mismatch")
+            result["document"] = document
+            result["title"] = raw.get("title", record_title(document))
+            if not isinstance(result["title"], str) or not result["title"]:
+                raise ValueError("invalid pending title")
+        elif raw.get("record") is not None:
+            snapshot = BusinessDocumentService._normalize_record(raw["record"], kind, set())
+            if snapshot["id"] != local_id:
+                raise ValueError("pending snapshot id mismatch")
+            result["record"] = snapshot
+        seen.add(local_id)
+        return result
+
+    def _load_pending(self, kind):
+        path = self._pending_path(kind)
+        if not path.exists():
+            return []
+        try:
+            if path.stat().st_size > MAX_PENDING_FILE_BYTES:
+                raise ValidationError("待同步制作记录过大，请连接网络后重试")
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if (not isinstance(payload, dict) or payload.get("schema") != 1
+                    or payload.get("kind") != kind or not isinstance(payload.get("operations"), list)):
+                raise ValueError("unsupported pending schema")
+            if len(payload["operations"]) > MAX_RECORDS:
+                raise ValueError("too many pending operations")
+            result, seen = [], set()
+            for raw in payload["operations"]:
+                result.append(self._normalize_pending(raw, kind, seen))
+            return result
+        except ValidationError:
+            raise
+        except (OSError, TypeError, ValueError, UnicodeError) as exc:
+            raise ValidationError("待同步制作记录已损坏，原文件已保留") from exc
+
+    def _write_pending(self, kind, operations):
+        self.folder.mkdir(parents=True, exist_ok=True)
+        atomic_bytes(self._pending_path(kind), json.dumps(
+            {"schema": 1, "kind": kind, "operations": operations},
+            ensure_ascii=False, indent=2).encode("utf-8"))
+
+    @staticmethod
+    def _pending_counts(operations):
+        return {status: sum(item["status"] == status for item in operations)
+                for status in ("pending", "conflict", "error")}
+
+    @staticmethod
+    def _pending_operation(operations, local_id):
+        return next((item for item in operations if item["local_id"] == local_id), None)
+
+    @staticmethod
+    def _remote_record(raw, kind):
+        if isinstance(raw, dict) and isinstance(raw.get("record"), dict):
+            raw = raw["record"]
+        return BusinessDocumentService._normalize_record(raw, kind, set())
+
+    @staticmethod
+    def _sync_error(error):
+        return str(error).strip()[:500] or "同步失败"
+
+    @staticmethod
+    def _set_record_sync_state(records, record_id, status, error=""):
+        for record in records:
+            if record["id"] == record_id:
+                if status:
+                    record["sync_status"] = status
+                else:
+                    record.pop("sync_status", None)
+                if error:
+                    record["sync_error"] = error
+                else:
+                    record.pop("sync_error", None)
+                break
+
+    def _merge_remote_records(self, kind, remote_records):
+        """Refresh the cache without discarding unsent local or conflict records."""
+        local = self.load_records(kind)
+        pending = self._load_pending(kind)
+        protected_local_ids = {item["local_id"] for item in pending}
+        protected_remote_ids = {item["document_id"] for item in pending if item["document_id"]}
+        local_only = [item for item in local if item["id"] in protected_local_ids]
+        merged = local_only + [item for item in remote_records
+                               if item["id"] not in protected_local_ids
+                               and item["id"] not in protected_remote_ids]
+        merged.sort(key=lambda item: item["updated_at"], reverse=True)
+        self._write_records(kind, merged[:MAX_RECORDS])
+        return copy.deepcopy(merged[:MAX_RECORDS])
+
+    def load_records(self, kind):
+        """Read the current account's editable document records in newest-first order."""
+        path = self._records_path(kind)
+        if not path.exists():
+            return []
+        try:
+            if path.stat().st_size > MAX_RECORD_FILE_BYTES:
+                raise ValidationError("制作记录文件过大，请删除不需要的记录后重试")
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if (not isinstance(payload, dict) or payload.get("schema") != 1
+                    or payload.get("kind") != kind or not isinstance(payload.get("records"), list)):
+                raise ValueError("unsupported records schema")
+            return self._normalize_records(kind, payload["records"])
+        except ValidationError:
+            raise
+        except (OSError, TypeError, ValueError, UnicodeError) as exc:
+            raise ValidationError("已保存的制作记录已损坏，原文件已保留") from exc
+
+    def save_record(self, document, record_id=None):
+        """Create or update one editable record without changing the legacy draft contract."""
+        result = draft_data(document)
+        records = self.load_records(result["kind"])
+        operations = self._load_pending(result["kind"]) if self.cloud_store is not None else []
+        timestamp = now()
+        current = None
+        previous_revision = None
+        if record_id:
+            try:
+                record_id = self._normalize_record_id(record_id)
+            except ValueError as exc:
+                raise ValidationError("制作记录编号无效，请重新打开记录") from exc
+            current = next((item for item in records if item["id"] == record_id), None)
+            if current is None:
+                raise ValidationError("制作记录已不存在，请刷新记录列表")
+            previous_revision = current.get("revision", 1)
+            current.update(title=record_title(result), updated_at=timestamp,
+                          revision=previous_revision + 1, document=result)
+            saved = current
+        else:
+            if len(records) >= MAX_RECORDS:
+                raise ValidationError(f"每种单据最多保存{MAX_RECORDS}条制作记录")
+            saved = {"id": uuid.uuid4().hex, "title": record_title(result),
+                     "created_at": timestamp, "updated_at": timestamp, "revision": 1,
+                     "document": result}
+            records.insert(0, saved)
+        if self.cloud_store is not None:
+            existing = self._pending_operation(operations, saved["id"])
+            if existing and existing["operation"] == "delete":
+                document_id = existing["document_id"]
+                expected_revision = existing["expected_revision"]
+                existing.update(operation="save", document_id=document_id,
+                                expected_revision=expected_revision, status="pending", error="",
+                                document=result, title=record_title(result))
+            elif existing:
+                existing.update(operation="save", document=copy.deepcopy(result),
+                                title=record_title(result), status="pending", error="")
+            else:
+                operations.append({
+                    "operation": "save", "local_id": saved["id"],
+                    "document_id": record_id, "expected_revision": previous_revision,
+                    "status": "pending", "error": "", "document": copy.deepcopy(result),
+                    "title": record_title(result),
+                })
+            saved["sync_status"] = "pending"
+            saved.pop("sync_error", None)
+            # Queue first so a failed cache write can be recovered on the next launch.
+            self._write_pending(result["kind"], operations)
+        self._write_records(result["kind"], records)
+        return copy.deepcopy(saved)
+
+    def delete_record(self, kind, record_id):
+        records = self.load_records(kind)
+        current = next((item for item in records if item["id"] == record_id), None)
+        if current is None:
+            return False
+        operations = self._load_pending(kind) if self.cloud_store is not None else []
+        if self.cloud_store is not None:
+            existing = self._pending_operation(operations, record_id)
+            if existing and existing["operation"] == "save" and existing["document_id"] is None:
+                operations = [item for item in operations if item is not existing]
+            else:
+                document_id = existing["document_id"] if existing and existing["document_id"] else record_id
+                expected_revision = (existing["expected_revision"] if existing and existing["expected_revision"]
+                                     else current.get("revision", 1))
+                operation = {
+                    "operation": "delete", "local_id": record_id, "document_id": document_id,
+                    "expected_revision": expected_revision, "status": "pending", "error": "",
+                    "record": copy.deepcopy(current),
+                }
+                operations = [item for item in operations if item["local_id"] != record_id]
+                operations.append(operation)
+            self._write_pending(kind, operations)
+        self._write_records(kind, [item for item in records if item["id"] != record_id])
+        return True
+
+    def load_remote_records(self, kind):
+        if self.cloud_store is None:
+            raise ValidationError("当前未登录个人云端账号")
+        try:
+            payload = self.cloud_store.business_document_list(kind)
+            records = payload.get("records") if isinstance(payload, dict) else None
+            normalized = self._normalize_records(kind, records)
+            return self._merge_remote_records(kind, normalized)
+        except ValidationError:
+            raise
+        except (NetworkError, ConflictError):
+            raise
+        except (OSError, TypeError, ValueError, UnicodeError) as exc:
+            raise ValidationError("云端制作记录格式无效，未覆盖本地缓存") from exc
+
+    def _merge_record_cache(self, record, local_id=None):
+        kind = record["document"]["kind"]
+        try:
+            records = self.load_records(kind)
+        except ValidationError:
+            records = []
+        removed = {record["id"]}
+        if local_id:
+            removed.add(local_id)
+        records = [item for item in records if item["id"] not in removed]
+        records.insert(0, record)
+        self._write_records(kind, records[:MAX_RECORDS])
+
+    def save_remote_record(self, document, record_id=None, revision=None):
+        if self.cloud_store is None:
+            raise ValidationError("当前未登录个人云端账号")
+        result = draft_data(document)
+        try:
+            raw = self.cloud_store.business_document_save(
+                result["kind"], record_id, revision, record_title(result), result)
+            record = self._remote_record(raw, result["kind"])
+            self._merge_record_cache(record, record_id)
+            return copy.deepcopy(record)
+        except ValidationError:
+            raise
+        except (NetworkError, ConflictError):
+            raise
+        except (OSError, TypeError, ValueError, UnicodeError) as exc:
+            raise ValidationError("云端制作记录保存响应无效，本地缓存未确认更新") from exc
+
+    def delete_remote_record(self, kind, record_id, revision):
+        if self.cloud_store is None:
+            raise ValidationError("当前未登录个人云端账号")
+        if not isinstance(record_id, str) or not re.fullmatch(r"[0-9a-f]{32}", record_id):
+            raise ValidationError("制作记录编号无效，请刷新记录列表")
+        try:
+            result = self.cloud_store.business_document_delete(kind, record_id, revision)
+            if not isinstance(result, dict) or result.get("deleted") is not True:
+                raise ValidationError("云端制作记录删除响应无效")
+            try:
+                records = self.load_records(kind)
+            except ValidationError:
+                records = []
+            self._write_records(kind, [item for item in records if item["id"] != record_id])
+            return True
+        except ValidationError:
+            raise
+        except (NetworkError, ConflictError):
+            raise
+        except (OSError, TypeError, ValueError, UnicodeError) as exc:
+            raise ValidationError("云端制作记录删除响应无效，本地缓存未确认更新") from exc
+
+    def sync_pending(self, kind):
+        """Upload queued local operations; network failures remain retryable."""
+        if kind not in KINDS:
+            raise ValidationError("不支持的单据类型")
+        operations = self._load_pending(kind)
+        if self.cloud_store is None:
+            counts = self._pending_counts(operations)
+            return {"online": False, "synced": 0, "conflicts": counts["conflict"],
+                    "errors": counts["error"], "pending": len(operations)}
+        if not operations:
+            return {"online": True, "synced": 0, "conflicts": 0, "errors": 0, "pending": 0}
+        records = self.load_records(kind)
+        remaining = []
+        synced = conflicts = errors = 0
+        online = True
+        for index, operation in enumerate(operations):
+            if operation["status"] != "pending":
+                remaining.append(operation)
+                continue
+            try:
+                if operation["operation"] == "save":
+                    raw = self.cloud_store.business_document_save(
+                        kind, operation["document_id"], operation["expected_revision"],
+                        operation["title"], operation["document"])
+                    remote = self._remote_record(raw, kind)
+                    removed = {operation["local_id"], remote["id"]}
+                    records = [record for record in records if record["id"] not in removed]
+                    records.insert(0, remote)
+                else:
+                    result = self.cloud_store.business_document_delete(
+                        kind, operation["document_id"], operation["expected_revision"])
+                    if not isinstance(result, dict) or result.get("deleted") is not True:
+                        raise ValidationError("云端制作记录删除响应无效")
+                    removed = {operation["local_id"], operation["document_id"]}
+                    records = [record for record in records if record["id"] not in removed]
+                synced += 1
+            except NetworkError as exc:
+                operation["error"] = self._sync_error(exc)
+                remaining.append(operation)
+                remaining.extend(operations[index + 1:])
+                online = False
+                break
+            except ConflictError as exc:
+                operation["status"] = "conflict"
+                operation["error"] = self._sync_error(exc)
+                if operation["operation"] == "save":
+                    self._set_record_sync_state(records, operation["local_id"], "conflict", operation["error"])
+                elif operation.get("record") is not None:
+                    restored = copy.deepcopy(operation["record"])
+                    restored["sync_status"] = "conflict"
+                    restored["sync_error"] = operation["error"]
+                    records = [record for record in records if record["id"] != restored["id"]]
+                    records.insert(0, restored)
+                remaining.append(operation)
+                conflicts += 1
+            except ValidationError as exc:
+                operation["status"] = "error"
+                operation["error"] = self._sync_error(exc)
+                self._set_record_sync_state(records, operation["local_id"], "error", operation["error"])
+                remaining.append(operation)
+                errors += 1
+        self._write_records(kind, records[:MAX_RECORDS])
+        self._write_pending(kind, remaining)
+        counts = self._pending_counts(remaining)
+        return {"online": online, "synced": synced, "conflicts": counts["conflict"],
+                "errors": counts["error"], "pending": len(remaining)}
+
+    def sync_all(self):
+        """Refresh both document kinds and upload their queues in one background pass."""
+        result = {"online": True, "synced": 0, "conflicts": 0, "errors": 0, "pending": 0,
+                  "records": {}}
+        for kind in KINDS:
+            state = self.sync_pending(kind)
+            result["synced"] += state["synced"]
+            result["conflicts"] += state["conflicts"]
+            result["errors"] += state["errors"]
+            result["pending"] += state["pending"]
+            if not state["online"]:
+                result["online"] = False
+                result["records"][kind] = self.load_records(kind)
+                continue
+            try:
+                result["records"][kind] = self.load_remote_records(kind)
+            except NetworkError:
+                result["online"] = False
+                result["records"][kind] = self.load_records(kind)
+        return result
+
     def load_draft(self, kind):
         if kind not in KINDS:
             raise ValidationError("不支持的单据类型")
@@ -533,6 +989,10 @@ class BusinessDocumentService:
 
     def render(self, document):
         document = validate_document(document)
+        if not self.custom_assets:
+            from services.source_document_renderer import SourceDocumentRenderer
+            with _FONT_LOCK:
+                return SourceDocumentRenderer(ASSETS/"business_templates",document["kind"]).render(document)
         kind, items = document["kind"], document["items"]
         images = self.template_images(kind)
         stream = io.BytesIO()
@@ -552,6 +1012,18 @@ class BusinessDocumentService:
                 pdf.showPage()
             pdf.save()
         return stream.getvalue()
+
+    def export_word(self, document, path):
+        from services.source_document_renderer import SourceDocumentRenderer
+
+        document=validate_document(copy.deepcopy(document))
+        path=Path(path)
+        if path.suffix.lower()!=".docx":
+            path=path.with_name(path.name+".docx")
+        with _FONT_LOCK:
+            payload=SourceDocumentRenderer(ASSETS/"business_templates",document["kind"]).render_word(document)
+        atomic_bytes(path,payload)
+        return {"path":str(path),"bytes":len(payload)}
 
     def export(self, document, path):
         path = Path(path)

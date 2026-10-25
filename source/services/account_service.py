@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import threading
 import time
@@ -118,7 +119,11 @@ def auth_request(config, route, body=None, *, token=None, method=None):
         if exc.code == 429:
             raise ValidationError('登录尝试过于频繁，请稍后重试') from None
         raise ValidationError('账号或密码错误，或登录已失效，请重新登录') from None
-    except (urllib.error.URLError, OSError, TimeoutError):
+    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+        logging.warning('Account HTTPS connection failed (cause=%s, errno=%s, tls_verify_code=%s, https_handler=%s)',
+                        type(reason).__name__,getattr(reason,'errno',None),getattr(reason,'verify_code',None),
+                        hasattr(urllib.request,'HTTPSHandler'))
         raise NetworkError('无法连接登录服务，请检查网络后重试') from None
     except (ValueError, UnicodeDecodeError):
         raise ValidationError('登录响应异常，请重新登录') from None

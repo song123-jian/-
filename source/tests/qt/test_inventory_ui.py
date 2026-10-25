@@ -138,6 +138,28 @@ def test_login_query_paging_new_grade_and_logout(qtbot):
     assert service.closed and not dialog.username.text() and not dialog.password.text()
 
 
+@pytest.mark.parametrize('key', [Qt.Key.Key_Return, Qt.Key.Key_Enter])
+@pytest.mark.parametrize('field', ['grade', 'search_by', 'batch'])
+def test_enter_queries_current_inventory_step_once(qtbot, field, key):
+    dialog, service = open_dialog(qtbot)
+    login(qtbot, dialog)
+    if field == 'batch':
+        dialog.tabs.setCurrentIndex(1)
+        dialog.batch.setText('B01')
+    control = getattr(dialog, field)
+    control.setFocus()
+    before = len(service.calls)
+    qtbot.keyClick(control, key)
+    qtbot.waitUntil(lambda: not dialog.tasks.jobs, timeout=5000)
+    assert len(service.calls) == before + 1
+    if field == 'batch':
+        assert service.calls[-1][:3] == ('reserve', 'B01', 1)
+    else:
+        assert service.calls[-1][:2] == ('AG6', 1)
+    assert dialog.isVisible()
+    dialog.reject()
+
+
 def test_login_error_empty_result_and_expiration_are_readable(qtbot):
     dialog, service = open_dialog(qtbot)
     service.fail_login = True
@@ -337,6 +359,7 @@ def test_all_inventory_cells_headers_center_and_full_dates_fit(qtbot):
     assert dialog.reserve_table.columnCount() == 13
     assert dialog.reserve_table.item(0, 12).text() == "110-1064"
     for table, date_columns in ((dialog.table, (9, 10)), (dialog.reserve_table, (4,))):
+        assert table.property("role") == "inventoryTable"
         assert table.horizontalHeader().defaultAlignment() == Qt.AlignmentFlag.AlignCenter
         assert all(table.item(0, col).textAlignment() == Qt.AlignmentFlag.AlignCenter for col in range(table.columnCount()))
         for col in date_columns:

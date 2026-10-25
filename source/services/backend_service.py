@@ -58,7 +58,7 @@ class BackendService:
     def get_backend_status(self):
         with self.context.state_lock:
             if getattr(self.context, 'account', None):
-                return {'backend':'supabase', 'url':DEFAULT_URL, 'has_key':False, 'managed_account':True,
+                return {'backend':'supabase', 'url':getattr(self.context.store, 'url', DEFAULT_URL), 'has_key':False, 'managed_account':True,
                         'username':self.context.account['username'], 'storage_generation':self.context.storage_generation}
             config = read_config(self.context.folder)
             return {"backend": self.context.store.backend, "url": config.get("url") or DEFAULT_URL,

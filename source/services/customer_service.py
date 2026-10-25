@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import threading
 
 from domain import NetworkError, ValidationError, clean
 
@@ -9,6 +10,8 @@ from domain import NetworkError, ValidationError, clean
 class CustomerService:
     def __init__(self, context):
         self.context = context
+        self._summary_cache = {}
+        self._summary_cache_lock = threading.RLock()
 
     @staticmethod
     def checked_key(key):
@@ -19,9 +22,33 @@ class CustomerService:
     def list_customers(self, status, generation):
         if status not in ("active", "deleted"):
             raise ValidationError("客户状态无效")
-        store, captured = self.context.capture(generation)
-        items = store.customer_summaries(status)
-        return {"items": sorted(items, key=lambda r: r["display_name"]), "storage_generation": captured}
+        # Capture the store and data generation together so a cached directory
+        # can never cross a backend switch or a successful customer/quote write.
+        with self.context.state_lock:
+            self.context.assert_generation(generation)
+            store, captured = self.context.store, self.context.storage_generation
+            data_generation = self.context.data_generation
+        cache_key = (captured, data_generation, status)
+        with self._summary_cache_lock:
+            self._summary_cache = {
+                key: value for key, value in self._summary_cache.items()
+                if key[:2] == cache_key[:2]
+            }
+            cached = self._summary_cache.get(cache_key)
+        if cached is not None:
+            return {"items": [dict(row) for row in cached], "storage_generation": captured}
+        items = sorted(store.customer_summaries(status), key=lambda r: r["display_name"])
+        with self._summary_cache_lock:
+            # A concurrent write may have made this read obsolete while the
+            # store query was running; obsolete results remain uncached.
+            if (captured == self.context.storage_generation
+                    and data_generation == self.context.data_generation):
+                self._summary_cache[cache_key] = tuple(dict(row) for row in items)
+        return {"items": [dict(row) for row in items], "storage_generation": captured}
+
+    def invalidate_cache(self):
+        with self._summary_cache_lock:
+            self._summary_cache.clear()
 
     def preview_delete(self, key, generation):
         store, captured = self.context.capture(generation)
@@ -57,6 +84,7 @@ class CustomerService:
                 if not result:
                     raise NetworkError("客户操作结果未确认，请保持本窗口并点击“核对结果”；不要再次创建删除请求") from None
             self.context.invalidate_customer_data()
+            self.invalidate_cache()
             return {**result, "backup": str(backup) if backup else None, "storage_generation": captured,
                     "message": "客户已移入回收站，全部报价历史保留" if action == "delete" else "客户已恢复，当前价按今日重新计算"}
 
@@ -69,4 +97,5 @@ class CustomerService:
             if not result:
                 raise ValidationError("尚无已提交的客户操作记录，请刷新客户状态并重新预览")
             self.context.invalidate_customer_data()
+            self.invalidate_cache()
             return {**result, "storage_generation": captured, "message": "已核对客户操作结果"}

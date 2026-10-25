@@ -6,6 +6,7 @@ import pytest
 
 from domain import ValidationError, customer_key
 from services.customer_service import CustomerService
+from services.price_service import PriceService
 from storage.supabase_store import SupabaseStore
 
 
@@ -75,6 +76,53 @@ def test_customer_counts_and_details_do_not_load_all_history(context):
     assert actual == expected
     assert detail["items"] == expected_detail["items"]
     assert detail["records"] == expected_detail["records"]
+
+
+def test_customer_directory_cache_is_invalidated_by_quote_write(context):
+    directory = CustomerService(context)
+    with patch.object(context.store, "customer_summaries", wraps=context.store.customer_summaries) as summaries:
+        first = directory.list_customers("active", context.storage_generation)
+        second = directory.list_customers("active", context.storage_generation)
+        assert first == second and summaries.call_count == 1
+
+        PriceService(context).add_quote({
+            "customer": "目录缓存新客户", "grade": "CACHE-01", "material": "PP", "color": "本色",
+            "price": "10", "tax_type": "含税", "effective_date": "2026-10-25", "note": "", "reason": "",
+            "storage_generation": context.storage_generation,
+        })
+        refreshed = directory.list_customers("active", context.storage_generation)
+
+    assert any(row["display_name"] == "目录缓存新客户" for row in refreshed["items"])
+    assert summaries.call_count == 2
+
+
+def test_customer_directory_cache_is_invalidated_by_import(context, service, tmp_path):
+    directory = CustomerService(context)
+    directory.list_customers("active", context.storage_generation)
+    path = tmp_path / "directory-import.csv"
+    path.write_text("客户,牌号,材料,颜色,价格,税口径,更新日期,备注\n"
+                    "目录导入新客户,IMPORT-01,PP,本色,10,含税,2026-10-25,\n", encoding="utf-8")
+    preview = service.preview_import(path, context.storage_generation,
+                                     {"customer_mode": "all", "core_only": True})
+    service.commit_import(preview["preview_id"], context.storage_generation)
+    refreshed = directory.list_customers("active", context.storage_generation)
+    assert any(row["display_name"] == "目录导入新客户" for row in refreshed["items"])
+
+
+def test_cloud_customer_directory_uses_summary_rpc(context, tmp_path):
+    cloud = SupabaseStore(tmp_path, "https://qa.supabase.co", "sb_secret_" + "q" * 32)
+    expected = context.store.customer_summaries("active")
+    seen = []
+
+    def request(route, body=None, count=False):
+        seen.append((route, body, count))
+        if route == "rpc/pm_customer_summaries_v165":
+            return expected, ""
+        raise AssertionError("Customer directory must use the summary RPC")
+
+    cloud.request = request
+    assert cloud.customer_summaries("active") == expected
+    assert seen == [("rpc/pm_customer_summaries_v165", {"p_status": "active"}, False)]
 
 
 def test_cloud_current_query_uses_ranked_rpc(context, tmp_path):

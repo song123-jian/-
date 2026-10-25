@@ -10,10 +10,13 @@ from ui.login_dialog import LoginDialog
 
 
 def test_registration_mode_requires_confirmation_and_keeps_saved_login(qtbot,tmp_path):
-    from services.account_service import LoginCredentialStore
+    from services.account_service import AccountService, LoginCredentialStore
     store=LoginCredentialStore(tmp_path)
     store.save('old_user','old-isolated-password')
-    dialog=LoginDialog(tmp_path,credential_store=store)
+    service=AccountService({'url':'https://isolated.supabase.co',
+                            'publishable_key':'sb_publishable_isolated',
+                            'username_domain':'price-manager.invalid'})
+    dialog=LoginDialog(tmp_path,service=service,credential_store=store)
     qtbot.addWidget(dialog)
     dialog.show()
     qtbot.mouseClick(dialog.register_button,Qt.MouseButton.LeftButton)

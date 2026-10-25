@@ -6,6 +6,7 @@ import json
 import secrets
 import sqlite3
 import threading
+import uuid
 from contextlib import contextmanager
 from decimal import Decimal
 from pathlib import Path
@@ -30,6 +31,7 @@ from domain import (
     today,
     validate_record,
 )
+from services.project_progress_service import DEFAULT_PROJECT_RULES
 from services.read_control import ReadCancelled, check_read_cancelled, read_was_cancelled
 
 
@@ -58,7 +60,31 @@ class SQLiteStore:
                     import_key TEXT UNIQUE
                 );
                 CREATE INDEX IF NOT EXISTS idx_quotes_identity_date ON quotes(identity, effective_date DESC, id DESC);
+                CREATE TABLE IF NOT EXISTS project_progress (
+                    project_id TEXT PRIMARY KEY, industry TEXT NOT NULL, customer_type TEXT NOT NULL,
+                    customer_name TEXT NOT NULL, material TEXT NOT NULL, recommended_grade TEXT NOT NULL,
+                    material_value TEXT NOT NULL, color TEXT NOT NULL, competitor TEXT NOT NULL,
+                    product_name TEXT NOT NULL, stage_code INTEGER NOT NULL, customer_value TEXT NOT NULL,
+                    competition TEXT NOT NULL, next_action TEXT NOT NULL, milestone_date TEXT NOT NULL,
+                    notes TEXT NOT NULL, revision INTEGER NOT NULL, updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_project_progress_updated ON project_progress(updated_at DESC, project_id);
+                CREATE TABLE IF NOT EXISTS customer_profiles (
+                    profile_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL DEFAULT '', contact TEXT NOT NULL DEFAULT '',
+                    phone TEXT NOT NULL DEFAULT '', industry TEXT NOT NULL DEFAULT '',
+                    address TEXT NOT NULL DEFAULT '', revision INTEGER NOT NULL CHECK(revision >= 1),
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_customer_profiles_name ON customer_profiles(name COLLATE NOCASE, profile_id);
             """)
+            project_columns = {row["name"] for row in db.execute("PRAGMA table_info(project_progress)")}
+            profile_columns = {row["name"] for row in db.execute("PRAGMA table_info(customer_profiles)")}
+            if "notes" not in profile_columns:
+                db.execute("ALTER TABLE customer_profiles ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
+            for column in ("custom_stage_label", "custom_customer_value", "custom_material_value", "custom_competition"):
+                if column not in project_columns:
+                    db.execute(f"ALTER TABLE project_progress ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
             version = db.execute("SELECT value FROM settings WHERE key='schema_version'").fetchone()
             if not version or version[0] == "1":
                 db.execute("BEGIN IMMEDIATE")
@@ -83,6 +109,8 @@ class SQLiteStore:
                 if original != [tuple(r)[:-1] for r in db.execute("SELECT * FROM quotes ORDER BY id")]:
                     raise ValidationError("迁移校验失败，原报价字段未保持一致；事务已回滚")
                 db.execute("INSERT INTO settings VALUES ('schema_version','2') ON CONFLICT(key) DO UPDATE SET value='2'")
+            db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES ('project_progress_rules',?)",
+                       (json.dumps(DEFAULT_PROJECT_RULES, ensure_ascii=False),))
             if not db.execute("SELECT 1 FROM settings WHERE key='seed_loaded'").fetchone():
                 seed = json.loads((ASSETS / "seed.json").read_text(encoding="utf-8"))
                 for item in seed["records"] if load_seed else []:
@@ -133,6 +161,52 @@ class SQLiteStore:
     def customer_states(self):
         with self.connection() as db:
             return {r["customer_key"]: dict(r) for r in db.execute("SELECT * FROM customers")}
+
+    def customer_profiles_list(self):
+        with self.connection() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT * FROM customer_profiles ORDER BY name COLLATE NOCASE,profile_id")]
+
+    def save_customer_profiles(self, profiles):
+        fields = ("name", "contact", "phone", "industry", "address", "notes")
+        created = updated = skipped = 0
+        saved = []
+        with self.lock, self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            seen = set()
+            for profile in profiles:
+                profile_id = profile.get("profile_id") or str(uuid.uuid4())
+                if profile_id in seen:
+                    raise ValidationError("客户资料批次包含重复编号")
+                seen.add(profile_id)
+                values = tuple(profile.get(field, "") for field in fields)
+                existing = db.execute("SELECT * FROM customer_profiles WHERE profile_id=?", (profile_id,)).fetchone()
+                if existing is None:
+                    db.execute(
+                        "INSERT INTO customer_profiles(profile_id,name,contact,phone,industry,address,notes,revision,created_at,updated_at) "
+                        "VALUES (?,?,?,?,?,?,?,1,?,?)",
+                        (profile_id, *values, now(), now()),
+                    )
+                    created += 1
+                else:
+                    expected = profile.get("revision")
+                    if 'notes' not in profile:
+                        values = (*values[:-1], existing['notes'])
+                    if expected is None or expected != existing["revision"]:
+                        raise Conflict("客户资料已被其他操作修改，请刷新后重新编辑")
+                    if all(existing[field] == value for field, value in zip(fields, values)):
+                        skipped += 1
+                    else:
+                        revision = existing["revision"] + 1
+                        db.execute(
+                            "UPDATE customer_profiles SET name=?,contact=?,phone=?,industry=?,address=?,notes=?,revision=?,updated_at=? "
+                            "WHERE profile_id=?",
+                            (*values, revision, now(), profile_id),
+                        )
+                        updated += 1
+                saved.append(dict(db.execute(
+                    "SELECT * FROM customer_profiles WHERE profile_id=?", (profile_id,)).fetchone()))
+        return {"created": created, "updated": updated, "skipped": skipped, "profiles": saved}
 
     def active_all(self):
         with self.connection() as db:
@@ -415,6 +489,43 @@ class SQLiteStore:
                 finally:
                     backup.close()
             return target
+
+    def project_progress_list(self):
+        with self.connection() as db:
+            row = db.execute("SELECT value FROM settings WHERE key='project_progress_rules'").fetchone()
+            rules = json.loads(row["value"]) if row else DEFAULT_PROJECT_RULES
+            projects = [dict(item) for item in db.execute(
+                "SELECT * FROM project_progress ORDER BY updated_at DESC, project_id")]
+        return {"rules": rules, "projects": projects}
+
+    def save_project_progress(self, record):
+        columns = (
+            "industry", "customer_type", "customer_name", "material", "recommended_grade", "material_value",
+            "color", "competitor", "product_name", "stage_code", "customer_value", "competition",
+            "custom_stage_label", "custom_customer_value", "custom_material_value", "custom_competition",
+            "next_action", "milestone_date", "notes",
+        )
+        values = tuple(record.get(key, "") or "" for key in columns)
+        project_id = record["project_id"]
+        with self.lock, self.connection() as db:
+            existing = db.execute("SELECT revision FROM project_progress WHERE project_id=?", (project_id,)).fetchone()
+            if record.get("revision") is None:
+                if existing:
+                    raise Conflict("项目编号已存在，请刷新后重试")
+                revision = 1
+                db.execute(
+                    f"INSERT INTO project_progress(project_id,{','.join(columns)},revision,updated_at) "
+                    f"VALUES ({','.join('?' for _ in range(len(columns) + 3))})",
+                    (project_id, *values, revision, now()),
+                )
+            else:
+                if not existing or existing["revision"] != record["revision"]:
+                    raise Conflict("项目已被其他操作修改，请刷新后重新编辑")
+                revision = record["revision"] + 1
+                assignments = ",".join(f"{column}=?" for column in columns)
+                db.execute(f"UPDATE project_progress SET {assignments},revision=?,updated_at=? WHERE project_id=?",
+                           (*values, revision, now(), project_id))
+            return dict(db.execute("SELECT * FROM project_progress WHERE project_id=?", (project_id,)).fetchone())
 
     def preview(self, records):
         with self.connection() as db:

@@ -22,7 +22,16 @@ COLORS = {
     "sidebarBadge": "#3a5447", "sidebarLine": "#385043", "sidebarText": "#cfe0d6",
     "sidebarMuted": "#93ab9d", "ready": "#6fc79b",
 }
-SIZES = {"radius_panel": 12, "radius_control": 8, "radius_badge": 6, "row_height": 64}
+SIZES = {
+    "radius_panel": 12,
+    "radius_control": 8,
+    "radius_badge": 6,
+    "row_height": 64,
+    "font_stat_value": 26,
+    "font_stat_compact": 22,
+    "font_stat_date": 18,
+    "inventory_cell_padding_x": 8,
+}
 
 
 @lru_cache(maxsize=40)
@@ -56,8 +65,9 @@ def apply_theme(app: QApplication):
         theme = bytes(resource.readAll()).decode("utf-8")
     else:
         theme = Path(__file__).with_name("theme.qss").read_text(encoding="utf-8")
-    for name, color in COLORS.items():
-        theme = theme.replace("{{" + name + "}}", color)
+    tokens = {**COLORS, **{name: f"{value}px" for name, value in SIZES.items()}}
+    for name, value in tokens.items():
+        theme = theme.replace("{{" + name + "}}", value)
     app.setFont(font())
     app.setStyle("Fusion")
     app.setStyleSheet(theme)

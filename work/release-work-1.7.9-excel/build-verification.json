@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-24T18:34:10.1365071+08:00",
+  "applicationVersion": "1.7.9",
+  "applicationEntry": "desktop_main.py",
+  "applicationFile": "工作.exe",
+  "applicationSha256": "07B9AB9CE176AF87AD5C01014DD6726AD894D5E1A1B292DD875BB70C5F2C41CB",
+  "python": "C:\\Users\\Administrator\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+  "buildRoot": "E:\\工作\\.build\\desktop-f05e1a5e9a424558952c50322c3e9322",
+  "checks": "skipped by explicit switch",
+  "testReport": null,
+  "excludedLegacyModules": [
+    "app.py",
+    "supabase_backend.py"
+  ],
+  "actualProgramVerification": "not_run"
+}

@@ -10,7 +10,7 @@ import unicodedata
 from decimal import Decimal, InvalidOperation, localcontext
 from pathlib import Path
 
-VERSION = "1.7.8"
+VERSION = "1.8.6"
 APP_NAME = "工作"
 APP_ID = "local-price-manager-desktop"
 TZ = dt.timezone(dt.timedelta(hours=8))

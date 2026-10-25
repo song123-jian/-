@@ -1,4 +1,4 @@
-param([string]$Python = '', [string]$OutputDirectory = '', [switch]$SkipTests)
+param([string]$Python = '', [string]$OutputDirectory = '', [string]$AccountConfigPath = '', [switch]$SkipTests)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $versionMatch = [regex]::Match((Get-Content -LiteralPath (Join-Path $PSScriptRoot 'domain.py') -Raw -Encoding UTF8), '(?m)^VERSION = "([0-9.]+)"')
@@ -34,6 +34,27 @@ foreach ($module in $legacyModules) {
         throw ('Deprecated module must not enter the frozen source snapshot: ' + $module)
     }
 }
+$buildAccountConfig = Join-Path $buildSource 'account_config.json'
+if ($AccountConfigPath) {
+    $AccountConfigPath = (Resolve-Path -LiteralPath $AccountConfigPath).Path
+    Copy-Item -LiteralPath $AccountConfigPath -Destination $buildAccountConfig -Force
+}
+if (-not (Test-Path -LiteralPath $buildAccountConfig -PathType Leaf)) {
+    throw 'A complete account_config.json is required; pass -AccountConfigPath for a private build input.'
+}
+try {
+    $accountConfig = Get-Content -LiteralPath $buildAccountConfig -Raw -Encoding UTF8 | ConvertFrom-Json
+} catch {
+    throw 'account_config.json is not valid JSON.'
+}
+$accountUrl = [string]$accountConfig.url
+$accountKey = [string]$accountConfig.publishable_key
+$accountDomain = [string]$accountConfig.username_domain
+if ($accountUrl -notmatch '^https://[a-z0-9-]+\.supabase\.co$' -or
+    $accountKey -notmatch '^sb_publishable_[A-Za-z0-9_-]+$' -or
+    $accountKey -match 'REPLACE' -or $accountDomain -ne 'price-manager.invalid') {
+    throw 'account_config.json contains an incomplete or placeholder public client configuration.'
+}
 & $Python (Join-Path $buildSource 'build_app_icon.py')
 if ($LASTEXITCODE -ne 0) { throw 'App icon generation failed' }
 $accountAssets = Join-Path $buildRoot 'account-assets'
@@ -41,6 +62,13 @@ New-Item -ItemType Directory -Path $accountAssets -Force | Out-Null
 $accountSeed = Join-Path $accountAssets 'seed.json'
 Copy-Item -LiteralPath (Join-Path $buildSource 'account_seed.json') -Destination $accountSeed
 $rcc = Join-Path (Split-Path -Parent $Python) 'pyside6-rcc.exe'
+if (-not (Test-Path -LiteralPath $rcc -PathType Leaf)) {
+    $rccCommand = Get-Command pyside6-rcc.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($rccCommand) { $rcc = $rccCommand.Source }
+}
+if (-not (Test-Path -LiteralPath $rcc -PathType Leaf)) {
+    throw 'Could not locate pyside6-rcc.exe next to Python or on PATH.'
+}
 if (Get-Command node -ErrorAction SilentlyContinue) {
     & node (Join-Path $buildSource 'build_icons.js')
     if ($LASTEXITCODE -ne 0) { throw 'UI icon generation failed' }
@@ -59,7 +87,10 @@ if (-not $SkipTests) {
         $env:QT_QPA_PLATFORM = $previousPlatform
     }
 }
-& $Python -m PyInstaller --noconfirm --clean --onefile --windowed `
+$runtimeDataJson = & $Python (Join-Path $buildSource 'build_runtime_assets.py') --json
+if ($LASTEXITCODE -ne 0) { throw 'Python runtime resource collection failed' }
+$runtimeDataArguments = @($runtimeDataJson | ConvertFrom-Json)
+& $Python -m PyInstaller --noconfirm --clean --onefile --windowed @runtimeDataArguments `
     --name $applicationBaseName --distpath $OutputDirectory `
     --workpath (Join-Path $buildRoot 'desktop-work') --specpath $buildRoot `
     --paths $buildSource --exclude-module PySide6.QtWebEngineCore `

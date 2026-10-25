@@ -1,7 +1,21 @@
 import re
 from pathlib import Path
 
+from build_runtime_assets import ssl_data_arguments
+
 SOURCE = Path(__file__).resolve().parents[1]
+
+
+def test_runtime_ssl_policy_is_bundled_at_the_frozen_ssl_location(tmp_path):
+    runtime_lib = tmp_path / 'Python runtime' / 'Lib'
+    runtime_lib.mkdir(parents=True)
+    policy = runtime_lib / 'codex-rejected-cas.pem'
+    policy.write_text('runtime certificate policy', encoding='utf-8')
+    assert ssl_data_arguments(runtime_lib / 'ssl.py') == ['--add-data', f'{policy};.']
+
+
+def test_standard_python_without_extra_ssl_policy_needs_no_data_argument(tmp_path):
+    assert ssl_data_arguments(tmp_path / 'ssl.py') == []
 
 
 def test_build_has_isolated_workspace_and_machine_readable_evidence():
@@ -10,6 +24,14 @@ def test_build_has_isolated_workspace_and_machine_readable_evidence():
     assert 'build-verification.json' in script, 'Missing build identity and verification record'
     assert 'applicationSha256' in script
     assert 'already exists' in script, 'Existing release must not be overwritten'
+
+
+def test_build_requires_a_complete_account_config_before_freezing():
+    script = (SOURCE / 'build.ps1').read_text(encoding='utf-8')
+    assert 'AccountConfigPath' in script
+    assert 'A complete account_config.json is required' in script
+    assert 'sb_publishable_' in script
+    assert 'placeholder public client configuration' in script
 
 
 def test_default_build_output_tracks_application_version():

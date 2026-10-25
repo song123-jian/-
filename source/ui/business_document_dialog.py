@@ -12,6 +12,7 @@ from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QCompleter,
     QDateEdit,
     QFileDialog,
     QFormLayout,
@@ -36,6 +37,7 @@ from services.business_document_service import (
     PARTY_FIELDS,
     PAYMENTS,
     SUPPLIER_FIELDS,
+    SYNC_STATUSES,
     BusinessDocumentService,
     blank_item,
     item_amount,
@@ -62,6 +64,7 @@ class DocumentPreviewDialog(BaseDialog):
         self.image_label = label("")
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.installEventFilter(self)
+        self.scroll.viewport().installEventFilter(self)
         self.content.addWidget(self.image_label)
         self.previous = button("上一页", lambda: self.change_page(-1))
         self.next = button("下一页", lambda: self.change_page(1))
@@ -80,7 +83,7 @@ class DocumentPreviewDialog(BaseDialog):
         self.draw_page()
 
     def eventFilter(self, watched, event):
-        if watched is self.image_label and event.type() == QEvent.Type.Wheel:
+        if watched in (self.image_label, self.scroll.viewport()) and event.type() == QEvent.Type.Wheel:
             delta = event.angleDelta().y()
             threshold = 120
             if not delta:
@@ -127,11 +130,16 @@ class DocumentPreviewDialog(BaseDialog):
 
 
 class BusinessDocumentDialog(BaseDialog):
-    def __init__(self, context, tasks, kind, *, row=None, customer="", parent=None):
+    def __init__(self, context, tasks, kind, *, row=None, customer="", parent=None, customer_profiles=()):
         super().__init__("制作"+KINDS[kind], 1040, 740, parent)
         self.setObjectName("BusinessDocumentForm")
         self.context, self.tasks, self.kind = context, tasks, kind
-        self.service = BusinessDocumentService(context.folder)
+        self.customer_profiles = tuple(customer_profiles)
+        self.cloud_store = (context.store if getattr(context, "account", None)
+                            and hasattr(context.store, "business_document_list") else None)
+        self.service = BusinessDocumentService(context.folder, cloud_store=self.cloud_store)
+        self._seed_row = copy.deepcopy(row) if row else None
+        self._seed_customer = customer
         self.document = new_document(kind, row, customer)
         supplier_error = None
         try:
@@ -142,16 +150,23 @@ class BusinessDocumentDialog(BaseDialog):
         self._updating = False
         self.fields, self.terms = {}, {}
         self.dirty = False
+        self.current_record_id = None
+        self.records_by_id = {}
         self.last_exported = None
         self.preview_dialog = None
+        self._sync_busy = False
+        self.sync_timer = QTimer(self)
+        self.sync_timer.setInterval(15_000)
+        self.sync_timer.timeout.connect(self.sync_cloud)
         self.content.addWidget(label("制作"+KINDS[kind], "title"))
-        tip = ("报价单与合同统一使用指定合同中的原章。报价每页3项，合同每页1项，超出按相同版式续页。"
-               "\n预览与导出采用同一PDF内容；草稿仅保存在当前账号目录。")
+        tip = ("报价单与合同使用提供的原件版式与原章。报价每页1项，合同每页2项，超出按相同版式续页。"
+               "\n预览与导出采用同一PDF内容；制作记录和草稿均保存在当前账号目录。")
         help_label = label(tip, "muted")
         help_label.setWordWrap(True)
         self.content.addWidget(help_label)
         self.tabs = QTabWidget()
         self.content.addWidget(self.tabs, 1)
+        self.build_records()
         self.build_basic()
         self.build_items()
         self.build_parties()
@@ -160,8 +175,10 @@ class BusinessDocumentDialog(BaseDialog):
         self.save_button = button("保存草稿", self.save_draft)
         self.preview_button = button("预览PDF", self.preview)
         self.export_button = button("导出PDF", self.export_pdf, True, "download")
+        self.export_word_button = button("导出Word", self.export_word, False, "download")
         self.close_button = button("关闭", self.reject)
-        for control in (self.load_button, self.save_button, self.preview_button, self.export_button, self.close_button):
+        for control in (self.load_button, self.save_button, self.preview_button, self.export_button,
+                        self.export_word_button, self.close_button):
             self.footer.addWidget(control)
         self.apply_data(self.document)
         self._loading = False
@@ -169,6 +186,9 @@ class BusinessDocumentDialog(BaseDialog):
             self.notice.show_message("选中报价未确认含税。合同使用含税单价，请核对并填写单价。")
         if supplier_error:
             self.notice.show_message(supplier_error, True)
+        if self.cloud_store is not None:
+            self.sync_timer.start()
+            QTimer.singleShot(0, self.sync_cloud)
 
     def add_tab(self, caption):
         page = QWidget()
@@ -176,6 +196,38 @@ class BusinessDocumentDialog(BaseDialog):
         layout.setSpacing(12)
         self.tabs.addTab(page, caption)
         return layout
+
+    def build_records(self):
+        layout = self.add_tab("制作记录")
+        hint = label("双击已有记录载入并编辑；双击列表空白处新建记录。记录按当前账号独立保存。", "muted")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        self.records_table = QTableWidget(0, 5)
+        self.records_table.setObjectName("BusinessDocumentRecords")
+        self.records_table.setHorizontalHeaderLabels(["记录名称", "客户 / 需方", "单据日期", "最近修改", "状态"])
+        self.records_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.records_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.records_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.records_table.setAlternatingRowColors(True)
+        self.records_table.setMinimumHeight(220)
+        self.records_table.verticalHeader().setVisible(False)
+        self.records_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.records_table.itemDoubleClicked.connect(self.record_item_double_clicked)
+        self.records_table.viewport().installEventFilter(self)
+        layout.addWidget(self.records_table, 1)
+        controls = QHBoxLayout()
+        self.new_record_button = button("新建记录", self.new_record, True)
+        self.save_record_button = button("保存当前记录", self.save_record)
+        self.delete_record_button = button("删除记录", self.delete_record)
+        controls.addWidget(self.new_record_button)
+        controls.addWidget(self.save_record_button)
+        controls.addWidget(self.delete_record_button)
+        controls.addStretch()
+        layout.addLayout(controls)
+        self.record_status = label("暂无制作记录", "muted")
+        self.record_status.setWordWrap(True)
+        layout.addWidget(self.record_status)
+        self.refresh_records()
 
     def field(self, layout, key, caption, *, choices=None, is_date=False):
         if is_date:
@@ -198,19 +250,26 @@ class BusinessDocumentDialog(BaseDialog):
         self.fields[key] = control
 
     def build_basic(self):
+        self.basic_tab_index = self.tabs.count()
         layout = self.add_tab("基本信息")
         form = QFormLayout()
         form.setSpacing(10)
         layout.addLayout(form)
         self.field(form, "buyer_name", "收件单位 / 需方名称 *")
+        names = sorted({str(item.get("name") or "").strip() for item in self.customer_profiles
+                        if str(item.get("name") or "").strip()}, key=str.casefold)
+        if names:
+            completer = QCompleter(names, self.fields["buyer_name"])
+            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            self.fields["buyer_name"].setCompleter(completer)
+            completer.activated[str].connect(self.customer_profile_activated)
         if self.kind == "quotation":
             for key, caption in (("recipient", "收件人"), ("buyer_fax", "传真号"), ("sender", "发件人"),
                                  ("subject", "主题"), ("cc", "抄送")):
                 self.field(form, key, caption)
             self.field(form, "tax_type", "税口径 *", choices=["未税", "含税", "未注明"])
             self.field(form, "date", "报价日期", is_date=True)
-            self.field(form, "valid_from", "有效期开始", is_date=True)
-            self.field(form, "valid_to", "有效期结束", is_date=True)
         else:
             self.field(form, "contract_no", "合同编号 *")
             self.field(form, "place", "合同履行地点")
@@ -221,6 +280,22 @@ class BusinessDocumentDialog(BaseDialog):
             self.payment.currentTextChanged.connect(self.changed)
             form.addRow("七、结算方式", self.payment)
         layout.addStretch()
+
+    def customer_profile_activated(self, name):
+        normalized = str(name).strip().casefold()
+        profile = next((item for item in self.customer_profiles
+                        if str(item.get("name") or "").strip().casefold() == normalized), None)
+        if not profile:
+            return
+        fields = {"recipient": profile.get("contact", "")} if self.kind == "quotation" else {
+            "buyer_address": profile.get("address", ""),
+            "buyer_agent": profile.get("contact", ""),
+            "buyer_phone": profile.get("phone", ""),
+        }
+        for key, value in fields.items():
+            control = self.fields.get(key)
+            if control is not None and value and not control.text().strip():
+                control.setText(value)
 
     def build_items(self):
         layout = self.add_tab("产品明细")
@@ -237,6 +312,7 @@ class BusinessDocumentDialog(BaseDialog):
         self.table.setMinimumHeight(220)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.EditKeyPressed)
         self.table.verticalHeader().setDefaultSectionSize(44)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setMinimumSectionSize(95)
@@ -303,6 +379,146 @@ class BusinessDocumentDialog(BaseDialog):
             self.changed()
             self.recalculate()
 
+    def eventFilter(self, watched, event):
+        if (getattr(self, "records_table", None) is not None
+                and watched is self.records_table.viewport()
+                and event.type() == QEvent.Type.MouseButtonDblClick):
+            index = self.records_table.indexAt(event.position().toPoint())
+            if not index.isValid():
+                self.new_record()
+                event.accept()
+                return True
+        return super().eventFilter(watched, event)
+
+    def record_item_double_clicked(self, item, _column=None):
+        record_id = item.data(Qt.ItemDataRole.UserRole)
+        record = self.records_by_id.get(record_id)
+        if record:
+            self.load_record(record)
+
+    def refresh_records(self, select_id=None):
+        try:
+            records = self.service.load_records(self.kind)
+        except (OSError, ValueError) as exc:
+            self.records_by_id = {}
+            self.records_table.setRowCount(0)
+            self.record_status.setText("制作记录读取失败：" + str(exc))
+            self.notice.show_message(str(exc), True)
+            return
+        self.records_by_id = {record["id"]: record for record in records}
+        self.records_table.setRowCount(0)
+        for record in records:
+            document = record["document"]
+            fields = document["fields"]
+            row = self.records_table.rowCount()
+            self.records_table.insertRow(row)
+            sync_status = record.get("sync_status", "")
+            status_text = {"pending": "待同步", "conflict": "同步冲突", "error": "同步失败"}.get(sync_status)
+            values = (record["title"], fields.get("buyer_name", "") or "未填写",
+                      fields.get("date", "") or "—", record["updated_at"].replace("T", " ")[:16],
+                      status_text or ("当前编辑" if record["id"] == self.current_record_id else "已同步"))
+            for column, value in enumerate(values):
+                cell = QTableWidgetItem(value)
+                cell.setData(Qt.ItemDataRole.UserRole, record["id"])
+                self.records_table.setItem(row, column, cell)
+        counts = {status: sum(item.get("sync_status") == status for item in records)
+                  for status in SYNC_STATUSES}
+        sync_hint = []
+        if counts["pending"]:
+            sync_hint.append(f"待同步 {counts['pending']} 条")
+        if counts["conflict"]:
+            sync_hint.append(f"冲突 {counts['conflict']} 条")
+        if counts["error"]:
+            sync_hint.append(f"失败 {counts['error']} 条")
+        suffix = "；" + "、".join(sync_hint) if sync_hint else "；已同步"
+        if records:
+            self.record_status.setText(f"共 {len(records)} 条制作记录{suffix}；双击可载入修改，空白处双击可新建。")
+        else:
+            self.record_status.setText("暂无制作记录；双击列表空白处即可新建记录。" +
+                                       ("联网后会自动同步" if self.cloud_store else ""))
+        target_id = select_id or self.current_record_id
+        if target_id in self.records_by_id:
+            for row in range(self.records_table.rowCount()):
+                if self.records_table.item(row, 0).data(Qt.ItemDataRole.UserRole) == target_id:
+                    self.records_table.selectRow(row)
+                    break
+
+    def load_record(self, record):
+        if self.dirty and self.confirm(
+            "载入制作记录", "当前填写内容尚未保存，载入记录会替换当前内容，继续吗？",
+            {QMessageBox.StandardButton.Yes: "载入记录", QMessageBox.StandardButton.No: "取消"},
+            QMessageBox.StandardButton.No,
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.apply_data(record["document"])
+        except (OSError, ValueError) as exc:
+            self.notice.show_message(str(exc), True)
+            return
+        self.current_record_id = record["id"]
+        self.refresh_records(record["id"])
+        self.tabs.setCurrentIndex(self.basic_tab_index)
+        self.notice.show_message("已载入制作记录，可双击产品明细单元格手动修改。")
+
+    def new_record(self):
+        if self.dirty and self.confirm(
+            "新建制作记录", "当前填写内容尚未保存，新建记录会替换当前内容，继续吗？",
+            {QMessageBox.StandardButton.Yes: "新建记录", QMessageBox.StandardButton.No: "取消"},
+            QMessageBox.StandardButton.No,
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        self.current_record_id = None
+        self.apply_data(new_document(self.kind, self._seed_row, self._seed_customer))
+        self.dirty = True
+        self.refresh_records()
+        self.tabs.setCurrentIndex(self.basic_tab_index)
+        self.notice.show_message("已新建制作记录，请填写内容后保存。")
+
+    def save_record(self):
+        try:
+            record = self.service.save_record(self.values(), self.current_record_id)
+            self.current_record_id = record["id"]
+            self.document = copy.deepcopy(record["document"])
+            self.dirty = False
+            self.refresh_records(record["id"])
+            if record.get("sync_status") == "pending":
+                self.notice.show_message("制作记录已保存在本地，联网后自动上传同步。")
+            else:
+                self.notice.show_message("制作记录已保存，可在“制作记录”中双击继续修改。")
+            self.sync_cloud()
+            return True
+        except (OSError, ValueError) as exc:
+            self.notice.show_message(str(exc), True)
+            return False
+
+    def delete_record(self):
+        if not self.current_record_id:
+            self.notice.show_message("请先双击载入要删除的制作记录。")
+            return False
+        if self.confirm(
+            "删除制作记录", "删除后不能从制作记录列表恢复，确定继续吗？",
+            {QMessageBox.StandardButton.Yes: "删除", QMessageBox.StandardButton.No: "取消"},
+            QMessageBox.StandardButton.No,
+        ) != QMessageBox.StandardButton.Yes:
+            return False
+        try:
+            deleted = self.service.delete_record(self.kind, self.current_record_id)
+            if not deleted:
+                self.notice.show_message("制作记录已不存在，请刷新列表。", True)
+                return False
+            self.current_record_id = None
+            self.dirty = False
+            self.refresh_records()
+            if self.cloud_store is not None:
+                self.notice.show_message("制作记录已从本地删除，联网后自动同步删除。")
+            else:
+                self.notice.show_message("制作记录已删除。")
+            self.sync_cloud()
+            return True
+        except (OSError, ValueError) as exc:
+            self.notice.show_message(str(exc), True)
+            return False
+
     def add_item(self, item=None):
         if self.table.rowCount() >= MAX_ITEMS:
             self.notice.show_message(f"最多可填写{MAX_ITEMS}项产品", True)
@@ -345,7 +561,7 @@ class BusinessDocumentDialog(BaseDialog):
 
     def recalculate(self):
         if self.kind != "contract":
-            self.total_label.setText(f"当前{self.table.rowCount()}项；每页保留模板3行，超出自动续页。")
+            self.total_label.setText(f"当前{self.table.rowCount()}项；每页保留原件1项，超出自动续页。")
             return
         self._updating = True
         total, valid = Decimal(0), True
@@ -360,7 +576,7 @@ class BusinessDocumentDialog(BaseDialog):
                     valid, text = False, "—"
                 self.table.item(row, amount_column).setText(text)
             self.total_label.setText(f"全合同合计：{total:.2f}元  ·  {rmb_upper(total)}" if valid else
-                                     "填写数量和含税单价后自动计算金额；金额保留两位小数，每页保留模板1项。")
+                                     "填写数量和含税单价后自动计算金额；金额保留两位小数，每页保留原件2项。")
         except ValueError:
             self.total_label.setText("金额超出支持范围，请核对数量与单价。")
         finally:
@@ -470,12 +686,34 @@ class BusinessDocumentDialog(BaseDialog):
     def set_busy(self, busy):
         self.busy = busy
         self.tabs.setEnabled(not busy)
-        for control in (self.load_button, self.save_button, self.preview_button, self.export_button, self.supplier_button):
+        for control in (self.load_button, self.save_button, self.preview_button, self.export_button,
+                        self.export_word_button, self.supplier_button):
             control.setEnabled(not busy)
 
     def failed(self, error):
         self.set_busy(False)
         self.notice.show_message(str(error), True)
+
+    def sync_cloud(self):
+        if self.cloud_store is None or self._sync_busy or self.context.closing:
+            return
+        self._sync_busy = True
+        self.tasks.submit(self.service.sync_all, self.sync_finished, self.sync_failed,
+                          generation=self.context.storage_generation, write=True)
+
+    def sync_finished(self, result):
+        self._sync_busy = False
+        self.refresh_records(self.current_record_id)
+        if result.get("conflicts"):
+            self.notice.show_message("发现制作记录同步冲突，已保留本地版本，请刷新后核对。", True)
+        elif result.get("online") and result.get("synced"):
+            self.notice.show_message(f"制作记录已自动同步 {result['synced']} 条。")
+        elif not result.get("online"):
+            self.record_status.setText(self.record_status.text() + " 当前离线，已保留本地内容，联网后自动重试。")
+
+    def sync_failed(self, error):
+        self._sync_busy = False
+        self.record_status.setText("自动同步失败：" + str(error))
 
     def preview(self):
         self.set_busy(True)
@@ -501,19 +739,38 @@ class BusinessDocumentDialog(BaseDialog):
         self.tasks.submit(lambda: self.service.export(data, path), lambda result: self.export_ready(result, data),
                           self.failed, generation=self.context.storage_generation, write=True)
 
-    def export_ready(self, result, data):
+    def export_word(self):
+        data = self.values()
+        buyer = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", data["fields"]["buyer_name"])[:40].strip(". ")
+        folder = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation) or str(Path.home())
+        path, _ = QFileDialog.getSaveFileName(self, "导出Word"+KINDS[self.kind],
+                                             str(Path(folder)/(KINDS[self.kind]+"-"+buyer+"-"+today()+".docx")),
+                                             "Word 文件 (*.docx)")
+        if not path:
+            return
+        self.set_busy(True)
+        self.tasks.submit(lambda: self.service.export_word(data, path),
+                          lambda result: self.export_ready(result, data, "Word"), self.failed,
+                          generation=self.context.storage_generation, write=True)
+
+    def export_ready(self, result, data, format_name="PDF"):
         self.set_busy(False)
         self.last_exported = result["path"]
         try:
             self.service.save_draft(data)
+            record = self.service.save_record(data, self.current_record_id)
+            self.current_record_id = record["id"]
+            self.document = copy.deepcopy(record["document"])
             self.dirty = False
-            self.notice.show_message("PDF已导出，草稿已保存："+result["path"])
+            self.refresh_records(record["id"])
+            self.notice.show_message(format_name+"已导出，草稿和制作记录已保存："+result["path"])
         except (OSError, ValueError) as exc:
-            self.notice.show_message(f"PDF已导出：{result['path']}；草稿保存失败：{exc}", True)
+            self.notice.show_message(f"{format_name}已导出：{result['path']}；草稿或制作记录保存失败：{exc}", True)
 
     def reject(self):
+        self.sync_timer.stop()
         if self.busy:
-            self.notice.show_message("正在生成PDF，请稍候。")
+            self.notice.show_message("正在生成单据，请稍候。")
             return
         if self.dirty:
             choice = self.confirm(

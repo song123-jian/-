@@ -28,6 +28,7 @@ from domain import (
     today,
 )
 from importer import clean, money, validate_record
+from services.project_progress_service import DEFAULT_PROJECT_RULES
 from services.read_control import check_read_cancelled
 from storage.atomic_files import atomic_copy
 from storage.sqlite_store import SQLiteStore as Store
@@ -109,6 +110,8 @@ class SupabaseStore(Store):
             if exc.code in (401, 403):
                 raise ValueError(self.authorization_error_message()) from None
             if exc.code == 404 or code in ("42P01", "PGRST202", "PGRST205"):
+                if route in ("rpc/pm_customer_profiles_v1", "rpc/pmu_customer_profiles_v1") and code != "42P01":
+                    raise ReadApiUnavailable("云端客户管理接口尚未部署") from None
                 if route in ("rpc/pm_current_quotes_v165", "rpc/pm_customer_summaries_v165", "rpc/pm_customer_details_v165") and code != "42P01":
                     raise ReadApiUnavailable("云端尚未安装可选读取优化接口") from None
                 raise ValueError("Supabase 表或 RPC 尚未就绪，请先执行附带建表 SQL") from None
@@ -125,6 +128,32 @@ class SupabaseStore(Store):
         _, count = self.request("pm_quotes?select=id&limit=1", count=True)
         total = count.rsplit("/", 1)[-1] if "/" in count else "未知"
         return {"message": f"连接成功，建表版本 2，当前云端报价记录 {total} 条；未写入云端数据", "records": total}
+
+    def project_progress_list(self):
+        if not getattr(self, "session", None):
+            raise ValueError("项目进度云端同步需要使用程序账号登录")
+        result, _ = self.request("rpc/pm_project_progress_v2", {})
+        if not isinstance(result, dict) or not isinstance(result.get("rules"), dict) or not isinstance(result.get("projects"), list):
+            raise ValidationError("云端项目进度格式无效")
+        return result
+
+    def save_project_progress(self, record):
+        if not getattr(self, "session", None):
+            raise ValueError("项目进度云端同步需要使用程序账号登录")
+        is_new = bool(record.get("_new_project"))
+        result, _ = self.request("rpc/pm_save_project_progress_v2", {
+            "p_project_id": None if is_new else record.get("project_id"),
+            "p_expected_revision": None if is_new else record.get("revision"),
+            "p_record": {key: record.get(key, "") or "" for key in (
+                "industry", "customer_type", "customer_name", "material", "recommended_grade", "material_value",
+                "color", "competitor", "product_name", "stage_code", "customer_value", "competition",
+                "custom_stage_label", "custom_customer_value", "custom_material_value", "custom_competition",
+                "next_action", "milestone_date", "notes",
+            )},
+        })
+        if not isinstance(result, dict) or not result.get("project_id"):
+            raise ValidationError("云端项目保存响应无效")
+        return {"project_id": str(result["project_id"]), "revision": int(result["revision"])}
 
     def all(self):
         rows, offset = [], 0
@@ -158,6 +187,22 @@ class SupabaseStore(Store):
     def customer_states(self):
         rows, _ = self.request("rpc/pm_customer_states", {})
         return {r["customer_key"]: r for r in rows}
+
+    def customer_profiles_list(self):
+        result = self._read_rpc("rpc/pm_customer_profiles_v1", {})
+        if result is None:
+            raise ReadApiUnavailable("云端客户档案尚未初始化，请先完成客户管理数据库迁移")
+        if not isinstance(result, dict) or not isinstance(result.get("profiles"), list):
+            raise ValidationError("云端客户档案响应格式无效")
+        return result["profiles"]
+
+    def save_customer_profiles(self, profiles):
+        result, _ = self.request("rpc/pm_save_customer_profiles_v1", {"p_profiles": profiles})
+        if (not isinstance(result, dict) or not isinstance(result.get("profiles"), list)
+                or any(isinstance(result.get(key), bool) or not isinstance(result.get(key), int)
+                       or result[key] < 0 for key in ("created", "updated", "skipped"))):
+            raise ValidationError("云端客户档案保存响应格式无效")
+        return result
 
     def customer_request(self, request_id):
         rows, _ = self.request("pm_customer_audit?select=*&request_id=eq." + urllib.parse.quote(request_id, safe=""))
@@ -349,6 +394,8 @@ class SupabaseStore(Store):
     def backup(self, label="auto"):
         with self.lock:
             payload, _ = self.request("rpc/pm_export_snapshot", {})
+            project_data = self.project_progress_list() if getattr(self, "session", None) else {
+                "rules": DEFAULT_PROJECT_RULES, "projects": []}
             rows = payload["quotes"]
             for row in rows:
                 row["price"] = money(row["price"])
@@ -359,6 +406,8 @@ class SupabaseStore(Store):
                 snapshot = Store(temp, load_seed=False)
                 columns = ("id", "identity") + FIELDS + ("created_at", "source_type", "import_key", "customer_key")
                 with snapshot.connection() as db:
+                    db.execute("UPDATE settings SET value=? WHERE key='project_progress_rules'",
+                               (json.dumps(project_data["rules"], ensure_ascii=False),))
                     for customer in payload["customers"]:
                         db.execute("INSERT INTO customers VALUES (?,?,?,?,?,?)", tuple(customer[k] for k in
                                    ("customer_key", "display_name", "status", "revision", "deleted_at", "deleted_reason")))
@@ -367,6 +416,16 @@ class SupabaseStore(Store):
                     for entry in payload["audit"]:
                         db.execute("INSERT INTO customer_audit VALUES (?,?,?,?,?,?,?)", tuple(entry[k] for k in
                                    ("request_id", "customer_key", "action", "expected_revision", "revision", "reason", "created_at")))
+                    project_columns = (
+                        "project_id", "industry", "customer_type", "customer_name", "material", "recommended_grade",
+                        "material_value", "color", "competitor", "product_name", "stage_code", "customer_value",
+                        "competition", "custom_stage_label", "custom_customer_value", "custom_material_value",
+                        "custom_competition", "next_action", "milestone_date", "notes", "revision", "updated_at",
+                    )
+                    for project in project_data["projects"]:
+                        db.execute(f"INSERT INTO project_progress ({','.join(project_columns)}) VALUES "
+                                   f"({','.join('?' for _ in project_columns)})",
+                                   tuple(project.get(key) or "" for key in project_columns))
                 atomic_copy(snapshot.path, path)
             return path
 

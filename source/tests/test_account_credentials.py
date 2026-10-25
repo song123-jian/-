@@ -72,11 +72,50 @@ def test_ordinary_adapter_sends_user_jwt_without_admin_key(tmp_path):
             store.request(route)
 
 
+def test_business_document_aliases_target_deployed_pmu_rpc_routes(tmp_path, monkeypatch):
+    store = AccountStore(tmp_path, session())
+    calls = []
+
+    def fake_request(_store, route, body=None, count=False):
+        calls.append((route, body, count))
+        if route.endswith('business_document_list_v1'):
+            return {'records': []}, ''
+        if route.endswith('save_business_document_v1'):
+            return {'document': {}}, ''
+        return {'deleted': True}, ''
+
+    monkeypatch.setattr('storage.supabase_store.SupabaseStore.request', fake_request)
+    store.business_document_list('quotation')
+    store.business_document_save('quotation', None, None, '测试记录', {'kind': 'quotation'})
+    store.business_document_delete('quotation', '11111111-1111-4111-8111-111111111111', 1)
+
+    assert [route for route, _body, _count in calls] == [
+        'rpc/pmu_business_document_list_v1',
+        'rpc/pmu_save_business_document_v1',
+        'rpc/pmu_delete_business_document_v1',
+    ]
+    assert calls[1][1]['p_expected_revision'] is None
+    assert calls[2][1]['p_expected_revision'] == 1
+
+
 def test_closed_session_cannot_authenticate_background_request():
     current = session(access_token='',refresh_token='')
     current.close()
     with pytest.raises(ValueError,match='退出'):
         current.token()
+
+
+def test_login_network_diagnostics_exclude_authentication_data(monkeypatch,caplog):
+    from domain import NetworkError
+    def unavailable(*args,**kwargs):
+        raise urllib.error.URLError(TimeoutError('isolated-private-network-detail'))
+    monkeypatch.setattr('urllib.request.urlopen',unavailable)
+    with pytest.raises(NetworkError,match='无法连接登录服务'):
+        account_service.auth_request(session().config,'/auth/v1/token?grant_type=password',
+                                     {'password':'isolated-private-password'},token='isolated-private-token')
+    assert 'Account HTTPS connection failed (cause=TimeoutError' in caplog.text
+    assert 'isolated-private' not in caplog.text
+    assert 'sb_publishable_isolated' not in caplog.text
 
 
 @pytest.mark.parametrize('status',[401,403])

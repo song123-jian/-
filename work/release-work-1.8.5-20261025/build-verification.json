@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-25T18:36:55.9882309+08:00",
+  "applicationVersion": "1.8.5",
+  "applicationEntry": "desktop_main.py",
+  "applicationFile": "工作.exe",
+  "applicationSha256": "8C84083736B0CE69FAB9EAF831738ED6586BA0CC1BE815FA7083857E2CC8C10C",
+  "python": "E:\\工作\\.build\\desktop-ui-refactor-20261025-venv\\Scripts\\python.exe",
+  "buildRoot": "E:\\工作\\.build\\desktop-95fa241e74e44d769c6514cabf1f3c79",
+  "checks": "skipped by explicit switch",
+  "testReport": null,
+  "excludedLegacyModules": [
+    "app.py",
+    "supabase_backend.py"
+  ],
+  "actualProgramVerification": "passed",
+  "verificationReports": {
+    "source-r2": {
+      "status": "passed",
+      "checks": 16,
+      "navigationCases": 20,
+      "report": "source-r2-shell-qa/report/report.json"
+    },
+    "candidate-rerun": {
+      "status": "passed",
+      "checks": 16,
+      "navigationCases": 20,
+      "report": "candidate-rerun-shell-qa/report/report.json"
+    },
+    "installed": {
+      "status": "passed",
+      "checks": 16,
+      "navigationCases": 20,
+      "report": "installed-shell-qa/report/report.json"
+    },
+    "root": {
+      "status": "passed",
+      "checks": 16,
+      "navigationCases": 20,
+      "report": "root-shell-qa/report/report.json"
+    }
+  },
+  "cloudReport": "candidate-account-qa/report/report.json"
+}

@@ -27,6 +27,7 @@ from services.mes_credentials import MesCredentialError, MesCredentialStore
 
 from .combo_delegate import configure_combo_popup
 from .dialogs import BaseDialog, button, label
+from .query_shortcuts import bind_enter_query
 from .theme_tokens import form_font
 from .workers import TaskManager
 
@@ -113,7 +114,7 @@ class InventoryDialog(BaseDialog):
         self.grade.setClearButtonEnabled(True)
         self.grade.setMinimumWidth(200)
         self.grade.setMaxLength(120)
-        self.grade.returnPressed.connect(self.query)
+        self.stock_enter_query = bind_enter_query(self.query, self.grade, self.search_by)
         self.query_button = button("查询库存", self.query, True, "search")
         query_layout.addWidget(self.search_by)
         query_layout.addWidget(self.grade, 1)
@@ -160,7 +161,7 @@ class InventoryDialog(BaseDialog):
         self.batch.setClearButtonEnabled(True)
         self.batch.setPlaceholderText("从库存行带入批号，或粘贴完整批号后查询")
         self.batch.setAccessibleName("备货库存批号")
-        self.batch.returnPressed.connect(self.query_reserve)
+        self.reserve_enter_query = bind_enter_query(self.query_reserve, self.batch)
         self.reserve_query_button = button("查询备货", self.query_reserve, True, "search")
         self.back_button = button("返回物料查询", lambda: self.tabs.setCurrentIndex(0))
         reserve_query_layout.addWidget(self.batch, 1)
@@ -211,7 +212,7 @@ class InventoryDialog(BaseDialog):
         table.setWordWrap(False)
         table.setShowGrid(True)
         table.setGridStyle(Qt.PenStyle.SolidLine)
-        table.setStyleSheet("QTableWidget::item { padding: 0 8px; }")
+        table.setProperty("role", "inventoryTable")
         table.verticalHeader().hide()
         table.verticalHeader().setDefaultSectionSize(36)
         table.setMinimumHeight(260)

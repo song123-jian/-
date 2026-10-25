@@ -9,7 +9,7 @@ import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QLibraryInfo, QLocale, QTimer, QTranslator
 from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
@@ -42,6 +42,15 @@ def main(argv=None):
         parser.error('手机联合验收必须使用显式隔离数据目录')
     folder.mkdir(parents=True, exist_ok=True)
     app = QApplication.instance() or QApplication([sys.argv[0]])
+    QLocale.setDefault(QLocale("zh_CN"))
+    translator = QTranslator(app)
+    translation_root = Path(getattr(sys, "_MEIPASS", Path(__file__).parent)) / "translations"
+    translation_file = translation_root / "qtbase_zh_CN.qm"
+    if not translation_file.is_file():
+        translation_file = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)) / "qtbase_zh_CN.qm"
+    if translator.load(str(translation_file)):
+        app.installTranslator(translator)
+        app._chinese_translator = translator
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("PriceManager")
     app.setApplicationVersion(VERSION)

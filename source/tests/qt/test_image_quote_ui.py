@@ -73,10 +73,11 @@ def test_image_drop_preview_edit_review_and_plain_text_paste(qtbot, qapp, contex
     clipboard = QGuiApplication.clipboard()
     saved = QMimeData()
     previous = clipboard.mimeData()
-    for fmt in previous.formats():
-        saved.setData(fmt, previous.data(fmt))
-    if previous.hasImage():
-        saved.setImageData(previous.imageData())
+    if previous is not None:
+        for fmt in previous.formats():
+            saved.setData(fmt, previous.data(fmt))
+        if previous.hasImage():
+            saved.setImageData(previous.imageData())
     try:
         clipboard.setText("手工备注")
         dialog.fields["note"].setFocus()
@@ -98,7 +99,7 @@ def test_ocr_result_does_not_replace_concurrent_manual_edits(qtbot, qapp, contex
         assert release.wait(5)
         return result
 
-    monkeypatch.setattr("ui.dialogs.recognize_image", delayed)
+    monkeypatch.setattr("ui.quote_dialog.recognize_image", delayed)
     apply_theme(qapp)
     window = MainWindow(context)
     qtbot.addWidget(window)

@@ -1,18 +1,13 @@
 """Customer price desktop window. All I/O goes through background services."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-from PySide6.QtCore import QEvent, QSettings, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QGuiApplication, QKeySequence, QShortcut, QStandardItem, QStandardItemModel
+from PySide6.QtCore import QEvent, QSettings, Qt, QTimer, Signal
+from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut, QStandardItemModel
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
-    QCompleter,
     QDateEdit,
-    QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -25,49 +20,71 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QTableView,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from domain import APP_NAME, VERSION, today
+from domain import APP_NAME, VERSION, NetworkError, today
 from services.backend_service import BackendService
+from services.customer_profile_service import CustomerProfileService
 from services.customer_service import CustomerService
 from services.price_service import PriceService, QueryFilter
+from services.project_progress_service import DEFAULT_PROJECT_RULES, ProjectProgressService
 from services.sync_service import SyncState
+from services.todo_service import TodoService
 
-from .business_document_dialog import BusinessDocumentDialog
 from .combo_delegate import configure_combo_popup
-from .customer_delegate import COUNT_ROLE, CustomerDelegate
-from .customer_dialogs import CustomerManagerDialog
+from .customer_delegate import CustomerDelegate
 from .dialogs import (
-    BackendDialog,
-    HistoryDialog,
-    ImportPreviewDialog,
     Notice,
-    PdfImportOptionsDialog,
-    QuoteDialog,
     button,
     label,
 )
 from .inventory_dialog import InventoryDialog
+from .main_window_customer_directory import MainWindowCustomerDirectoryMixin
+from .main_window_customer_profiles import MainWindowCustomerProfilesMixin
+from .main_window_file_operations import MainWindowFileOperationsMixin
+from .main_window_project_progress import MainWindowProjectProgressMixin
+from .main_window_quote_actions import MainWindowQuoteActionsMixin
+from .main_window_quotes import MainWindowQuoteQueryMixin
+from .main_window_todo import MainWindowTodoMixin
+from .query_shortcuts import bind_enter_query
 from .quote_delegate import QuoteDelegate
 from .quote_table_model import PRICE_COLUMN, ROW_ROLE, QuoteProxyModel, QuoteTableModel
 from .workers import TaskManager
 
 
-class MainWindow(QMainWindow):
+class MainWindow(MainWindowCustomerProfilesMixin, MainWindowTodoMixin, MainWindowProjectProgressMixin,
+                 MainWindowCustomerDirectoryMixin,
+                 MainWindowQuoteQueryMixin, MainWindowQuoteActionsMixin, MainWindowFileOperationsMixin, QMainWindow):
     accountClosed = Signal(bool)
+    PAGE_CUSTOMERS = 0
+    PAGE_TODO = 1
+    PAGE_QUERY = 2
+    PAGE_PROJECT_PROGRESS = 3
+    PAGE_SETTINGS = 4
+    PAGE_DATA = PAGE_SETTINGS
 
     def __init__(self, context):
         super().__init__()
         self.context = context
         self.prices, self.backends = PriceService(context), BackendService(context)
+        self.project_progress_service = ProjectProgressService(context)
+        self.todo_service = TodoService(context.folder)
+        self.todo_items = []
+        self.customer_profile_service = CustomerProfileService(context)
+        self.customer_profiles = []
+        self.customer_profile_sequence = 0
         self.customer_service = CustomerService(context)
         self.customer_revisions = {}
         self.tasks = TaskManager(context, self)
         self.settings = QSettings(str(context.folder / "ui.ini"), QSettings.Format.IniFormat)
         self.query_sequence = 0
+        self.project_progress_sequence = 0
+        self.project_rules = DEFAULT_PROJECT_RULES
         self.meta_sequence = 0
+        self.customer_directory_sequence = 0
         self.dialogs = set()
         self.inventory_dialog = None
         self.last_backup = None
@@ -103,9 +120,14 @@ class MainWindow(QMainWindow):
         self.splitter.addWidget(self.pages)
         self.splitter.setStretchFactor(1, 1)
         self.splitter.setSizes([240, 1040])
+        self.build_customer_profiles_page()
+        self.build_todo_page()
         self.build_query_page()
-        self.build_data_page()
+        self.build_project_progress_page()
         self.build_settings_page()
+        self.pages.setCurrentIndex(self.PAGE_QUERY)
+        self.load_customer_profiles()
+        self.load_todos()
         self.progress = QProgressBar()
         self.progress.setFixedWidth(140)
         self.progress.setRange(0, 0)
@@ -135,8 +157,9 @@ class MainWindow(QMainWindow):
         self.customer.textChanged.connect(lambda: self.debounce.start())
         self.customer.textChanged.connect(self.customer_search_changed)
         self.term.textChanged.connect(lambda: self.debounce.start())
-        self.customer.returnPressed.connect(self.query)
-        self.term.returnPressed.connect(self.query)
+        self.quote_enter_query = bind_enter_query(
+            self.query, self.customer, self.term, self.material, self.tax,
+            self.date_from, self.date_to, self.date_enabled, self.stale)
         for key, action in (("Ctrl+F", self.focus_search), ("Ctrl+N", self.new_quote), ("F5", self.refresh)):
             shortcut = QShortcut(QKeySequence(key), self)
             shortcut.activated.connect(action)
@@ -174,17 +197,22 @@ class MainWindow(QMainWindow):
         self.sidebar.setObjectName("Sidebar")
         self.sidebar.setMinimumWidth(240)
         layout = QVBoxLayout(self.sidebar)
-        layout.setContentsMargins(16, 26, 16, 18)
-        layout.setSpacing(12)
+        layout.setContentsMargins(16, 14, 16, 10)
+        layout.setSpacing(6)
         layout.addWidget(label(APP_NAME, "title"))
         layout.addWidget(label("客户报价与历史账本", "muted"))
         layout.addSpacing(16)
-        self.query_nav = button("报价查询", lambda: self.navigate(0))
+        self.customer_nav = button("客户管理", lambda: self.navigate(self.PAGE_CUSTOMERS))
+        self.customer_nav.setCheckable(True)
+        self.todo_nav = button("待办事项", lambda: self.navigate(self.PAGE_TODO))
+        self.todo_nav.setCheckable(True)
+        self.query_nav = button("报价查询", lambda: self.navigate(self.PAGE_QUERY))
         self.query_nav.setCheckable(True)
         self.query_nav.setChecked(True)
-        self.data_nav = button("数据与导入", lambda: self.navigate(1))
-        self.data_nav.setCheckable(True)
-        for control in (self.query_nav, self.data_nav):
+        self.project_nav = button("项目进度", lambda: self.navigate(self.PAGE_PROJECT_PROGRESS))
+        self.project_nav.setCheckable(True)
+        self.primary_navigation = (self.customer_nav, self.todo_nav, self.query_nav, self.project_nav)
+        for control in self.primary_navigation:
             layout.addWidget(control)
         self.inventory_nav = button("库存查询", self.open_inventory)
         self.inventory_nav.setAccessibleName("库存查询")
@@ -194,7 +222,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.document_quote_nav)
         layout.addWidget(self.document_contract_nav)
         layout.addSpacing(12)
-        layout.addWidget(label("客户目录", "muted"))
+        self.customer_directory_toggle = button("客户目录", self.set_customer_directory_expanded)
+        self.customer_directory_toggle.setCheckable(True)
+        layout.addWidget(self.customer_directory_toggle)
         self.customers = QListView()
         self.customers.setObjectName("Customers")
         self.customers.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -206,17 +236,20 @@ class MainWindow(QMainWindow):
         self.customers.clicked.connect(self.select_customer)
         self.customers.activated.connect(self.select_customer)
         layout.addWidget(self.customers, 1)
+        expanded = str(self.settings.value("customer-directory-expanded", "true")).lower() == "true"
+        self.set_customer_directory_expanded(expanded)
         self.storage_label = label("● 本地 SQLite", "muted")
         self.storage_label.setWordWrap(True)
+        self.storage_label.setMinimumHeight(38)
         storage_row = QHBoxLayout()
         storage_row.setSpacing(6)
-        storage_row.addWidget(self.storage_label, 1)
-        self.settings_nav = button("设置", lambda: self.navigate(2))
+        storage_row.addWidget(self.storage_label, 1, Qt.AlignmentFlag.AlignVCenter)
+        self.settings_nav = button("设置", lambda: self.navigate(self.PAGE_SETTINGS))
         self.settings_nav.setCheckable(True)
         self.settings_nav.setFixedWidth(56)
-        self.settings_nav.setAccessibleName("数据库设置")
-        self.settings_nav.setToolTip("数据库设置")
-        storage_row.addWidget(self.settings_nav)
+        self.settings_nav.setAccessibleName("设置")
+        self.settings_nav.setToolTip("设置")
+        storage_row.addWidget(self.settings_nav, 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(storage_row)
         layout.addWidget(label(f"版本 {VERSION}", "muted"))
         layout.addWidget(button("退出程序", self.request_exit))
@@ -257,7 +290,7 @@ class MainWindow(QMainWindow):
             column.addWidget(label(caption, "muted"))
             number = label(value, "number")
             if caption == "最近业务日期":
-                number.setStyleSheet("font-size: 18px;")
+                number.setProperty("role", "statDate")
             column.addWidget(number)
             self.cards.append(card)
             self.card_values.append(number)
@@ -375,17 +408,21 @@ class MainWindow(QMainWindow):
             self.table.setColumnWidth(PRICE_COLUMN, 120)
 
     def build_data_page(self):
-        _, layout = self.page_layout("数据与导入", "导入先预览，报价按记录追加。导出与备份会保留完整价格精度。")
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         body = QWidget()
+        self.data_body = body
         panels = QVBoxLayout(body)
         panels.setContentsMargins(0, 0, 6, 0)
         scroll.setWidget(body)
         layout.addWidget(scroll, 1)
         layout = panels
         for title, description, actions in (
-            ("客户管理", "删除客户会将其全部规格和历史移入回收站。可查看完整历史或恢复；日常查询和导出隐藏已删除客户。",
+            ("报价客户目录", "报价目录中的客户规格与历史可移入回收站或恢复；日常查询和导出隐藏已删除客户。",
              [("管理客户", self.manage_customers, False), ("打开回收站", lambda: self.manage_customers(True), False)]),
             ("文件导入", "支持 XLSX、CSV 和文字表格 PDF。具体客户导入会匹配更新、合并新牌号；全部客户按文件客户列创建。确认导入立即生效，文件日期优先，无日期按当天。单文件20 MB、最多20000条报价；PDF 最多100页。",
              [("导入报价", self.import_file, True), ("保存导入模板", self.save_template, False)]),
@@ -411,9 +448,21 @@ class MainWindow(QMainWindow):
         self.data_notice = Notice()
         layout.addWidget(self.data_notice)
         layout.addStretch()
+        return page
+
 
     def build_settings_page(self):
-        _, layout = self.page_layout("数据库设置", "在本地 SQLite 和 Supabase 之间切换。连接失败会显示原始操作状态。")
+        self.settings_page, layout = self.page_layout("设置", "管理数据、导入导出和数据库连接。")
+        self.settings_tabs = QTabWidget()
+        self.settings_tabs.setObjectName("SettingsTabs")
+        layout.addWidget(self.settings_tabs, 1)
+        self.settings_tabs.addTab(self.build_data_page(), "数据与导入")
+        self.settings_tabs.addTab(self.build_database_settings_tab(), "数据库")
+
+    def build_database_settings_tab(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(12, 12, 12, 12)
         panel = QFrame()
         panel.setProperty("role", "panel")
         box = QVBoxLayout(panel)
@@ -437,11 +486,22 @@ class MainWindow(QMainWindow):
         self.settings_notice = Notice()
         layout.addWidget(self.settings_notice)
         layout.addStretch()
+        return page
 
     def navigate(self, page):
         self.pages.setCurrentIndex(page)
-        for index, control in enumerate((self.query_nav, self.data_nav, self.settings_nav)):
+        for index, control in enumerate(self.primary_navigation):
             control.setChecked(index == page)
+        self.settings_nav.setChecked(page == self.PAGE_SETTINGS)
+        if page == self.PAGE_SETTINGS:
+            self.settings_tabs.setCurrentIndex(0)
+        if page == self.PAGE_CUSTOMERS:
+            self.load_customer_profiles()
+        elif page == self.PAGE_PROJECT_PROGRESS:
+            self.load_project_progress()
+        elif page == self.PAGE_TODO:
+            self.load_todos()
+            self.load_project_progress()
 
     def toggle_sidebar(self):
         sizes = self.splitter.sizes()
@@ -461,12 +521,15 @@ class MainWindow(QMainWindow):
                 self.cards_grid.removeWidget(card)
                 card.layout().setContentsMargins(14, 6 if compact else 10, 14, 6 if compact else 10)
             for index, number in enumerate(self.card_values):
-                number.setStyleSheet("font-size: 18px;" if index == 3 else "font-size: 22px;" if compact else "")
+                role = "statDate" if index == 3 else "statCompact" if compact else "number"
+                number.setProperty("role", role)
+                number.style().unpolish(number)
+                number.style().polish(number)
             for index, card in enumerate(self.cards):
                 self.cards_grid.addWidget(card, 0, index)
 
     def focus_search(self):
-        self.navigate(0)
+        self.navigate(self.PAGE_QUERY)
         self.customer.setFocus()
         self.customer.selectAll()
 
@@ -486,14 +549,14 @@ class MainWindow(QMainWindow):
 
         def loaded(result):
             if meta_sequence == self.meta_sequence:
-                self.meta_loaded(result["meta"])
+                self.meta_loaded(result["meta"], update_directory=False)
             if sequence == self.query_sequence:
                 self.quotes_loaded(result["quotes"])
                 self.sync_applied(result['quotes'].get('sync'))
 
         def failed(exc):
             if getattr(self.context, 'account', None):
-                self.sync_label.setText('云端同步：未更新，请检查网络或登录')
+                self.sync_failed(exc)
             if meta_sequence == self.meta_sequence:
                 self.meta_failed(exc)
             if sequence == self.query_sequence:
@@ -501,6 +564,7 @@ class MainWindow(QMainWindow):
 
         self.tasks.submit(lambda: self.prices.refresh_quotes(filters, generation, sequence), loaded, failed,
                           generation=generation, latest_key="quote-refresh")
+        self.load_customer_directory(generation)
         backend = self.backends.get_backend_status()
         name = "Supabase 云数据库" if backend["backend"] == "supabase" else "本地 SQLite"
         self.storage_label.setText("● " + name)
@@ -509,15 +573,28 @@ class MainWindow(QMainWindow):
         else:
             self.backend_description.setText(f"当前存储：{name}\n数据目录：{self.context.folder}\n云端项目：{backend['url']}\n{'已保存加密凭据' if backend['has_key'] else '尚未配置云端凭据'}")
 
+    def sync_failed(self, exc):
+        message = str(exc).strip()
+        self.sync_label.setToolTip(message)
+        if isinstance(exc, NetworkError):
+            status = "云端同步失败：网络连接异常"
+        elif any(token in message for token in ("登录已失效", "登录状态", "账号已停用", "身份已失效", "请重新登录")):
+            status = "云端同步失败：登录状态已失效，请重新登录"
+        else:
+            status = "云端同步失败：" + (message[:100] or "请稍后重试")
+        self.sync_label.setText(status)
+
     def sync_applied(self, meta):
         if not meta:
             return
         if not meta.get('available'):
+            self.sync_label.setToolTip("")
             self.sync_label.setText(meta.get('message', '云端尚未升级，当前仅手动刷新'))
             self.sync_timer.start(60_000)
             return
         self.sync_state.applied(meta)
         self.sync_timer.start(15_000)
+        self.sync_label.setToolTip("")
         self.sync_label.setText('云端已读取：' + meta['last_read_at'][11:19])
 
     def poll_sync(self):
@@ -531,17 +608,24 @@ class MainWindow(QMainWindow):
         def loaded(meta):
             self.sync_pending = False
             if meta is None:
+                self.sync_label.setToolTip("")
                 self.sync_label.setText('云端同步待升级；每60秒重检，可手动刷新')
                 self.sync_timer.start(60_000)
-            elif self.sync_state.observe(meta):
-                self.sync_label.setText('云端已有变化，正在刷新；已打开表单需核对基准')
-                self.refresh()
             else:
-                self.sync_timer.setInterval(15_000)
+                self.sync_timer.start(15_000)
+                self.sync_label.setToolTip("")
+                if self.sync_state.observe(meta):
+                    self.sync_label.setText('云端已有变化，正在刷新；已打开表单需核对基准')
+                    self.refresh()
+                    self.load_customer_profiles()
+                    if self.pages.currentIndex() in (self.PAGE_PROJECT_PROGRESS, self.PAGE_TODO):
+                        self.load_project_progress()
+                else:
+                    self.sync_label.setText('云端同步正常：暂无新变化')
 
         def failed(exc):
             self.sync_pending = False
-            self.sync_label.setText('云端同步：未更新，请检查网络或登录')
+            self.sync_failed(exc)
             self.sync_timer.setInterval(self.sync_state.failed())
 
         self.tasks.submit(store.sync_meta, loaded, failed, generation=self.context.storage_generation,
@@ -553,57 +637,6 @@ class MainWindow(QMainWindow):
             if not self.isMinimized() and self.isActiveWindow() and getattr(self.context, 'account', None):
                 QTimer.singleShot(0, self, self.poll_sync)
 
-    def meta_loaded(self, result):
-        self.read_recovered("meta")
-        self.customer_revisions = {entry["customer_key"]: entry["revision"] for entry in result["customers"]}
-        customer_names = {entry["name"] for entry in result["customers"]}
-        if self.import_customer and self.import_customer not in customer_names:
-            self.import_customer = ""
-        directory_state = (result["stats"]["items"], tuple(
-            (entry["customer_key"], entry["name"], entry["count"]) for entry in result["customers"]))
-        if directory_state != self._customer_directory_state:
-            self.customer_model.clear()
-            all_item = QStandardItem("全部客户")
-            all_item.setData("", Qt.ItemDataRole.UserRole)
-            all_item.setData("", Qt.ItemDataRole.UserRole + 1)
-            all_item.setData(result["stats"]["items"], COUNT_ROLE)
-            all_item.setToolTip(f"全部客户 · {result['stats']['items']}个规格")
-            all_item.setData(all_item.toolTip(), Qt.ItemDataRole.AccessibleTextRole)
-            all_item.setEditable(False)
-            self.customer_model.appendRow(all_item)
-            for entry in result["customers"]:
-                item = QStandardItem(entry["name"])
-                item.setData(entry["name"], Qt.ItemDataRole.UserRole)
-                item.setData(entry["customer_key"], Qt.ItemDataRole.UserRole + 1)
-                item.setData(entry["count"], COUNT_ROLE)
-                item.setToolTip(f"{entry['name']} · {entry['count']}个规格")
-                item.setData(item.toolTip(), Qt.ItemDataRole.AccessibleTextRole)
-                item.setEditable(False)
-                self.customer_model.appendRow(item)
-            completer = QCompleter([entry["name"] for entry in result["customers"]], self.customer)
-            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-            completer.setFilterMode(Qt.MatchFlag.MatchContains)
-            self.customer.setCompleter(completer)
-            self._customer_directory_state = directory_state
-        for row in range(self.customer_model.rowCount()):
-            index = self.customer_model.index(row, 0)
-            if index.data(Qt.ItemDataRole.UserRole) == self.import_customer:
-                self.customers.setCurrentIndex(index)
-                break
-        materials = tuple(result["materials"])
-        if materials != self._material_options:
-            current_material = self.material.currentData()
-            self.material.clear()
-            self.material.addItem("全部材料", "")
-            for material in materials:
-                self.material.addItem(material, material)
-            index = self.material.findData(current_material)
-            if index >= 0:
-                self.material.setCurrentIndex(index)
-            self._material_options = materials
-
-    def meta_failed(self, exc):
-        self.read_failed("meta", exc)
 
     def query_failed(self, exc):
         self.read_failed("query", exc)
@@ -626,261 +659,8 @@ class MainWindow(QMainWindow):
         if self.statusBar().currentMessage() == message:
             self.statusBar().clearMessage()
 
-    def query(self):
-        self.debounce.stop()
-        if self._closing:
-            return
-        self.query_sequence += 1
-        sequence, generation, filters = self.query_sequence, self.context.storage_generation, self.filters()
-        self.statusBar().showMessage("正在查询…")
-        self.tasks.submit(lambda: self.prices.list_quotes(filters, generation, sequence),
-                          lambda result: self.quotes_loaded(result) if sequence == self.query_sequence else None,
-                          lambda exc: self.query_failed(exc) if sequence == self.query_sequence else None,
-                          generation=generation, latest_key="quote-query")
 
-    def quotes_loaded(self, result):
-        self.read_recovered("query")
-        self.loaded = True
-        selected = self.selected()
-        self.model.set_items(result["items"])
-        stats = result["stats"]
-        for label_value, value in zip(self.card_values, (stats["customers"], stats["items"], stats["records"], stats["last_date"] or "—")):
-            label_value.setText(str(value))
-        self.empty_label.setVisible(not result["items"])
-        self.empty_label.setText("没有找到匹配报价\n试试较短的客户名称或牌号，也可以清除筛选")
-        if selected:
-            for index in range(self.proxy.rowCount()):
-                if self.proxy.index(index, 0).data(ROW_ROLE)["id"] == selected["id"]:
-                    self.table.selectRow(index)
-                    break
-        self.selection_changed()
-        self.statusBar().showMessage(f"{self.storage_label.text()}  ·  {stats['customers']}客户 / {stats['items']}规格 / {stats['records']}条历史")
 
-    def reset(self):
-        self.import_customer = ""
-        self.customer.clear()
-        self.customers.setCurrentIndex(self.customer_model.index(0, 0))
-        self.term.clear()
-        self.material.setCurrentIndex(0)
-        self.tax.setCurrentIndex(0)
-        self.date_enabled.setChecked(False)
-        self.stale.setChecked(False)
-        self.query()
-
-    def customer_search_changed(self, text):
-        if text != self.import_customer:
-            self.import_customer = ""
-            self.customers.clearSelection()
-            self.customers.setCurrentIndex(self.customer_model.index(-1, 0))
-
-    def select_customer(self, index):
-        self.navigate(0)
-        customer = index.data(Qt.ItemDataRole.UserRole) or ""
-        self.customer.setText(customer)
-        self.import_customer = customer
-        self.customers.setCurrentIndex(index)
-        self.query()
-
-    def selected(self):
-        selected = self.table.selectionModel().selectedRows()
-        return selected[0].data(ROW_ROLE) if selected else None
-
-    def selection_changed(self):
-        enabled = bool(self.selected())
-        self.history_button.setEnabled(enabled)
-        self.edit_button.setEnabled(enabled)
-
-    def show_dialog(self, dialog):
-        self.dialogs.add(dialog)
-        dialog.finished.connect(lambda _: self.dialogs.discard(dialog))
-        dialog.open()
-        return dialog
-
-    def open_inventory(self):
-        if self._closing:
-            return
-        if self.inventory_dialog is not None and self.inventory_dialog.isVisible():
-            self.inventory_dialog.raise_()
-            self.inventory_dialog.activateWindow()
-            return
-        row = self.selected()
-        self.inventory_dialog = InventoryDialog(
-            grade=row["grade"] if row else "", parent=self, data_folder=getattr(self.context,'shared_folder',self.context.folder))
-        self.show_dialog(self.inventory_dialog)
-
-    def new_quote(self):
-        dialog = QuoteDialog(self.prices, self.tasks, self.context.storage_generation,
-                             customer=self.customer.text(), selected_customer=self.import_customer, parent=self)
-        dialog.saved.connect(self.quote_saved)
-        self.show_dialog(dialog)
-
-    def open_business_document(self, kind):
-        if not self._closing:
-            self.show_dialog(BusinessDocumentDialog(
-                self.context, self.tasks, kind, row=self.selected(),
-                customer=self.import_customer, parent=self))
-
-    def manage_customers(self, deleted=False):
-        index = self.customers.currentIndex()
-        key = index.data(Qt.ItemDataRole.UserRole + 1) if index.isValid() else ""
-        dialog = CustomerManagerDialog(self.customer_service, self.tasks, self.context.storage_generation,
-                                       deleted=deleted, selected_key=key or "", parent=self)
-        dialog.changed.connect(self.customer_changed)
-        self.show_dialog(dialog)
-
-    def customer_changed(self, result):
-        self.last_backup = result.get("backup") or self.last_backup
-        self.import_customer = ""
-        self.customer.clear()
-        self.customer_revisions.clear()
-        self.model.set_items([])
-        self.meta_sequence += 1
-        self.query_sequence += 1
-        self.notify(result["message"])
-        self.refresh()
-
-    def edit_by_id(self, row_id):
-        row = next((row for row in self.model.items if row["id"] == row_id), None)
-        if row is None:
-            # History can refer to a current record outside the last table refresh.
-            self.failed(ValueError("该报价已变化，请刷新后再操作"))
-            return
-        dialog = QuoteDialog(self.prices, self.tasks, self.context.storage_generation, row=row, parent=self)
-        dialog.saved.connect(self.quote_saved)
-        self.show_dialog(dialog)
-
-    def edit_selected(self):
-        row = self.selected()
-        if row:
-            self.edit_by_id(row["id"])
-
-    def history_selected(self):
-        row = self.selected()
-        if row:
-            self.open_history(row["id"])
-
-    def open_history(self, row_id):
-        generation = self.context.storage_generation
-        self.tasks.submit(lambda: self.prices.get_history(row_id, generation), self.history_loaded, self.failed, generation=generation)
-
-    def history_loaded(self, result):
-        dialog = HistoryDialog(result["items"], self)
-        dialog.editRequested.connect(lambda row_id: (dialog.accept(), self.edit_by_id(row_id)))
-        self.show_dialog(dialog)
-
-    def quote_saved(self, result):
-        self.last_backup = result.get("backup") or self.last_backup
-        self.notify(result.get("message", "已保存报价"))
-        self.refresh()
-
-    def import_file(self):
-        if self.customer.text().strip() and not self.import_customer:
-            self.failed(ValueError("请先点击左侧具体客户再匹配导入；创建新客户请点击“全部客户”"))
-            return
-        options = {"customer_mode": "selected" if self.import_customer else "all",
-                   "selected_customer": self.import_customer, "core_only": True}
-        path, _ = QFileDialog.getOpenFileName(self, "导入报价", self.last_directory(), "报价文件 (*.xlsx *.csv *.pdf);;PDF 报价表 (*.pdf);;Excel / CSV (*.xlsx *.csv)")
-        if path:
-            self.remember_path(path)
-            generation = self.context.storage_generation
-            if Path(path).suffix.lower() == ".pdf":
-                self.tasks.submit(lambda: self.prices.inspect_pdf(path, generation, options),
-                                  lambda result: self.pdf_inspected(path, generation, result, options), self.failed, generation=generation)
-            else:
-                self.pdf_inspected(path, generation, {"defaults": {}, "warnings": [], "split_material_color": False}, options)
-
-    def pdf_inspected(self, path, generation, inspection, import_options=None):
-        customers = [self.customer_model.item(index).data(Qt.ItemDataRole.UserRole)
-                     for index in range(1, self.customer_model.rowCount())]
-        dialog = PdfImportOptionsDialog(Path(path).name, inspection, customers, self, import_options)
-        dialog.previewRequested.connect(lambda options: self.start_import_preview(path, generation, options))
-        self.show_dialog(dialog)
-
-    def start_import_preview(self, path, generation, pdf_options=None):
-        self.tasks.submit(lambda: self.prices.preview_import(path, generation, pdf_options),
-                          self.preview_loaded, self.failed, generation=generation)
-
-    def preview_loaded(self, result):
-        dialog = ImportPreviewDialog(result, self.prices, self.tasks, self)
-        dialog.imported.connect(self.imported)
-        dialog.reselectRequested.connect(self.import_file)
-        self.show_dialog(dialog)
-
-    def imported(self, result):
-        self.last_backup = result.get("backup")
-        self.notify(f"导入完成：保存报价记录 {result['added']}，跳过 {result['skipped']}。" + (f"备份：{self.last_backup}" if self.last_backup else ""))
-        self.refresh()
-
-    def last_directory(self):
-        return str(self.settings.value("last_directory", str(self.context.folder.parent)))
-
-    def remember_path(self, path):
-        self.settings.setValue("last_directory", str(Path(path).resolve().parent))
-
-    def save_path(self, caption, name, filter_text):
-        path, _ = QFileDialog.getSaveFileName(self, caption, str(Path(self.last_directory()) / name), filter_text)
-        if path:
-            if not Path(path).suffix:
-                path += Path(name).suffix
-            self.remember_path(path)
-        return path
-
-    def export(self, mode):
-        path = self.save_path("导出报价", f"{'历史' if mode == 'history' else '当前'}价格-{today()}.csv", "CSV 文件 (*.csv)")
-        if path:
-            generation, filters = self.context.storage_generation, self.filters()
-            self.tasks.submit(lambda: self.prices.export_quotes(filters, mode, path, generation), self.file_saved, self.failed, generation=generation, write=True)
-
-    def backup(self):
-        path = self.save_path("保存完整备份", f"价格完整备份-{today()}.sqlite3", "SQLite 备份 (*.sqlite3)")
-        if path:
-            generation = self.context.storage_generation
-            self.tasks.submit(lambda: self.prices.backup_database(path, generation), self.file_saved, self.failed, generation=generation, write=True)
-
-    def save_template(self):
-        path = self.save_path("保存导入模板", "价格导入模板.csv", "CSV 文件 (*.csv)")
-        if path:
-            self.tasks.submit(lambda: self.prices.save_import_template(path), self.file_saved, self.failed, write=True)
-
-    def save_schema(self):
-        path = self.save_path("保存云端结构 SQL", "Supabase建表与接口.sql", "SQL 文件 (*.sql)")
-        if path:
-            self.tasks.submit(lambda: self.prices.save_cloud_schema(path), self.file_saved, self.failed, write=True)
-
-    def save_workflow(self):
-        path = self.save_path("保存报价功能升级 SQL", "Supabase报价完善与即时生效-1.6.0.sql", "SQL 文件 (*.sql)")
-        if path:
-            self.tasks.submit(lambda: self.prices.save_cloud_workflow(path), self.file_saved, self.failed, write=True)
-
-    def file_saved(self, result):
-        self.last_backup = result["path"] if result["path"].endswith(".sqlite3") else self.last_backup
-        self.notify("已保存：" + result["path"])
-
-    def open_backup_folder(self):
-        path = Path(self.last_backup).parent if self.last_backup else self.context.folder / "backups"
-        path.mkdir(exist_ok=True)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
-
-    def backend_dialog(self):
-        if getattr(self.context, 'account', None):
-            self.notify('当前使用个人云端数据库，请通过账号菜单切换使用者')
-            return
-        dialog = BackendDialog(self.backends, self.tasks, self)
-        dialog.switched.connect(self.backend_switched)
-        self.show_dialog(dialog)
-
-    def backend_switched(self, result):
-        self.notify(result["message"], bool(result.get("warning")))
-        self.loaded = False
-        self.import_customer = ""
-        self.customer.clear()
-        self.model.set_items([])
-        self.refresh()
-
-    def copy_selected(self):
-        row = self.selected()
-        if row:
-            QGuiApplication.clipboard().setText(json.dumps(row, ensure_ascii=False, indent=2))
 
     def notify(self, message, error=False, *, source=None):
         self.success_timer.stop()

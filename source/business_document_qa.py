@@ -1,6 +1,7 @@
 """Real desktop-window document acceptance; requires the isolated smoke-test entry."""
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import sys
@@ -41,6 +42,12 @@ class PackagedBusinessDocumentSmoke(PackagedSmoke):
             self.report["binary_sha256"] = hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest()
         self.window.resize(1280, 800)
         options = json.loads((self.window.context.folder/"acceptance-documents.json").read_text(encoding="utf-8"))
+        if options.get("scenario") in ("source-fidelity", "source-empty-rows"):
+            self.source_options = options
+            self.source_empty_rows = options.get("scenario") == "source-empty-rows"
+            self.source_kinds = iter((("quotation", 1), ("quotation", 2), ("contract", 1), ("contract", 3)) if self.source_empty_rows else ("quotation", "contract"))
+            self.source_open()
+            return
         if options.get("scenario") == "layout-fix":
             self.layout_options = options
             self.layout_baseline()
@@ -67,6 +74,118 @@ class PackagedBusinessDocumentSmoke(PackagedSmoke):
 
     def form(self):
         return next(d for d in self.window.dialogs if isinstance(d, BusinessDocumentDialog) and d.isVisible())
+
+    def source_open(self):
+        self.source_kind = next(self.source_kinds, None)
+        if self.source_kind is None:
+            self.report["checks"]["source_forms_preview_pdf_word"] = True
+            self.report["status"] = "passed"
+            self.write_report()
+            self.finished = True
+            self.timeout.stop()
+            self.window.close()
+            return
+        if self.source_empty_rows:
+            self.source_kind, self.source_count = self.source_kind
+        self.click(self.window.document_quote_nav if self.source_kind == "quotation" else self.window.document_contract_nav)
+        self.dialog = self.form()
+        document = copy.deepcopy(self.source_options["documents"][self.source_kind])
+        if self.source_empty_rows:
+            document["items"] = [dict(document["items"][0], model=f"QA-{index}") for index in range(self.source_count)]
+        self.dialog.apply_data(document)
+        buyer = self.dialog.fields["buyer_name"]
+        buyer.setFocus()
+        buyer.selectAll()
+        QTest.keyClicks(buyer, "Desktop-QA")
+        assert buyer.text() == "Desktop-QA"
+        self.click(self.dialog.preview_button)
+        self.later(self.source_preview_ready)
+
+    def source_preview_ready(self):
+        preview = self.dialog.preview_dialog
+        pages = 2 if self.source_empty_rows and self.source_count > 1 else 1
+        assert preview and preview.isVisible() and len(preview.pdf) == pages
+        if preview.image_label.pixmap().isNull():
+            QTimer.singleShot(50, lambda: self.safe(self.source_preview_ready))
+            return
+        if self.source_kind == "contract" and (not self.source_empty_rows or self.source_count == 1):
+            self.capture(preview, "source-contract-final-desktop.png")
+        preview.accept()
+        stem = self.source_kind + (f"-rows{self.source_count}" if self.source_empty_rows else "")
+        self.source_pdf = self.output/(stem+"-desktop-ui.pdf")
+        with patch("ui.business_document_dialog.QFileDialog.getSaveFileName", return_value=(str(self.source_pdf), "PDF")):
+            self.click(self.dialog.export_button)
+        self.later(self.source_pdf_saved)
+
+    def source_pdf_saved(self):
+        assert self.dialog.last_exported == str(self.source_pdf) and self.source_pdf.is_file()
+        with pdfplumber.open(self.source_pdf) as pdf:
+            pages = 2 if self.source_empty_rows and self.source_count > 1 else 1
+            assert len(pdf.pages) == pages and all("Desktop-QA" in page.extract_text() for page in pdf.pages)
+            if self.source_empty_rows:
+                text = "".join(page.extract_text() for page in pdf.pages)
+                assert all(f"QA-{index}" in text for index in range(self.source_count))
+                if self.source_kind == "contract":
+                    assert len(pdf.pages[-1].extract_tables()[0]) == 5
+                    assert "具体交期" in text and "双方协商" in text
+        self.source_word = self.source_pdf.with_suffix(".docx")
+        with patch("ui.business_document_dialog.QFileDialog.getSaveFileName", return_value=(str(self.source_word), "Word")):
+            self.click(self.dialog.export_word_button)
+        self.later(self.source_word_saved)
+
+    def source_word_saved(self):
+        from zipfile import ZipFile
+
+        assert self.dialog.last_exported == str(self.source_word) and self.source_word.is_file()
+        with ZipFile(self.source_word) as docx:
+            assert "Desktop-QA" in docx.read("word/document.xml").decode("utf-8")
+            if self.source_empty_rows and self.source_kind == "contract":
+                from xml.etree import ElementTree
+
+                namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+                tables = ElementTree.fromstring(docx.read("word/document.xml")).findall("w:body/w:tbl", namespace)[::2]
+                assert [len(table.findall("w:tr", namespace)) for table in tables] == ([6] if self.source_count == 3 else []) + [5]
+        self.report["exports"].append({"kind": self.source_kind, "pdf": str(self.source_pdf), "word": str(self.source_word)})
+        if self.source_empty_rows:
+            self.click(self.dialog.preview_button)
+            self.later(self.source_wheel_ready)
+            return
+        document = copy.deepcopy(self.source_options["documents"][self.source_kind])
+        page_capacity = 1 if self.source_kind == "quotation" else 2
+        assert len(document["items"]) == page_capacity
+        continuation = copy.deepcopy(document["items"][-1])
+        continuation["model"] = "QA-2"
+        document["items"].append(continuation)
+        self.dialog.apply_data(document)
+        self.click(self.dialog.preview_button)
+        self.later(self.source_wheel_ready)
+
+    def source_wheel_ready(self):
+        preview = self.dialog.preview_dialog
+        if self.source_empty_rows and self.source_count == 1:
+            assert preview and preview.isVisible() and len(preview.pdf) == 1
+            for delta in (-120, 120):
+                self.wheel(preview.scroll.viewport(), delta)
+                assert preview.page_index == 0
+            assert not preview.next.isEnabled() and not preview.previous.isEnabled()
+            self.report["checks"][f"{self.source_kind}_single_page_wheel_boundary"] = True
+            preview.accept()
+            self.dialog.accept()
+            self.source_open()
+            return
+        assert preview and preview.isVisible() and len(preview.pdf) == 2
+        self.wheel(preview.scroll.viewport(), -120)
+        assert preview.page_index == 1 and preview.page_label.text() == "第2/2页"
+        self.wheel(preview.scroll.viewport(), 120)
+        assert preview.page_index == 0 and preview.page_label.text() == "第1/2页"
+        self.click(preview.next)
+        assert preview.page_index == 1 and not preview.next.isEnabled()
+        self.click(preview.previous)
+        assert preview.page_index == 0 and not preview.previous.isEnabled()
+        self.report["checks"][f"{self.source_kind}_viewport_wheel_navigation"] = True
+        preview.accept()
+        self.dialog.accept()
+        self.source_open()
 
     def open_quote(self):
         assert self.window.model.rowCount() == 1
@@ -142,6 +261,11 @@ class PackagedBusinessDocumentSmoke(PackagedSmoke):
     def quote_preview_ready(self):
         preview = self.dialog.preview_dialog
         assert preview and preview.isVisible() and len(preview.pdf) == 2
+        self.wheel(preview.scroll.viewport(), -120)
+        assert preview.page_index == 1 and preview.page_label.text() == "第2/2页"
+        self.wheel(preview.scroll.viewport(), 120)
+        assert preview.page_index == 0 and preview.page_label.text() == "第1/2页"
+        self.report["checks"]["quotation_viewport_wheel_navigation"] = True
         self.wheel(preview.image_label, -120)
         assert preview.page_index == 1 and preview.page_label.text() == "第2/2页"
         self.wheel(preview.image_label, 120)
@@ -204,6 +328,11 @@ class PackagedBusinessDocumentSmoke(PackagedSmoke):
     def contract_preview_ready(self):
         preview = self.dialog.preview_dialog
         assert preview and preview.isVisible() and len(preview.pdf) == 2
+        self.wheel(preview.scroll.viewport(), -120)
+        assert preview.page_index == 1 and preview.page_label.text() == "第2/2页"
+        self.wheel(preview.scroll.viewport(), 120)
+        assert preview.page_index == 0 and preview.page_label.text() == "第1/2页"
+        self.report["checks"]["contract_viewport_wheel_navigation"] = True
         self.wheel(preview.image_label, -120)
         assert preview.page_index == 1 and preview.page_label.text() == "第2/2页"
         self.wheel(preview.image_label, 120)

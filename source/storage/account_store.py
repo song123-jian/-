@@ -39,6 +39,49 @@ class AccountStore(SupabaseStore):
             raise ValidationError('账号模式禁止访问共享数据库')
         return super().request(path + (separator + query if separator else ''), body, count)
 
+    @staticmethod
+    def _document_kind(kind):
+        if kind not in ('quotation', 'contract'):
+            raise ValidationError('不支持的单据类型')
+        return kind
+
+    def business_document_list(self, kind):
+        kind = self._document_kind(kind)
+        result, _ = self.request('rpc/pm_business_document_list_v1', {'p_kind': kind})
+        if not isinstance(result, dict) or not isinstance(result.get('records'), list):
+            raise ValidationError('云端制作记录列表格式无效')
+        return result
+
+    def business_document_save(self, kind, record_id, revision, title, document):
+        kind = self._document_kind(kind)
+        if record_id is not None and not isinstance(record_id, str):
+            raise ValidationError('制作记录编号无效，请刷新记录列表')
+        if revision is not None and (isinstance(revision, bool) or not isinstance(revision, int) or revision < 1):
+            raise ValidationError('制作记录版本无效，请刷新记录列表')
+        result, _ = self.request('rpc/pm_save_business_document_v1', {
+            'p_document_id': record_id,
+            'p_expected_revision': revision,
+            'p_kind': kind,
+            'p_title': title,
+            'p_document': document,
+        })
+        if not isinstance(result, dict) or not isinstance(result.get('document'), dict):
+            raise ValidationError('云端制作记录保存响应无效')
+        return result
+
+    def business_document_delete(self, kind, record_id, revision):
+        kind = self._document_kind(kind)
+        if not isinstance(record_id, str) or not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+            raise ValidationError('制作记录版本无效，请刷新记录列表')
+        result, _ = self.request('rpc/pm_delete_business_document_v1', {
+            'p_kind': kind,
+            'p_document_id': record_id,
+            'p_expected_revision': revision,
+        })
+        if not isinstance(result, dict) or result.get('deleted') is not True:
+            raise ValidationError('云端制作记录删除响应无效')
+        return result
+
     def seed_summary(self):
         return {'records':0, 'customers':0, 'source':'个人账号独立数据'}
 
