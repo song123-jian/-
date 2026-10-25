@@ -22,8 +22,56 @@ data class InventoryResult(
     val rows: List<Map<String, String>>,
     val queriedAt: String,
 ) {
-    val pages: Int get() = maxOf(1, (total + 99) / 100)
+    val pages: Int get() = maxOf(1, ((total.toLong() + 99) / 100).toInt())
 }
+
+internal fun parseInventoryTotalCount(value: Any?): Int {
+    val total = when (value) {
+        is Int -> value.takeIf { it >= 0 }
+        is Long -> value.takeIf { it in 0L..Int.MAX_VALUE.toLong() }?.toInt()
+        else -> null
+    }
+    return total ?: error("MES分页计数无效")
+}
+
+internal fun inventoryPageIsConsistent(total: Int, page: Int, rowCount: Int): Boolean {
+    if (total < 0 || page < 1 || rowCount !in 0..100 || rowCount > total) return false
+    val firstRow = (page.toLong() - 1L) * 100L
+    return rowCount == 0 || total.toLong() >= firstRow + rowCount
+}
+
+data class InventoryQuantitySummary(
+    val unit: String?,
+    val stock: BigDecimal,
+    val available: BigDecimal?,
+    val missingQuantity: Boolean,
+)
+
+fun inventoryQuantitySummaries(result: InventoryResult): List<InventoryQuantitySummary> {
+    if (result.rows.isEmpty()) return emptyList()
+    if (result.mode == "reserve") {
+        return listOf(InventoryQuantitySummary(
+            unit = null,
+            stock = sumInventoryField(result.rows, "备货数量"),
+            available = null,
+            missingQuantity = result.rows.any { it["备货数量"].isNullOrEmpty() },
+        ))
+    }
+    return result.rows.groupBy { it["单位"].orEmpty().ifEmpty { "未注明单位" } }.map { (unit, rows) ->
+        InventoryQuantitySummary(
+            unit = unit,
+            stock = sumInventoryField(rows, "库存数量"),
+            available = sumInventoryField(rows, "可用数量"),
+            missingQuantity = rows.any { it["库存数量"].isNullOrEmpty() || it["可用数量"].isNullOrEmpty() },
+        )
+    }
+}
+
+private fun sumInventoryField(rows: List<Map<String, String>>, key: String): BigDecimal =
+    rows.fold(BigDecimal.ZERO) { total, row ->
+        val value = row[key]
+        if (value.isNullOrEmpty()) total else total + (value.toBigDecimalOrNull() ?: error("MES返回的库存数量格式无效"))
+    }
 
 class MesClient {
     @Volatile private var epoch = 0
@@ -81,8 +129,8 @@ class MesClient {
             "page" to page.toString(), "start" to ((page - 1) * 100).toString(), "limit" to "100")
         val response = json("GET", "Query/QuerySqlObjectNew", params, attempt)
         val rows = response.optJSONArray("data")?.objects() ?: error("MES数据格式已变化")
-        val total = (response.opt("totalCount") as? Number)?.toInt() ?: error("MES分页计数无效")
-        require(total >= 0 && rows.size <= 100 && rows.size <= total && (rows.isEmpty() || total >= (page - 1) * 100 + rows.size)) { "MES分页数据不一致，请重新查询" }
+        val total = parseInventoryTotalCount(response.opt("totalCount"))
+        require(inventoryPageIsConsistent(total, page, rows.size)) { "MES分页数据不一致，请重新查询" }
         val items = rows.map { row ->
             fun str(key: String): String = if (row.isNull(key)) "" else row.optString(key)
             if (reserve) {

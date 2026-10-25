@@ -1,3 +1,13 @@
+## 仓库上传验收检查点（2026-10-25，尚未完成）
+
+- 对象：E:/工作、main、origin=https://github.com/song123-jian/-；本地68a61e62d8b7e59476861845b0ac66329ced885a，远端仍df119974be9783c5f6d1b01fa632f229b0596a72。Windows11/PowerShell/Git LFS。
+- 范围：上传文件清单、LFS载荷、提交一致性；不改业务代码，不重跑功能或构建。原各阶段验收记录沿用，不以本次上传证明功能正确。
+- 已核验：首次暂存250文件，后续并发更新需补提交；1.23根APK与候选SHA一致。5个根APK的配置JSON可解析，仅publishable key，未见凭据文件或私钥条目。*.apk新增LFS属性有效。
+- 首次推送：会话77768未完成，远端SHA未变，LFS batch 28唯一对象7可用/21返回404；只停止已核实的本任务19104后，push exit1。连接数和整机流量不能替代完成证据。
+- 续传：会话27270、4并发、字节进度文件lfs-progress.log，约170–450KB/s。独立1.24代理上传curl exit28：120.001秒、11,550,115字节、96,250B/s；尚未上传成功。直连存储HEAD为HTTP403/0.81秒（仅连通性）；下一步将该APK存储PUT改直连并核验对象，GitHub鉴权仍经代理。
+- 原git diff --cached --check有已有Markdown硬换行空格3处和测试末尾空行1处，保留既有内容。完整远端验收尚未完成。
+- 新增有效证据：同一1.24 APK仅将存储路由改直连，HTTP200、93,883,688字节、17.286784秒、5,430,952B/s，curl exit0；LFS verify成功。代理上传失败不代表包损坏。剩余LFS改用该已验证路由，最终远端全对象核验仍待执行。
+
 ## 当前验收：1.8.6快捷查询、目录折叠与覆盖（2026-10-25，已完成）
 
 - 对象：Windows11 x64/Qt Widgets，CPython3.12.14；正式E:/工作/工作-1.8.6.exe、候选work/release-work-1.8.6-20261025/工作.exe、原生C:/Users/Administrator/AppData/Local/Programs/PriceQueryDesktop/工作.exe。三处EXE SHA256 1353B7A33DB8EE35C02308E72BFE9922AB3FECA87D71CB202C91AD8DCB6757E9，安装包SHA256 02944B4D7EED787476788170229E66D73F3152D6FD8C44C3EB33D627AD47D21A。
@@ -1267,10 +1277,28 @@ Android实际1.2/code3主包和测试包构建成功并覆盖安装，保留会�
 
 
 
-## Android 待办桌面能力补齐（实施中，2026-10-25）
+## Android 待办桌面能力补齐（本轮验证完成，2026-10-25）
 
-已核对桌面依据：`source/ui/main_window_todo.py` 的列表搜索、过滤和统计；`source/ui/todo_dialog.py` 的类别、负责人、客户/项目关联；`source/services/todo_service.py` 的字段长度与日期/状态契约。手机在 `BusinessModels.kt` 有 TodoItem/filterTodos，但搜索遗漏类别/负责人，`status="open"` 仅匹配未开始；`BusinessScreen.kt` 类别固定选项且不显示负责人/链接 ID，`BusinessController.newTodoForProfile` 未设置 customerId。
+对象与环境：`com.song123jian.pricequery.mobile/.MainActivity`，Windows 11、Temurin 17、Gradle 9.1、Android SDK 36；`emulator-5554` Android 15/API 35、x86_64。设备上的目标程序为 `1.23/code6`。Android 代码路径为 `source/android/app/src/main/java/com/song123jian/pricequery/mobile/`。
 
-定向红测：从已存在 `Z:\` 工程映射运行 `.\gradlew.bat :app:testDebugUnitTest --tests com.song123jian.pricequery.mobile.data.BusinessParityModelsTest --no-daemon '-Pkotlin.incremental=false' --console=plain`，测试 `6` 项、`4 passed / 2 failed / 0 errors`。XML报告：`source/android/app/build/test-results/testDebugUnitTest/TEST-com.song123jian.pricequery.mobile.data.BusinessParityModelsTest.xml`。
+阶段目标：按桌面 `TodoDialog` 与 `main_window_todo.py` 的字段、过滤和统计契约补齐 Android 待办，包括类别/负责人、客户/项目 ID 与名称、搜索字段、“全部未完成”、日期状态和全局计数，并让客户档案快捷创建保留客户 ID。此阶段不覆盖实体手机、MES、真实待办写入或整体手机端 100% 对齐。
 
-失败细节：`todoSearchAndOpenFilterMatchDesktopFieldsAndStatusRules` 在类别搜索处实际返回空列表，证明搜索字段不全；`todoCustomCategoryOwnerAndLinkedNamesUseDesktopLengthLimits` 实际保留负责人首尾空格，断言要求桌面一致的 trim；该测试后续还要求类别/负责人长度边界、客户/项目名称 trim。四个原有模型测试通过。红测期间未修改生产文件。下一阶段先核对实现目标文件哈希，再按项目交接的字段契约实现模型、UI 与客户快捷预填；完成后重新读取本节，运行定向 JVM 测试和模拟器 UI 交互验收。
+红测与修复：首轮 `BusinessParityModelsTest` 为 `6` 项、`4 passed / 2 failed`，两项预期失败分别暴露类别搜索缺失、负责人未 trim；其余状态/类别用例通过。完成模型/UI/controller 后，JVM 最终 XML 共 `36` 项、`36 passed / 0 failed / 0 errors / 0 skipped`：`BusinessModelsTest` 13、`BusinessParityModelsTest` 7、`BusinessWorkbookTest` 4、`ModelsTest` 11、`MobileParityRoutesTest` 1。报告目录 `source/android/app/build/test-results/testDebugUnitTest/`。
+
+模拟器实际 UI 验收：在 `Z:\` 工程映射运行 `:app:connectedDebugAndroidTest`，仪器筛选为 `com.song123jian.pricequery.mobile.ui.main.TodoParityUiTest#todoPageSearchesDesktopFieldsShowsGlobalCountsAndEditsEntityLinksInMemory,com.song123jian.pricequery.mobile.ui.main.CustomerCreationUiTest#customerProfileActionsOpenPrefilledDraftsAndCancelWithoutSaving`。在 `emulator-5554` 使用当前构建 APK 对两项逐项完成真实 Compose 界面交互：待办用例搜索类别/负责人/事项、检查计数并在内存中编辑客户/项目关联；客户档案用例打开待办并核对名称和 ID，随后取消。两项共 `2 passed / 0 failed / 0 skipped`，Gradle 退出码 `0`。最新报告 `source/android/app/build/outputs/androidTest-results/connected/debug/TEST-emulator-5554 - 15-_app-.xml`；`test-result-exit-code.txt` 为 `0`。用例未保存待办或报价；打开页面可能进行客户/项目只读加载。10月23日遗留的 `BusinessParityUiTest` 图片报价失败报告是旧报告，不属于本轮待办用例；已由本轮最新报告替代，不能用作本轮失败或通过证据。
+
+构建与程序：`:app:assembleDebug :app:assembleDebugAndroidTest --rerun-tasks` 成功，66项任务执行。根 APK `工作手机版-1.23-debug.apk` 和候选 `source/android/app/build/outputs/apk/debug/app-debug.apk` 均为 `93,883,692` 字节、SHA256=`14A52E5BFA4441FF364A930C642E9AB150F6D0D8A6558F7192E1B454669A92AD`，`versionName=1.23` / `versionCode=6`，debug 证书 SHA256=`5fe328500439ad14728906485d9327da7b6fc0682490336135729afa86c7b213`。仪器构建和安装包均使用本轮同一 debug 证书。聚焦任务运行后主包已再次用 `adb install -r 工作手机版-1.23-debug.apk` 安装，设备 `dumpsys package` 确认版本 `1.23/code6`。
+
+测试清理副作用：`source/android/app/build/outputs/androidTest-results/connected/debug/emulator-5554 - 15/utp.0.log` 记录 UTP `uninstall_after_test=true` 并在两项通过后卸载主包与测试包；随后 `run-as` 确认主包一度不存在。主清单 `source/android/app/src/main/AndroidManifest.xml` 的 `android:allowBackup="false"`，重装不能依赖 Android 自动备份恢复原私有数据；旧 `files` inode `3802201` 不再作为当前有效状态，原本机登录/待办数据视为未恢复。云端未执行业务写入。今后不要在有需保留数据的安装上运行该 connected 任务；改用专用空白模拟器，或人工控制 `adb install -r` 与 `am instrument` 并逐项确认没有 uninstall 清理。
+
+测试边界：本轮未做实体手机截图/安装、真实 MES 请求、待办云同步或真实待办保存；Android 待办按账号本机目录保存。JVM 与模拟器用例结果不代表整体 Android 与桌面功能已 100% 一致。
+
+
+## Android 1.24 库存页数量汇总（2026-10-25）
+
+- 测试对象：`com.song123jian.pricequery.mobile/.MainActivity`，`versionName=1.24` / `versionCode=7`；交付 APK `../工作手机版-1.24-debug.apk` 与候选 `source/android/app/build/outputs/apk/debug/app-debug.apk` SHA256 均为 `B14693440A62CBB934101E8D8F61C545F17066A747DA20E6A6C4C85CD0DB175B`，93,883,688 字节。仪器 APK SHA256=`7B6655547FF8F3D5BECD832A3EA34D70B054C65A79EFD7604078BD2B4FF5ACD9`；两包 debug 证书 SHA256=`5fe328500439ad14728906485d9327da7b6fc0682490336135729afa86c7b213`。
+- 环境：Windows 11、Temurin 17、Gradle 9.1、Android SDK 36；`emulator-5554`，Android 15/API 35、x86_64。入口为已覆盖安装的 `com.song123jian.pricequery.mobile/.MainActivity` 包；仪器测试用 `AndroidJUnitRunner`。
+- JVM 检查：`BusinessModelsTest` 报告 `15 tests / 0 failures / 0 errors`，包含 `inventoryPageTotalsGroupByUnitAndWarnWhenAnyQuantityIsMissing` 与 `reservePageTotalsKnownQuantitiesAndReportsMissingValues`。本轮 Gradle `:app:testDebugUnitTest` 为 `UP-TO-DATE`，报告对应当前未再变化的测试源码。构建命令 `:app:testDebugUnitTest --tests com.song123jian.pricequery.mobile.data.BusinessModelsTest :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon '-Pkotlin.incremental=false' --console=plain` 最终 `BUILD SUCCESSFUL`，71 actionable tasks（11 executed、60 up-to-date）。`apksigner verify --print-certs` 对主包和仪器包均通过。
+- UI 验收：主包与仪器包均通过 `adb install -r` 安装，设备版本报告 `1.24/code7`。直接执行 `adb shell am instrument -w -r -e class com.song123jian.pricequery.mobile.ui.main.MobileLayoutTest com.song123jian.pricequery.mobile.test/androidx.test.runner.AndroidJUnitRunner`，结果 `OK (6 tests)`；两项新增用例验证普通库存按单位汇总及空数量提示、备货汇总无单位及缺值提示。测试前后 app data directory inode 均为 `3801466`，主/仪器包仍已安装。该流程未调用会自动卸载 app 的 `:app:connectedDebugAndroidTest`。
+- 预期/实际：库存只合并相同单位，已知数量以 `BigDecimal` 精确求和；缺字段不伪装为已知数据并在 UI 提示；备货单位沿用桌面“MES 未提供单位”。实际 Compose 断言全部通过，未登录 MES、未请求真实 MES 服务、未保存或改动业务数据。
+- 未覆盖：真实 MES 接口与账号、实体手机渲染、完整 Android/桌面业务 parity。当前仅完成库存合计子项，不代表全局 100% 一致。无临时测试文件需要清理。

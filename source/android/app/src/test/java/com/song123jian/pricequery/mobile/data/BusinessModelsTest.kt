@@ -64,6 +64,61 @@ class BusinessModelsTest {
         assertEquals("A[%][_][[]B", mesLiteral("A%_[B"))
     }
 
+    @Test fun inventoryPageTotalsGroupByUnitAndWarnWhenAnyQuantityIsMissing() {
+        val result = InventoryResult("PA66", "material_code", 1, 4, listOf(
+            mapOf("单位" to "kg", "库存数量" to "1.25", "可用数量" to "0.5"),
+            mapOf("单位" to "kg", "库存数量" to "", "可用数量" to "1.5"),
+            mapOf("单位" to "件", "库存数量" to "3", "可用数量" to "2"),
+            mapOf("单位" to "", "库存数量" to "1", "可用数量" to ""),
+        ), "")
+
+        val totals = inventoryQuantitySummaries(result)
+
+        assertEquals(listOf("kg", "件", "未注明单位"), totals.map { it.unit })
+        assertEquals(BigDecimal("1.25"), totals[0].stock)
+        assertEquals(BigDecimal("2.0"), totals[0].available)
+        assertTrue(totals[0].missingQuantity)
+        assertEquals(BigDecimal("3"), totals[1].stock)
+        assertFalse(totals[1].missingQuantity)
+        assertEquals(BigDecimal("1"), totals[2].stock)
+        assertTrue(totals[2].missingQuantity)
+    }
+
+    @Test fun reservePageTotalsKnownQuantitiesAndReportsMissingValues() {
+        val result = InventoryResult("BATCH-42", "reserve", 1, 3, listOf(
+            mapOf("备货数量" to "1.25"), mapOf("备货数量" to ""), mapOf("备货数量" to "0.75"),
+        ), "")
+
+        val total = inventoryQuantitySummaries(result).single()
+
+        assertEquals(BigDecimal("2.00"), total.stock)
+        assertEquals(null, total.available)
+        assertTrue(total.missingQuantity)
+        assertTrue(inventoryQuantitySummaries(result.copy(rows = emptyList())).isEmpty())
+    }
+
+    @Test fun inventoryPageCountDoesNotOverflowForLargeTotals() {
+        val result = InventoryResult("PA66", "material_code", 1, Int.MAX_VALUE, emptyList(), "")
+
+        assertEquals(21_474_837, result.pages)
+    }
+
+    @Test fun inventoryPageValidationDoesNotOverflowForLargeTotals() {
+        assertTrue(inventoryPageIsConsistent(Int.MAX_VALUE, 21_474_837, 47))
+        assertFalse(inventoryPageIsConsistent(Int.MAX_VALUE, 21_474_837, 48))
+        assertFalse(inventoryPageIsConsistent(Int.MAX_VALUE, 0, 1))
+    }
+
+    @Test fun inventoryTotalCountRejectsNonIntegerAndOutOfRangeValues() {
+        assertEquals(3, parseInventoryTotalCount(3))
+        assertEquals(3, parseInventoryTotalCount(3L))
+        listOf<Any?>(1.0, 1.5, "3", true, -1, Long.MAX_VALUE).forEach { value ->
+            assertTrue("Expected invalid MES totalCount to be rejected: $value", runCatching {
+                parseInventoryTotalCount(value)
+            }.isFailure)
+        }
+    }
+
     @Test fun csvSpreadsheetPayloadsAreNeutralized() {
         assertEquals("'=SUM(A1)", FileExchange.spreadsheetCell("=SUM(A1)"))
         assertEquals("'  @cmd", FileExchange.spreadsheetCell("  @cmd"))

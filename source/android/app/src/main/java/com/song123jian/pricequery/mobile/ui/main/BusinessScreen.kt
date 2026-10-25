@@ -933,12 +933,15 @@ private fun InventoryPage(state: BusinessState, controller: BusinessController) 
             item { Button(onClick = { controller.queryInventory(text, mode) }, enabled = !state.busy && text.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("查询") } }
             state.inventory?.let { result ->
                 item {
-                    Text("${result.query} · 共${result.total}条 · ${result.queriedAt}", style = MaterialTheme.typography.bodySmall)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { controller.queryInventory(result.query, result.mode, result.page - 1) }, enabled = !state.busy && result.page > 1) { Icon(Icons.Default.KeyboardArrowLeft, "上一页库存") }
-                        Text("${result.page}/${result.pages}")
-                        IconButton(onClick = { controller.queryInventory(result.query, result.mode, result.page + 1) }, enabled = !state.busy && result.page < result.pages) { Icon(Icons.Default.KeyboardArrowRight, "下一页库存") }
-                        TextButton(onClick = controller::exportInventory, enabled = !state.busy && result.rows.isNotEmpty()) { Text("导出本页") }
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("${result.query} · 共${result.total}条 · ${result.queriedAt}", style = MaterialTheme.typography.bodySmall)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { controller.queryInventory(result.query, result.mode, result.page - 1) }, enabled = !state.busy && result.page > 1) { Icon(Icons.Default.KeyboardArrowLeft, "上一页库存") }
+                            Text("${result.page}/${result.pages}")
+                            IconButton(onClick = { controller.queryInventory(result.query, result.mode, result.page + 1) }, enabled = !state.busy && result.page < result.pages) { Icon(Icons.Default.KeyboardArrowRight, "下一页库存") }
+                            TextButton(onClick = controller::exportInventory, enabled = !state.busy && result.rows.isNotEmpty()) { Text("导出本页") }
+                        }
+                        InventoryQuantityTotals(result)
                     }
                 }
                 if (result.rows.isEmpty()) item { Text("未查询到匹配库存") }
@@ -966,6 +969,23 @@ private fun InventoryPage(state: BusinessState, controller: BusinessController) 
         text = { Text("电脑端同一旧服务 mes.njjulong.cn:8081 使用明文HTTP，会传输MES账号密码。仅在可信网络继续；勾选记住后，凭据在本机加密保存，MES会话不写入磁盘。") },
         confirmButton = { TextButton(onClick = { val value = capturedPassword; capturedPassword = ""; httpConfirm = false; controller.loginMes(username, value, rememberLogin) }) { Text("继续登录") } },
         dismissButton = { TextButton(onClick = { httpConfirm = false; capturedPassword = "" }) { Text("取消") } })
+}
+
+@Composable
+internal fun InventoryQuantityTotals(result: InventoryResult) {
+    val totals = remember(result) { inventoryQuantitySummaries(result) }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        totals.forEach { total ->
+            val warning = if (total.missingQuantity) "（存在空数量，合计仅含已知值）" else ""
+            if (result.mode == "reserve") {
+                Text("本页备货数量 ${total.stock.toPlainString()} · MES 未提供单位${if (total.missingQuantity) "（存在空数量，仅合计已知值）" else ""}")
+            } else {
+                val unit = total.unit ?: "未注明单位"
+                val available = requireNotNull(total.available)
+                Text("本页库存 ${total.stock.toPlainString()} $unit · 可分配 ${available.toPlainString()} $unit$warning")
+            }
+        }
+    }
 }
 
 @Composable

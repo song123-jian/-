@@ -1,10 +1,12 @@
 package com.song123jian.pricequery.mobile.ui.main
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.song123jian.pricequery.mobile.data.InventoryResult
 import com.song123jian.pricequery.mobile.data.QuoteRecord
 import com.song123jian.pricequery.mobile.theme.Theme
 import org.junit.Assert.assertTrue
@@ -105,6 +107,29 @@ class MobileLayoutTest {
         rule.onNodeWithTag("inventory-batch-reserve").performClick()
         assertTrue(copied.get())
         assertTrue(reserveOpened.get())
+    }
+
+    @Test
+    fun inventoryTotalsRenderUnitGroupsAndMissingQuantityWarning() {
+        val result = InventoryResult("PA66", "material_code", 1, 2, listOf(
+            mapOf("单位" to "kg", "库存数量" to "1.25", "可用数量" to "0.5"),
+            mapOf("单位" to "kg", "库存数量" to "", "可用数量" to "1.5"),
+        ), "")
+
+        rule.setContent { Theme { Column { InventoryQuantityTotals(result) } } }
+
+        rule.onNodeWithText("本页库存 1.25 kg · 可分配 2.0 kg（存在空数量，合计仅含已知值）").assertExists()
+    }
+
+    @Test
+    fun reserveTotalsRenderMissingUnitAndKnownQuantityWarning() {
+        val result = InventoryResult("BATCH-42", "reserve", 1, 2, listOf(
+            mapOf("备货数量" to "1.25"), mapOf("备货数量" to ""), mapOf("备货数量" to "0.75"),
+        ), "")
+
+        rule.setContent { Theme { Column { InventoryQuantityTotals(result) } } }
+
+        rule.onNodeWithText("本页备货数量 2.00 · MES 未提供单位（存在空数量，仅合计已知值）").assertExists()
     }
 
     @Test

@@ -1,3 +1,13 @@
+## 仓库上传检查点（2026-10-25，进行中）
+
+- 目标：完整上传项目源码、文档、模板及正式发布包到 https://github.com/song123-jian/- 的 main；凭据、正式业务数据、机器配置和缓存排除。不写Supabase，不改程序功能或重建。
+- 基线df119974be9783c5f6d1b01fa632f229b0596a72；本地快照68a61e62d8b7e59476861845b0ac66329ced885a，250文件。APK正式发布包已纳入LFS；传输期间出现Android1.24及并发更新，保留待补提交。
+- 首次git push静默超过一小时，远端main未变；28个唯一LFS对象中7可用、21缺失。已核实并仅停止本任务19104，原会话77768以exit1结束，未修改远端分支。
+- 当前续传会话27270启用强制进度、4并发和字节记录，约170–450KB/s；已有对象复用。独立1.24 APK代理传输curl exit28，120秒上传11,550,115字节（96,250B/s）。
+- 网络诊断：存储域github-cloud.s3.amazonaws.com直连HEAD返回403，连接0.30秒/TLS0.56秒/总0.81秒，表明该域可直连；此结果不证明上传成功。下一步对同一APK仅改变存储传输路由为直连，GitHub鉴权继续走代理；成功后再切换大文件续传，失败则保留现行可传输路径并如实记录。
+- 证据/检查点：.build/repository-upload-20261025/；尚未完成远端上传及完整性验收。待办：补齐LFS、补提交并发更新与1.24 APK、推送main、远端SHA与对象核验、双交接。使用Skill：无。
+- 路由实测：1.24 APK直连PUT HTTP200，93,883,688字节/17.286784秒/5,430,952B/s，curl exit0且LFS verify完成。将停止本任务慢速续传，后续用NO_PROXY=github-cloud.s3.amazonaws.com进行LFS存储直连，GitHub仍走代理；不改系统全局网络配置。
+
 ## 当前交付：1.8.6统一Enter查询与客户目录折叠（2026-10-25，已完成）
 
 - 最终需求：依用户纠正，在“客户目录”标题新增折叠/展开，整段列表隐藏/显示并按账号记忆；“全部客户”行仍查询全部报价。查询框与筛选控件统一Enter/小键盘Enter，不在项目页新增无需求搜索框。
@@ -1206,10 +1216,27 @@ r7 增量只改 `source/installer/PriceQuery.iss` 和 `source/tests/test_native_
 
 
 
-## Android 待办桌面能力补齐（实施中，2026-10-25）
+## Android 待办桌面能力补齐（本轮完成，整体手机端对齐仍进行中；2026-10-25）
 
-目标：继续推进手机与电脑待办能力一致。桌面 `TodoDialog` 支持自定义类别、负责人、关联客户/项目 ID 与可编辑名称；待办列表支持类别/负责人/客户/项目搜索、“全部未完成”筛选及未完成/已完成/逾期计数。手机已有相同数据字段和基础待办状态，但表单未呈现负责人/实体链接，自定义类别被固定选项限制，搜索遗漏类别/负责人，缺少聚合未完成筛选与全局统计；客户档案快捷创建待办仅填名称，不保留客户 ID。
+目标：继续推进手机与电脑待办能力一致。桌面 `TodoDialog` 支持自定义类别、负责人、关联客户/项目 ID 与可编辑名称；待办列表支持类别/负责人/客户/项目搜索、“全部未完成”筛选及未完成/已完成/逾期计数。手机本轮已补齐这些待办差异；这只表示待办子项完成，不代表 Android 与桌面整体功能已 100% 一致。
 
-按桌面契约实施：模型校验类别最多60字、负责人最多80字并规范化关联名称；搜索覆盖标题、关联说明、备注、类别、负责人、客户名和项目名；支持“未完成”聚合状态及“未开始/进行中/等待反馈/今日到期/逾期/已完成”；编辑页提供自由类别与负责人、客户/项目实体选择及可编辑名称；列表展示关联字段和全局统计；客户档案快捷创建保留档案 ID。
+实现结果：`BusinessModels.kt` 对类别、负责人、关联名称执行桌面一致的 trim/长度校验并校验实体 ID；搜索覆盖标题、关联说明、备注、类别、负责人、客户名和项目名；过滤支持“全部未完成”、状态和今日到期/逾期，统计基于完整待办列表。`BusinessScreen.kt` 提供自定义类别/负责人、客户/项目选择及名称编辑、关联信息和全局计数；打开待办页读取客户/项目列表，失败时回退本账号本地缓存。`BusinessController.newTodoForProfile` 保留客户档案 ID 与名称。`source/android/README.md` 已更新 1.23/code6 和待办能力说明。
 
-阶段结果：新增 `BusinessParityModelsTest` 两个回归后，在 Windows 11 / Temurin 17 / Gradle 9.1 / SDK 36 执行定向 JVM 测试，6项中4通过、2失败（预期红测）。报告 `source/android/app/build/test-results/testDebugUnitTest/TEST-com.song123jian.pricequery.mobile.data.BusinessParityModelsTest.xml`。失败一为类别搜索未匹配；失败二为负责人文本未去空格。其余状态、类别和客户档案测试通过。尚未修改生产代码、尚未设备验收或构建新 APK。
+验证结果：Android JVM 单测 XML 汇总 `36/36` 通过（模型、待办桌面契约、工作簿和路由）；Android 15/API 35、x86_64 的 `emulator-5554` 上待办页搜索/统计/实体关联编辑及客户档案待办快捷创建两项仪器用例 `2/2` 通过。测试只在内存中编辑并取消，没有保存待办或报价；页面打开可能执行客户/项目只读读取。`:app:assembleDebug :app:assembleDebugAndroidTest --rerun-tasks` 构建成功，66项任务执行；本轮聚焦仪器测试命令 `:app:connectedDebugAndroidTest` 也成功，报告为2项、0失败，退出码0。
+
+APK 交付：[工作手机版-1.23-debug.apk](../工作手机版-1.23-debug.apk)，`versionName=1.23` / `versionCode=6`，93,883,692 字节；构建候选 `source/android/app/build/outputs/apk/debug/app-debug.apk` 与根交付包 SHA256 均为 `14A52E5BFA4441FF364A930C642E9AB150F6D0D8A6558F7192E1B454669A92AD`，debug 证书 SHA256=`5fe328500439ad14728906485d9327da7b6fc0682490336135729afa86c7b213`。仪器报告位于 `source/android/app/build/outputs/androidTest-results/connected/debug/TEST-emulator-5554 - 15-_app-.xml`，退出码文件为同目录 `test-result-exit-code.txt`。
+
+设备状态与重要限制：`connectedDebugAndroidTest` 的 UTP 日志配置了 `uninstall_after_test=true`，测试通过后自动卸载主包和测试包；原先已安装的 `1.23/code6` 主包随之被卸载。随后已用同一 SHA256 的根 APK 执行 `adb install -r` 并确认包版本仍为 `1.23/code6`。应用清单设置 `android:allowBackup="false"`，原模拟器应用私有数据/登录会话未恢复，原先记录的 `files` inode `3802201` 不再作为当前状态；本机待办数据可能已丢失且不可由 Android 自动备份恢复。测试未写 Supabase 业务数据。后续不得在保留应用数据的设备上重跑该 Gradle 设备任务；需要设备验收时使用专用空白模拟器或有数据保留保证的安装/仪器流程。真实实体手机、真实 MES 和整体业务等价仍未验收。
+
+增量复核：检查待办模型规范化/状态日期过滤、客户档案快捷入口和编辑页客户/项目关联；当前 Android 子仓库未提交差异限于 `TodoParityUiTest.kt` 的搜索断言及关联项滚动选择器，变更保留原验收意图，未发现未解决高置信度问题。使用 Skill：test-driven-development（96/100）。
+
+
+## Android 1.24 库存页数量汇总（阶段完成，整体手机端对齐仍进行中；2026-10-25）
+
+- 目标：让 Android 库存结果页显示桌面端相同的本页合计：普通库存按单位分别汇总库存量与可分配量，空数量仅统计已知值并显示提示；批号备货汇总本页已知备货量并提示 MES 未给单位及空数量。本阶段不触碰真实 MES 登录/查询或云业务写入。
+- 版本：用户确认旧 Android `1.2` 按小数递增到 `1.21`（`1.20 + 0.01`）；沿用同一规则，从本阶段之前实际交付的 `1.23/code6` 递增至 `1.24/code7`。
+- 实现：`MesClient.kt` 增加精确 `BigDecimal` 分组汇总与缺值标记；`BusinessScreen.kt` 在库存分页栏下展示汇总；新增 JVM 与 Compose UI 用例覆盖多单位、缺值和备货提示。桌面参考为 `source/ui/inventory_dialog.py` 的 `_fill_inventory` 汇总契约。
+- 验证：Windows 11、Temurin 17、Gradle 9.1、SDK 36；`BusinessModelsTest` XML 为 `15 tests / 0 failures / 0 errors`，本次 Gradle 任务报告 `UP-TO-DATE`；`:app:assembleDebug :app:assembleDebugAndroidTest` 成功（71 actionable tasks，11 executed）。`emulator-5554` Android 15/API 35 上直接运行 `MobileLayoutTest`，`OK (6 tests)`，包括两项新增汇总 UI 用例。用 `adb install -r` 更新主/仪器包，测试前后 app data directory inode 均为 `3801466`；没有运行会自动卸载主包的 connected Gradle 任务。
+- APK：[工作手机版-1.24-debug.apk](../工作手机版-1.24-debug.apk)，`1.24/code7`，93,883,688 字节，SHA256=`B14693440A62CBB934101E8D8F61C545F17066A747DA20E6A6C4C85CD0DB175B`；与构建候选一致。仪器 APK SHA256=`7B6655547FF8F3D5BECD832A3EA34D70B054C65A79EFD7604078BD2B4FF5ACD9`。两包 debug 证书 SHA256=`5fe328500439ad14728906485d9327da7b6fc0682490336135729afa86c7b213`。
+- 增量审查：对照桌面 `source/ui/inventory_dialog.py` 的空单位回退、逐单位精确求和和缺值提示，仅检查本轮 `MesClient.kt`、`BusinessScreen.kt` 与两项新增测试；未发现未解决的高置信度差异或回归。
+- 限制：验证覆盖模型及 Compose 汇总组件，不代表真实 MES 数据往返、实体手机或 Android 与桌面全部业务已 100% 对齐；整体移动端 parity 目标仍在进行。未使用 Skill。
